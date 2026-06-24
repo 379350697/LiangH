@@ -1,0 +1,744 @@
+{
+  "schema_version": 1,
+  "families": [
+    {
+      "family_id": "langlang",
+      "name": "浪浪交易法",
+      "source_basis": [
+        "user_confirmed_pdf_text",
+        "excel_all_sheet_evidence",
+        "kline_market_feature_dataset"
+      ]
+    }
+  ],
+  "strategies": [
+    {
+      "strategy_id": "native_payoff",
+      "family_id": "langlang",
+      "strategy_version": "rules_langlang_native_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "只复刻浪浪原文五浪、六类开仓位置和博大损小框架，用于衡量文档打法本身的解释力。",
+      "promotion_rules": [
+        "concept_unknown_count == 0",
+        "right_tail_capture_score > 0",
+        "manual_review_required_before_live"
+      ]
+    },
+    {
+      "strategy_id": "enhanced_payoff",
+      "family_id": "langlang",
+      "strategy_version": "rules_langlang_enhanced_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "以原文打法为骨架，只通过过滤、降仓和持有计划增强来保留右尾并压制上头亏损。",
+      "promotion_rules": [
+        "loss_suppression_score >= native_parent",
+        "profit_factor >= native_parent",
+        "right_tail_capture_score >= native_parent * 0.8",
+        "paper_validation_required_before_live"
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "variant_id": "langlang_01",
+      "display_name": "langlang-01",
+      "lineage_group": "langlang_payoff",
+      "strategy_id": "native_payoff",
+      "parent_id": null,
+      "strategy_version": "rules_langlang_native_payoff_v1",
+      "status": "canonical_mainline",
+      "hypothesis": "原生 1 号：只复刻浪浪 PDF 原文与五浪、六类开仓位置、博大损小收益结构，用于衡量文档打法本身的解释力。",
+      "factor_set": {
+        "line": "native",
+        "side": "both",
+        "selection": [
+          "full_market_selection",
+          "btc_eth_market_anchor",
+          "leading_altcoin_main_wave",
+          "waterfall_short_candidates"
+        ],
+        "market_cycle": ["spring", "summer", "autumn", "winter"],
+        "symbol_cycle": [
+          "base_platform",
+          "wave_start",
+          "main_wave",
+          "small_divergence",
+          "large_divergence",
+          "second_wave",
+          "exhaustion",
+          "box_chop"
+        ],
+        "entry": [
+          "position_1_startup_long",
+          "position_2_small_divergence_low_buy",
+          "position_3_first_large_divergence_short_observer",
+          "position_4_second_wave_long",
+          "position_5_exhaustion_short_observer",
+          "position_6_box_internal_rebound_low_confidence"
+        ],
+        "filters": [
+          "high_breakout_skip",
+          "third_small_divergence_skip",
+          "main_wave_normal_short_forbidden",
+          "btc_divergence_altcoin_downgrade",
+          "catch_up_short_hold_only"
+        ],
+        "risk": ["W_risk_unit", "altcoin_max_5x", "btc_eth_max_10x"],
+        "hold": ["runner_only_for_position_1_4_and_quality_second_wave", "short_hold_for_catch_up_and_high_small_divergence"]
+      },
+      "changed_factors": [],
+      "core_logic": [
+        "full_market_selection",
+        "spring_summer_autumn_winter_market_cycle",
+        "symbol_wave_stage_machine",
+        "six_document_entry_positions",
+        "high_breakout_skip",
+        "third_small_divergence_skip",
+        "main_wave_normal_short_forbidden",
+        "W_risk_unit",
+        "altcoin_5x_btc_eth_10x",
+        "right_tail_only_for_position_1_4_and_quality_second_wave"
+      ],
+      "source_basis": [
+        "user_confirmed_pdf_text",
+        "excel_all_sheet_trade_evidence",
+        "kline_market_feature_dataset"
+      ],
+      "risk_profile": {
+        "risk_unit": "W",
+        "capital_split": 3,
+        "alt_leverage": 5,
+        "anchor_leverage": 10,
+        "runner_scope": "position_1_position_4_quality_second_wave"
+      },
+      "iteration_notes": "原生主干，不使用历史收益优化门槛，不启用大亏相似过滤；后续 langlang-02 必须说明相对本节点只改变了哪些文档口径或参数。",
+      "promotion_rules": [
+        "concept_unknown_count == 0",
+        "structure_fit_score_review_required",
+        "right_tail_capture_score > 0",
+        "manual_review_required_before_paper_candidate",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "langlang_plus_01",
+      "display_name": "langlang-plus-01",
+      "lineage_group": "langlang_payoff",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "langlang_01",
+      "strategy_version": "rules_langlang_enhanced_payoff_v1",
+      "status": "canonical_mainline",
+      "hypothesis": "加强 1 号：继承 langlang-01 的原文候选，只通过交割单蒸馏、亏损过滤、市场辅助数据和右尾资格控制来增强收益不对称。",
+      "factor_set": {
+        "line": "enhanced",
+        "side": "both",
+        "base_candidate_source": "langlang_01",
+        "meta_label_actions": ["do_trade", "skip", "reduce_size", "short_hold", "allow_runner"],
+        "filters": [
+          "rational_trade_similarity",
+          "big_loss_similarity_filter",
+          "liquidity_top200",
+          "funding_overheat_penalty",
+          "oi_change_when_available",
+          "turnover_expansion",
+          "consecutive_stop_loss_cooldown"
+        ],
+        "hold": ["right_tail_eligibility_filter", "catch_up_short_hold", "high_small_divergence_short_hold"],
+        "risk": ["reduce_size_on_weak_history_support", "skip_on_no_historical_support_when_not_exploratory"]
+      },
+      "changed_factors": [
+        "rational_trade_similarity",
+        "big_loss_similarity_filter",
+        "liquidity_top200",
+        "funding_overheat_penalty",
+        "oi_change_when_available",
+        "turnover_expansion",
+        "consecutive_stop_loss_cooldown",
+        "right_tail_eligibility_filter",
+        "short_hold_or_reduce_size_rules"
+      ],
+      "core_logic": [
+        "inherits_langlang_01_document_core",
+        "meta_label_filter_after_native_candidate",
+        "historical_rational_sample_similarity",
+        "loss_pattern_suppression",
+        "market_auxiliary_feature_filter",
+        "right_tail_eligibility_control"
+      ],
+      "source_basis": [
+        "user_confirmed_pdf_text",
+        "excel_all_sheet_trade_evidence",
+        "distilled_rational_trade_samples",
+        "kline_market_feature_dataset",
+        "funding_and_oi_status_when_available"
+      ],
+      "risk_profile": {
+        "risk_unit": "W",
+        "capital_split": 3,
+        "alt_leverage": 5,
+        "anchor_leverage": 10,
+        "can_reduce_size": true,
+        "can_skip_native_candidate": true,
+        "cannot_change_native_direction": true
+      },
+      "iteration_notes": "加强主干，只允许过滤、降仓、短拿或允许右尾，不允许改写 langlang-01 的原文方向；后续 plus 版本必须通过父子 ablation 证明增益。",
+      "promotion_rules": [
+        "loss_suppression_score >= langlang_01",
+        "profit_factor >= langlang_01",
+        "right_tail_capture_score >= langlang_01 * 0.8",
+        "big_loss_overlap <= langlang_01",
+        "paper_validation_required_before_live",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "langlang_01_select",
+      "display_name": "langlang-01-select",
+      "lineage_group": "langlang_payoff",
+      "strategy_id": "native_payoff",
+      "parent_id": "langlang_01",
+      "strategy_version": "rules_langlang_native_final",
+      "status": "paper_candidate",
+      "hypothesis": "原生筛币变体：只提高龙头山寨、主升浪强度和上方空间要求，验证浪浪打法中“为什么先选这个币”的贡献。",
+      "factor_set": {
+        "line": "native",
+        "changed_area": "selection",
+        "ret_20d_min": 0.24,
+        "ret_60d_min": 0.55,
+        "min_upside_space_pct": 0.12,
+        "leader_only_long": true
+      },
+      "changed_factors": [
+        "ret_20d_min",
+        "ret_60d_min",
+        "min_upside_space_pct",
+        "leader_only_long"
+      ],
+      "core_logic": [
+        "inherits_langlang_01_document_core",
+        "stricter_leading_altcoin_selection",
+        "higher_main_wave_strength",
+        "larger_upside_space_required"
+      ],
+      "source_basis": [
+        "user_confirmed_pdf_text",
+        "excel_all_sheet_trade_evidence",
+        "symbol_selection_cross_section"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_01",
+        "risk_change": "none"
+      },
+      "iteration_notes": "只动筛币与空间阈值，不动入场、止盈和风控；用于验证选币质量是否提升右尾捕获。",
+      "promotion_rules": [
+        "right_tail_capture_score >= langlang_01",
+        "signal_count_not_too_low",
+        "loss_suppression_score_not_worse_than_parent"
+      ]
+    },
+    {
+      "variant_id": "langlang_01_entry",
+      "display_name": "langlang-01-entry",
+      "lineage_group": "langlang_payoff",
+      "strategy_id": "native_payoff",
+      "parent_id": "langlang_01",
+      "strategy_version": "rules_langlang_native_final",
+      "status": "paper_candidate",
+      "hypothesis": "原生开仓变体：只收紧小分歧低吸、回踩确认和短周期转强，验证“同一个币为什么这个位置进”的贡献。",
+      "factor_set": {
+        "line": "native",
+        "changed_area": "entry",
+        "intraday_confirm_ret_min": 0.006,
+        "breakout_tolerance": 0.004,
+        "min_pullback_pct": 0.025,
+        "max_pullback_pct": 0.12
+      },
+      "changed_factors": [
+        "intraday_confirm_ret_min",
+        "breakout_tolerance",
+        "min_pullback_pct",
+        "max_pullback_pct"
+      ],
+      "core_logic": [
+        "inherits_langlang_01_document_core",
+        "stricter_small_divergence_low_buy",
+        "tighter_retest_confirmation",
+        "short_timeframe_reclaim_required"
+      ],
+      "source_basis": [
+        "user_confirmed_pdf_text",
+        "excel_entry_price_labels",
+        "multi_timeframe_kline_features"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_01",
+        "risk_change": "none"
+      },
+      "iteration_notes": "只动入场确认，不改选币和退出；用于减少假突破和震荡周期内突破亏损。",
+      "promotion_rules": [
+        "big_loss_overlap <= langlang_01",
+        "profit_factor >= langlang_01",
+        "right_tail_capture_score >= langlang_01 * 0.8"
+      ]
+    },
+    {
+      "variant_id": "langlang_01_exit",
+      "display_name": "langlang-01-exit",
+      "lineage_group": "langlang_payoff",
+      "strategy_id": "native_payoff",
+      "parent_id": "langlang_01",
+      "strategy_version": "rules_langlang_native_final",
+      "status": "paper_candidate",
+      "hypothesis": "原生止盈变体：只延后分批止盈与 runner 退出，验证博大损小结构中右尾持有是否能更接近浪浪收益率。",
+      "factor_set": {
+        "line": "native",
+        "changed_area": "exit",
+        "partial_take_profit_r": 2.8,
+        "runner_take_profit_r": 6.0,
+        "time_stop_days": 21,
+        "trend_break_buffer_pct": 0.015
+      },
+      "changed_factors": [
+        "partial_take_profit_r",
+        "runner_take_profit_r",
+        "time_stop_days",
+        "trend_break_buffer_pct"
+      ],
+      "core_logic": [
+        "inherits_langlang_01_document_core",
+        "later_partial_take_profit",
+        "longer_runner_hold",
+        "right_tail_capture_emphasis"
+      ],
+      "source_basis": [
+        "user_confirmed_pdf_text",
+        "excel_hold_time_labels",
+        "right_tail_trade_distribution"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_01",
+        "risk_change": "runner_holds_longer"
+      },
+      "iteration_notes": "只动退出和持有计划，不改开仓；用于检验大赚右尾是否来自更长持有。",
+      "promotion_rules": [
+        "right_tail_capture_score >= langlang_01",
+        "max_drawdown_review_required",
+        "avg_win_loss_ratio >= langlang_01"
+      ]
+    },
+    {
+      "variant_id": "langlang_01_risk",
+      "display_name": "langlang-01-risk",
+      "lineage_group": "langlang_payoff",
+      "strategy_id": "native_payoff",
+      "parent_id": "langlang_01",
+      "strategy_version": "rules_langlang_native_final",
+      "status": "paper_candidate",
+      "hypothesis": "原生纪律变体：只强化高位降仓、第三次小分歧跳过、结构止损和时间止损，验证亏损是否主要来自纪律漂移。",
+      "factor_set": {
+        "line": "native",
+        "changed_area": "risk",
+        "structure_stop_pct": 0.055,
+        "high_position_reduce_pos": 0.82,
+        "high_position_size_multiplier": 0.45,
+        "max_small_divergence_count": 1,
+        "time_stop_days": 10
+      },
+      "changed_factors": [
+        "structure_stop_pct",
+        "high_position_reduce_pos",
+        "high_position_size_multiplier",
+        "max_small_divergence_count",
+        "time_stop_days"
+      ],
+      "core_logic": [
+        "inherits_langlang_01_document_core",
+        "stricter_high_position_discipline",
+        "third_small_divergence_forbidden_earlier",
+        "tighter_structure_and_time_stop"
+      ],
+      "source_basis": [
+        "user_confirmed_pdf_text",
+        "excel_stop_loss_labels",
+        "loss_cluster_evidence"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_01",
+        "risk_change": "smaller_high_position_size_and_tighter_stop"
+      },
+      "iteration_notes": "只动纪律和止损，不改选币、开仓和右尾计划；用于压制上头和高位小分歧亏损。",
+      "promotion_rules": [
+        "loss_suppression_score >= langlang_01",
+        "big_loss_overlap <= langlang_01",
+        "right_tail_capture_score >= langlang_01 * 0.75"
+      ]
+    },
+    {
+      "variant_id": "langlang_plus_01_select",
+      "display_name": "langlang-plus-01-select",
+      "lineage_group": "langlang_payoff",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "langlang_plus_01",
+      "strategy_version": "rules_langlang_enhanced_final",
+      "status": "paper_candidate",
+      "hypothesis": "加强筛币变体：在原生筛币后只叠加流动性、成交额扩张、funding/OI 可用状态，验证辅助市场数据是否提升选币质量。",
+      "factor_set": {
+        "line": "enhanced",
+        "changed_area": "selection",
+        "max_turnover_rank_24h": 120,
+        "min_vol_ratio_20d": 0.35,
+        "min_oi_expansion_3d": -0.15,
+        "oi_only_when_available": true
+      },
+      "changed_factors": [
+        "max_turnover_rank_24h",
+        "min_vol_ratio_20d",
+        "min_oi_expansion_3d",
+        "oi_only_when_available"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_meta_filter",
+        "liquidity_rank_stricter",
+        "turnover_expansion_required",
+        "oi_health_when_available"
+      ],
+      "source_basis": [
+        "user_confirmed_pdf_text",
+        "trade_feature_matrix",
+        "funding_and_oi_status_when_available"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01",
+        "risk_change": "none"
+      },
+      "iteration_notes": "只动增强筛币辅助因子，不改变原文方向；OI 缺失时不把空值当 0。",
+      "promotion_rules": [
+        "right_tail_capture_score >= langlang_plus_01",
+        "loss_suppression_score >= langlang_plus_01",
+        "signal_count_not_too_low"
+      ]
+    },
+    {
+      "variant_id": "langlang_plus_01_entry",
+      "display_name": "langlang-plus-01-entry",
+      "lineage_group": "langlang_payoff",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "langlang_plus_01",
+      "strategy_version": "rules_langlang_enhanced_final",
+      "status": "paper_candidate",
+      "hypothesis": "加强开仓变体：只提高历史理性样本相似度和大亏相似过滤后的入场确认，减少看对币但进错点。",
+      "factor_set": {
+        "line": "enhanced",
+        "changed_area": "entry",
+        "min_historical_match_score": 0.5,
+        "historical_match_score": 0.6,
+        "max_big_loss_overlap_count": 0,
+        "intraday_confirm_ret_min": 0.006
+      },
+      "changed_factors": [
+        "min_historical_match_score",
+        "historical_match_score",
+        "max_big_loss_overlap_count",
+        "intraday_confirm_ret_min"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_meta_filter",
+        "higher_rational_trade_similarity_required",
+        "zero_big_loss_overlap",
+        "stricter_intraday_entry_confirmation"
+      ],
+      "source_basis": [
+        "distilled_rational_trade_samples",
+        "historical_patterns",
+        "multi_timeframe_kline_features"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01",
+        "risk_change": "skip_more_on_weak_history_support"
+      },
+      "iteration_notes": "只动增强入场确认，不改选币和退出；用于检验理性样本相似度是否有效。",
+      "promotion_rules": [
+        "big_loss_overlap <= langlang_plus_01",
+        "profit_factor >= langlang_plus_01",
+        "right_tail_capture_score >= langlang_plus_01 * 0.75"
+      ]
+    },
+    {
+      "variant_id": "langlang_plus_01_exit",
+      "display_name": "langlang-plus-01-exit",
+      "lineage_group": "langlang_payoff",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "langlang_plus_01",
+      "strategy_version": "rules_langlang_enhanced_final",
+      "status": "paper_candidate",
+      "hypothesis": "加强止盈变体：只优化右尾资格、补涨短拿、分批止盈和趋势破坏退出，保留大赚同时减少回吐。",
+      "factor_set": {
+        "line": "enhanced",
+        "changed_area": "exit",
+        "partial_take_profit_r": 2.8,
+        "runner_take_profit_r": 6.5,
+        "catch_up_runner_allowed": false,
+        "trend_break_buffer_pct": 0.018,
+        "time_stop_days": 21
+      },
+      "changed_factors": [
+        "partial_take_profit_r",
+        "runner_take_profit_r",
+        "catch_up_runner_allowed",
+        "trend_break_buffer_pct",
+        "time_stop_days"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_meta_filter",
+        "stricter_runner_eligibility",
+        "catch_up_short_hold_only",
+        "later_runner_take_profit",
+        "trend_break_exit"
+      ],
+      "source_basis": [
+        "right_tail_trade_distribution",
+        "excel_hold_time_labels",
+        "exit_mae_mfe_features"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01",
+        "risk_change": "runner_holds_longer_only_when_qualified"
+      },
+      "iteration_notes": "只动退出和右尾资格，不改变原文候选；用于验证博大损小是否能通过更严格 runner 权限增强。",
+      "promotion_rules": [
+        "right_tail_capture_score >= langlang_plus_01",
+        "avg_win_loss_ratio >= langlang_plus_01",
+        "max_drawdown_review_required"
+      ]
+    },
+    {
+      "variant_id": "langlang_plus_01_loss",
+      "display_name": "langlang-plus-01-loss",
+      "lineage_group": "langlang_payoff",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "langlang_plus_01",
+      "strategy_version": "rules_langlang_enhanced_final",
+      "status": "paper_candidate",
+      "hypothesis": "加强亏损压制变体：只收紧 funding 过热、连续止损、低流动性和大亏重叠过滤，优先验证少亏能力。",
+      "factor_set": {
+        "line": "enhanced",
+        "changed_area": "loss_filter",
+        "max_funding_rate_last": 0.01,
+        "max_stop_loss_cluster_24h": 1,
+        "min_oi_expansion_3d": -0.1,
+        "structure_stop_pct": 0.055,
+        "max_turnover_rank_24h": 150
+      },
+      "changed_factors": [
+        "max_funding_rate_last",
+        "max_stop_loss_cluster_24h",
+        "min_oi_expansion_3d",
+        "structure_stop_pct",
+        "max_turnover_rank_24h"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_meta_filter",
+        "funding_overheat_stricter",
+        "stop_loss_cluster_cooldown_stricter",
+        "big_loss_overlap_suppression",
+        "tighter_structure_stop"
+      ],
+      "source_basis": [
+        "loss_cluster_evidence",
+        "funding_status",
+        "trade_feature_matrix",
+        "big_loss_similarity_patterns"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01",
+        "risk_change": "skip_more_and_tighter_stop"
+      },
+      "iteration_notes": "只动亏损过滤和止损纪律；如果右尾捕获过度下降，不能晋升主力。",
+      "promotion_rules": [
+        "loss_suppression_score >= langlang_plus_01",
+        "big_loss_overlap <= langlang_plus_01",
+        "right_tail_capture_score >= langlang_plus_01 * 0.7"
+      ]
+    },
+    {
+      "variant_id": "native_long_document_default",
+      "strategy_id": "native_payoff",
+      "parent_id": null,
+      "strategy_version": "rules_langlang_native_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "原文多头主线：龙头山寨、主升浪、启动多、小分歧低吸和二波启动。",
+      "factor_set": {
+        "line": "native",
+        "side": "long",
+        "entry": ["position_1_startup_long", "position_2_small_divergence", "position_4_second_wave"],
+        "filters": ["high_breakout_skip", "third_small_divergence_skip", "btc_divergence_downgrade"],
+        "exit": ["document_stop", "runner_for_position_1_and_4"]
+      },
+      "changed_factors": [],
+      "source_basis": ["pdf"],
+      "risk_profile": {"risk_unit": "W", "alt_leverage": 5, "anchor_leverage": 10},
+      "promotion_rules": ["right_tail_capture_score > 0", "max_drawdown_review_required"]
+    },
+    {
+      "variant_id": "native_short_document_default",
+      "strategy_id": "native_payoff",
+      "parent_id": null,
+      "strategy_version": "rules_langlang_native_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "原文空头观察线：新币收敛破位、弱势瀑布、反抽不过平台。",
+      "factor_set": {
+        "line": "native",
+        "side": "short",
+        "entry": ["waterfall_breakdown", "rebound_failure"],
+        "filters": ["main_wave_normal_short_forbidden"],
+        "exit": ["document_stop", "short_runner_when_waterfall_quality_high"]
+      },
+      "changed_factors": [],
+      "source_basis": ["pdf"],
+      "risk_profile": {"risk_unit": "W", "alt_leverage": 5, "anchor_leverage": 10},
+      "promotion_rules": ["profit_factor_review_required", "main_wave_short_drift == 0"]
+    },
+    {
+      "variant_id": "native_document_countertrend_observer",
+      "strategy_id": "native_payoff",
+      "parent_id": null,
+      "strategy_version": "rules_langlang_native_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "原文③⑤摸顶空只作为观察线，验证逆势单是否真的难做。",
+      "factor_set": {
+        "line": "native",
+        "side": "both",
+        "entry": ["position_3_first_large_divergence_short", "position_5_exhaustion_short"],
+        "filters": ["countertrend_small_size_only"],
+        "exit": ["tight_structure_stop"]
+      },
+      "changed_factors": ["countertrend_short_observer"],
+      "source_basis": ["pdf"],
+      "risk_profile": {"risk_unit": "fractional_W", "alt_leverage": 5, "anchor_leverage": 10},
+      "promotion_rules": ["cannot_promote_to_live_without_manual_override"]
+    },
+    {
+      "variant_id": "enhanced_exploratory",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "native_document_countertrend_observer",
+      "strategy_version": "rules_langlang_enhanced_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "增强探索线：保留原文方向，同时观察历史相似、资金费率、OI、流动性和亏损形态过滤是否改善收益结构。",
+      "factor_set": {
+        "line": "enhanced",
+        "side": "both",
+        "entry": ["document_core_candidates"],
+        "filters": ["historical_match_soft", "big_loss_similarity_monitor", "funding_overheat_monitor", "liquidity_top200"],
+        "exit": ["enhanced_hold_plan_monitor"]
+      },
+      "changed_factors": ["historical_match_soft", "derivative_market_monitor", "liquidity_top200"],
+      "source_basis": ["pdf", "excel_events", "market_features"],
+      "risk_profile": {"risk_unit": "W", "alt_leverage": 5, "anchor_leverage": 10},
+      "promotion_rules": ["must_spawn_strict_child_before_paper_candidate"]
+    },
+    {
+      "variant_id": "enhanced_long_r20_0.18_hm_0.30",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "native_long_document_default",
+      "strategy_version": "rules_langlang_enhanced_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "低门槛历史相似度增强多头，用于观察是否提升右尾捕获。",
+      "factor_set": {"line": "enhanced", "side": "long", "ret_20d_min": 0.18, "historical_match_score": 0.3},
+      "changed_factors": ["historical_match_score", "ret_20d_min"],
+      "source_basis": ["pdf", "excel_events"],
+      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
+      "promotion_rules": ["loss_suppression_score >= parent", "right_tail_capture_score >= parent * 0.8"]
+    },
+    {
+      "variant_id": "enhanced_long_r20_0.18_hm_0.45",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "enhanced_long_r20_0.18_hm_0.30",
+      "strategy_version": "rules_langlang_enhanced_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "提高历史相似度门槛，验证严格样本支持是否压制亏损。",
+      "factor_set": {"line": "enhanced", "side": "long", "ret_20d_min": 0.18, "historical_match_score": 0.45},
+      "changed_factors": ["historical_match_score"],
+      "source_basis": ["pdf", "excel_events"],
+      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
+      "promotion_rules": ["signal_count >= minimum", "loss_suppression_score >= parent"]
+    },
+    {
+      "variant_id": "enhanced_long_r20_0.24_hm_0.30",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "native_long_document_default",
+      "strategy_version": "rules_langlang_enhanced_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "提高 20 日强度门槛，验证更强主升浪是否更贴合博大损小。",
+      "factor_set": {"line": "enhanced", "side": "long", "ret_20d_min": 0.24, "historical_match_score": 0.3},
+      "changed_factors": ["ret_20d_min", "historical_match_score"],
+      "source_basis": ["pdf", "excel_events"],
+      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
+      "promotion_rules": ["right_tail_capture_score >= parent", "profit_factor >= parent"]
+    },
+    {
+      "variant_id": "enhanced_long_r20_0.24_hm_0.45",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "enhanced_long_r20_0.24_hm_0.30",
+      "strategy_version": "rules_langlang_enhanced_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "强趋势加严格历史相似度，验证是否过度过滤。",
+      "factor_set": {"line": "enhanced", "side": "long", "ret_20d_min": 0.24, "historical_match_score": 0.45},
+      "changed_factors": ["historical_match_score"],
+      "source_basis": ["pdf", "excel_events"],
+      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
+      "promotion_rules": ["signal_count >= minimum", "right_tail_capture_score_review"]
+    },
+    {
+      "variant_id": "enhanced_long_r20_0.30_hm_0.30",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "native_long_document_default",
+      "strategy_version": "rules_langlang_enhanced_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "高 20 日强度门槛，验证是否只保留最强龙头。",
+      "factor_set": {"line": "enhanced", "side": "long", "ret_20d_min": 0.3, "historical_match_score": 0.3},
+      "changed_factors": ["ret_20d_min", "historical_match_score"],
+      "source_basis": ["pdf", "excel_events"],
+      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
+      "promotion_rules": ["signal_count >= minimum", "right_tail_capture_score >= parent"]
+    },
+    {
+      "variant_id": "enhanced_long_r20_0.30_hm_0.45",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "enhanced_long_r20_0.30_hm_0.30",
+      "strategy_version": "rules_langlang_enhanced_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "最严格多头增强线，主要用于检测过度过滤风险。",
+      "factor_set": {"line": "enhanced", "side": "long", "ret_20d_min": 0.3, "historical_match_score": 0.45},
+      "changed_factors": ["historical_match_score"],
+      "source_basis": ["pdf", "excel_events"],
+      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
+      "promotion_rules": ["signal_count >= minimum", "no_zero_signal_promotion"]
+    },
+    {
+      "variant_id": "enhanced_short_r20_0.14",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "native_short_document_default",
+      "strategy_version": "rules_langlang_enhanced_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "弱势瀑布空头增强，观察破位延续是否优于原生空头。",
+      "factor_set": {"line": "enhanced", "side": "short", "short_ret_20d_max": -0.14, "historical_match_score": 0.3},
+      "changed_factors": ["short_ret_20d_max", "historical_match_score"],
+      "source_basis": ["pdf", "excel_events"],
+      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
+      "promotion_rules": ["main_wave_short_drift == 0", "profit_factor >= parent"]
+    },
+    {
+      "variant_id": "enhanced_short_r20_0.22",
+      "strategy_id": "enhanced_payoff",
+      "parent_id": "enhanced_short_r20_0.14",
+      "strategy_version": "rules_langlang_enhanced_payoff_v1",
+      "status": "backtested",
+      "hypothesis": "更弱势的瀑布空头门槛，验证是否减少震荡假破位。",
+      "factor_set": {"line": "enhanced", "side": "short", "short_ret_20d_max": -0.22, "historical_match_score": 0.3},
+      "changed_factors": ["short_ret_20d_max"],
+      "source_basis": ["pdf", "excel_events"],
+      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
+      "promotion_rules": ["signal_count >= minimum", "loss_suppression_score >= parent"]
+    }
+  ]
+}

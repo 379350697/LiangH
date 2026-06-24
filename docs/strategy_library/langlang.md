@@ -1,0 +1,189 @@
+# 浪浪交易法
+
+## Variants
+
+### enhanced_payoff
+
+以原文打法为骨架，只通过过滤、降仓和持有计划增强来保留右尾并压制上头亏损。
+
+- `enhanced_exploratory` (`enhanced_exploratory`)
+  - parent: `native_document_countertrend_observer`
+  - lineage: `native_document_countertrend_observer -> enhanced_exploratory`
+  - lineage_group: ``
+  - changed_factors: `historical_match_soft, derivative_market_monitor, liquidity_top200`
+  - core_logic: ``
+  - hypothesis: 增强探索线：保留原文方向，同时观察历史相似、资金费率、OI、流动性和亏损形态过滤是否改善收益结构。
+  - latest_run: `payoff-enhanced-current`, decision=`candidate`, profit_factor=0.9134, max_drawdown=0.1468
+- `enhanced_long_r20_0.18_hm_0.30` (`enhanced_long_r20_0.18_hm_0.30`)
+  - parent: `native_long_document_default`
+  - lineage: `native_long_document_default -> enhanced_long_r20_0.18_hm_0.30`
+  - lineage_group: ``
+  - changed_factors: `historical_match_score, ret_20d_min`
+  - core_logic: ``
+  - hypothesis: 低门槛历史相似度增强多头，用于观察是否提升右尾捕获。
+  - latest_run: `payoff-enhanced-current`, decision=`rejected`, profit_factor=0.0000, max_drawdown=0.0000
+- `enhanced_long_r20_0.18_hm_0.45` (`enhanced_long_r20_0.18_hm_0.45`)
+  - parent: `enhanced_long_r20_0.18_hm_0.30`
+  - lineage: `native_long_document_default -> enhanced_long_r20_0.18_hm_0.30 -> enhanced_long_r20_0.18_hm_0.45`
+  - lineage_group: ``
+  - changed_factors: `historical_match_score`
+  - core_logic: ``
+  - hypothesis: 提高历史相似度门槛，验证严格样本支持是否压制亏损。
+  - latest_run: `payoff-enhanced-current`, decision=`rejected`, profit_factor=0.0000, max_drawdown=0.0000
+- `enhanced_long_r20_0.24_hm_0.30` (`enhanced_long_r20_0.24_hm_0.30`)
+  - parent: `native_long_document_default`
+  - lineage: `native_long_document_default -> enhanced_long_r20_0.24_hm_0.30`
+  - lineage_group: ``
+  - changed_factors: `ret_20d_min, historical_match_score`
+  - core_logic: ``
+  - hypothesis: 提高 20 日强度门槛，验证更强主升浪是否更贴合博大损小。
+  - latest_run: `payoff-enhanced-current`, decision=`rejected`, profit_factor=0.0000, max_drawdown=0.0000
+- `enhanced_long_r20_0.24_hm_0.45` (`enhanced_long_r20_0.24_hm_0.45`)
+  - parent: `enhanced_long_r20_0.24_hm_0.30`
+  - lineage: `native_long_document_default -> enhanced_long_r20_0.24_hm_0.30 -> enhanced_long_r20_0.24_hm_0.45`
+  - lineage_group: ``
+  - changed_factors: `historical_match_score`
+  - core_logic: ``
+  - hypothesis: 强趋势加严格历史相似度，验证是否过度过滤。
+  - latest_run: `payoff-enhanced-current`, decision=`rejected`, profit_factor=0.0000, max_drawdown=0.0000
+- `enhanced_long_r20_0.30_hm_0.30` (`enhanced_long_r20_0.30_hm_0.30`)
+  - parent: `native_long_document_default`
+  - lineage: `native_long_document_default -> enhanced_long_r20_0.30_hm_0.30`
+  - lineage_group: ``
+  - changed_factors: `ret_20d_min, historical_match_score`
+  - core_logic: ``
+  - hypothesis: 高 20 日强度门槛，验证是否只保留最强龙头。
+  - latest_run: `payoff-enhanced-current`, decision=`rejected`, profit_factor=0.0000, max_drawdown=0.0000
+- `enhanced_long_r20_0.30_hm_0.45` (`enhanced_long_r20_0.30_hm_0.45`)
+  - parent: `enhanced_long_r20_0.30_hm_0.30`
+  - lineage: `native_long_document_default -> enhanced_long_r20_0.30_hm_0.30 -> enhanced_long_r20_0.30_hm_0.45`
+  - lineage_group: ``
+  - changed_factors: `historical_match_score`
+  - core_logic: ``
+  - hypothesis: 最严格多头增强线，主要用于检测过度过滤风险。
+  - latest_run: `payoff-enhanced-current`, decision=`rejected`, profit_factor=0.0000, max_drawdown=0.0000
+- `enhanced_short_r20_0.14` (`enhanced_short_r20_0.14`)
+  - parent: `native_short_document_default`
+  - lineage: `native_short_document_default -> enhanced_short_r20_0.14`
+  - lineage_group: ``
+  - changed_factors: `short_ret_20d_max, historical_match_score`
+  - core_logic: ``
+  - hypothesis: 弱势瀑布空头增强，观察破位延续是否优于原生空头。
+  - latest_run: `payoff-enhanced-current`, decision=`rejected`, profit_factor=0.0000, max_drawdown=0.0000
+- `enhanced_short_r20_0.22` (`enhanced_short_r20_0.22`)
+  - parent: `enhanced_short_r20_0.14`
+  - lineage: `native_short_document_default -> enhanced_short_r20_0.14 -> enhanced_short_r20_0.22`
+  - lineage_group: ``
+  - changed_factors: `short_ret_20d_max`
+  - core_logic: ``
+  - hypothesis: 更弱势的瀑布空头门槛，验证是否减少震荡假破位。
+  - latest_run: `payoff-enhanced-current`, decision=`rejected`, profit_factor=0.0000, max_drawdown=0.0000
+- `langlang-plus-01` (`langlang_plus_01`)
+  - parent: `langlang-01`
+  - lineage: `langlang-01 -> langlang-plus-01`
+  - lineage_group: `langlang_payoff`
+  - changed_factors: `rational_trade_similarity, big_loss_similarity_filter, liquidity_top200, funding_overheat_penalty, oi_change_when_available, turnover_expansion, consecutive_stop_loss_cooldown, right_tail_eligibility_filter, short_hold_or_reduce_size_rules`
+  - core_logic: `inherits_langlang_01_document_core, meta_label_filter_after_native_candidate, historical_rational_sample_similarity, loss_pattern_suppression, market_auxiliary_feature_filter, right_tail_eligibility_control`
+  - hypothesis: 加强 1 号：继承 langlang-01 的原文候选，只通过交割单蒸馏、亏损过滤、市场辅助数据和右尾资格控制来增强收益不对称。
+  - iteration_notes: 加强主干，只允许过滤、降仓、短拿或允许右尾，不允许改写 langlang-01 的原文方向；后续 plus 版本必须通过父子 ablation 证明增益。
+- `langlang-plus-01-entry` (`langlang_plus_01_entry`)
+  - parent: `langlang-plus-01`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-entry`
+  - lineage_group: `langlang_payoff`
+  - changed_factors: `min_historical_match_score, historical_match_score, max_big_loss_overlap_count, intraday_confirm_ret_min`
+  - core_logic: `inherits_langlang_plus_01_meta_filter, higher_rational_trade_similarity_required, zero_big_loss_overlap, stricter_intraday_entry_confirmation`
+  - hypothesis: 加强开仓变体：只提高历史理性样本相似度和大亏相似过滤后的入场确认，减少看对币但进错点。
+  - iteration_notes: 只动增强入场确认，不改选币和退出；用于检验理性样本相似度是否有效。
+- `langlang-plus-01-exit` (`langlang_plus_01_exit`)
+  - parent: `langlang-plus-01`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-exit`
+  - lineage_group: `langlang_payoff`
+  - changed_factors: `partial_take_profit_r, runner_take_profit_r, catch_up_runner_allowed, trend_break_buffer_pct, time_stop_days`
+  - core_logic: `inherits_langlang_plus_01_meta_filter, stricter_runner_eligibility, catch_up_short_hold_only, later_runner_take_profit, trend_break_exit`
+  - hypothesis: 加强止盈变体：只优化右尾资格、补涨短拿、分批止盈和趋势破坏退出，保留大赚同时减少回吐。
+  - iteration_notes: 只动退出和右尾资格，不改变原文候选；用于验证博大损小是否能通过更严格 runner 权限增强。
+- `langlang-plus-01-loss` (`langlang_plus_01_loss`)
+  - parent: `langlang-plus-01`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss`
+  - lineage_group: `langlang_payoff`
+  - changed_factors: `max_funding_rate_last, max_stop_loss_cluster_24h, min_oi_expansion_3d, structure_stop_pct, max_turnover_rank_24h`
+  - core_logic: `inherits_langlang_plus_01_meta_filter, funding_overheat_stricter, stop_loss_cluster_cooldown_stricter, big_loss_overlap_suppression, tighter_structure_stop`
+  - hypothesis: 加强亏损压制变体：只收紧 funding 过热、连续止损、低流动性和大亏重叠过滤，优先验证少亏能力。
+  - iteration_notes: 只动亏损过滤和止损纪律；如果右尾捕获过度下降，不能晋升主力。
+- `langlang-plus-01-select` (`langlang_plus_01_select`)
+  - parent: `langlang-plus-01`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-select`
+  - lineage_group: `langlang_payoff`
+  - changed_factors: `max_turnover_rank_24h, min_vol_ratio_20d, min_oi_expansion_3d, oi_only_when_available`
+  - core_logic: `inherits_langlang_plus_01_meta_filter, liquidity_rank_stricter, turnover_expansion_required, oi_health_when_available`
+  - hypothesis: 加强筛币变体：在原生筛币后只叠加流动性、成交额扩张、funding/OI 可用状态，验证辅助市场数据是否提升选币质量。
+  - iteration_notes: 只动增强筛币辅助因子，不改变原文方向；OI 缺失时不把空值当 0。
+
+### native_payoff
+
+只复刻浪浪原文五浪、六类开仓位置和博大损小框架，用于衡量文档打法本身的解释力。
+
+- `langlang-01` (`langlang_01`)
+  - parent: ``
+  - lineage: `langlang-01`
+  - lineage_group: `langlang_payoff`
+  - changed_factors: ``
+  - core_logic: `full_market_selection, spring_summer_autumn_winter_market_cycle, symbol_wave_stage_machine, six_document_entry_positions, high_breakout_skip, third_small_divergence_skip, main_wave_normal_short_forbidden, W_risk_unit, altcoin_5x_btc_eth_10x, right_tail_only_for_position_1_4_and_quality_second_wave`
+  - hypothesis: 原生 1 号：只复刻浪浪 PDF 原文与五浪、六类开仓位置、博大损小收益结构，用于衡量文档打法本身的解释力。
+  - iteration_notes: 原生主干，不使用历史收益优化门槛，不启用大亏相似过滤；后续 langlang-02 必须说明相对本节点只改变了哪些文档口径或参数。
+- `langlang-01-entry` (`langlang_01_entry`)
+  - parent: `langlang-01`
+  - lineage: `langlang-01 -> langlang-01-entry`
+  - lineage_group: `langlang_payoff`
+  - changed_factors: `intraday_confirm_ret_min, breakout_tolerance, min_pullback_pct, max_pullback_pct`
+  - core_logic: `inherits_langlang_01_document_core, stricter_small_divergence_low_buy, tighter_retest_confirmation, short_timeframe_reclaim_required`
+  - hypothesis: 原生开仓变体：只收紧小分歧低吸、回踩确认和短周期转强，验证“同一个币为什么这个位置进”的贡献。
+  - iteration_notes: 只动入场确认，不改选币和退出；用于减少假突破和震荡周期内突破亏损。
+- `langlang-01-exit` (`langlang_01_exit`)
+  - parent: `langlang-01`
+  - lineage: `langlang-01 -> langlang-01-exit`
+  - lineage_group: `langlang_payoff`
+  - changed_factors: `partial_take_profit_r, runner_take_profit_r, time_stop_days, trend_break_buffer_pct`
+  - core_logic: `inherits_langlang_01_document_core, later_partial_take_profit, longer_runner_hold, right_tail_capture_emphasis`
+  - hypothesis: 原生止盈变体：只延后分批止盈与 runner 退出，验证博大损小结构中右尾持有是否能更接近浪浪收益率。
+  - iteration_notes: 只动退出和持有计划，不改开仓；用于检验大赚右尾是否来自更长持有。
+- `langlang-01-risk` (`langlang_01_risk`)
+  - parent: `langlang-01`
+  - lineage: `langlang-01 -> langlang-01-risk`
+  - lineage_group: `langlang_payoff`
+  - changed_factors: `structure_stop_pct, high_position_reduce_pos, high_position_size_multiplier, max_small_divergence_count, time_stop_days`
+  - core_logic: `inherits_langlang_01_document_core, stricter_high_position_discipline, third_small_divergence_forbidden_earlier, tighter_structure_and_time_stop`
+  - hypothesis: 原生纪律变体：只强化高位降仓、第三次小分歧跳过、结构止损和时间止损，验证亏损是否主要来自纪律漂移。
+  - iteration_notes: 只动纪律和止损，不改选币、开仓和右尾计划；用于压制上头和高位小分歧亏损。
+- `langlang-01-select` (`langlang_01_select`)
+  - parent: `langlang-01`
+  - lineage: `langlang-01 -> langlang-01-select`
+  - lineage_group: `langlang_payoff`
+  - changed_factors: `ret_20d_min, ret_60d_min, min_upside_space_pct, leader_only_long`
+  - core_logic: `inherits_langlang_01_document_core, stricter_leading_altcoin_selection, higher_main_wave_strength, larger_upside_space_required`
+  - hypothesis: 原生筛币变体：只提高龙头山寨、主升浪强度和上方空间要求，验证浪浪打法中“为什么先选这个币”的贡献。
+  - iteration_notes: 只动筛币与空间阈值，不动入场、止盈和风控；用于验证选币质量是否提升右尾捕获。
+- `native_document_countertrend_observer` (`native_document_countertrend_observer`)
+  - parent: ``
+  - lineage: `native_document_countertrend_observer`
+  - lineage_group: ``
+  - changed_factors: `countertrend_short_observer`
+  - core_logic: ``
+  - hypothesis: 原文③⑤摸顶空只作为观察线，验证逆势单是否真的难做。
+  - latest_run: `payoff-native-current`, decision=`candidate`, profit_factor=0.9134, max_drawdown=0.1468
+- `native_long_document_default` (`native_long_document_default`)
+  - parent: ``
+  - lineage: `native_long_document_default`
+  - lineage_group: ``
+  - changed_factors: ``
+  - core_logic: ``
+  - hypothesis: 原文多头主线：龙头山寨、主升浪、启动多、小分歧低吸和二波启动。
+  - latest_run: `payoff-native-current`, decision=`candidate`, profit_factor=0.5918, max_drawdown=0.1243
+- `native_short_document_default` (`native_short_document_default`)
+  - parent: ``
+  - lineage: `native_short_document_default`
+  - lineage_group: ``
+  - changed_factors: ``
+  - core_logic: ``
+  - hypothesis: 原文空头观察线：新币收敛破位、弱势瀑布、反抽不过平台。
+  - latest_run: `payoff-native-current`, decision=`candidate`, profit_factor=1.0355, max_drawdown=0.1482

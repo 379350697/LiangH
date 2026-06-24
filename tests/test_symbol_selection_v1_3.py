@@ -1,0 +1,304 @@
+import unittest
+
+from langlang_trader.config import SymbolSelectionConfig
+from langlang_trader.features import FeatureSnapshot
+from langlang_trader.symbol_selection import SelectionEngine
+
+
+def snapshot(symbol, **features):
+    base = {
+        "ret_3d": 0.0,
+        "ret_7d": 0.0,
+        "ret_20d": 0.0,
+        "ret_60d": 0.0,
+        "pos_20d": 0.5,
+        "pullback_from_20d_high": -0.03,
+        "vol_ratio_20d": 1.0,
+        "latest_close": 100.0,
+        "high_20d": 110.0,
+        "high_60d": 120.0,
+        "ma_5": 100.0,
+        "ma_20": 99.0,
+    }
+    base.update(features)
+    return FeatureSnapshot(
+        symbol=symbol,
+        bar="multi",
+        last_ts=1_710_000_000_000,
+        created_at="2024-03-12T00:00:00+00:00",
+        features=base,
+    )
+
+
+class SelectionEngineV13Test(unittest.TestCase):
+    def test_leader_altcoin_requires_btc_resonance_resilience_space_and_volume(self):
+        engine = SelectionEngine(
+            SymbolSelectionConfig(enabled=True, style="dual_board", long_top_n=3, short_top_n=2)
+        )
+        snapshots = {
+            "BTC-USDT-SWAP": snapshot("BTC-USDT-SWAP", ret_20d=0.16, ret_60d=0.34, ret_7d=0.04, pos_20d=0.68),
+            "ETH-USDT-SWAP": snapshot("ETH-USDT-SWAP", ret_20d=0.10, ret_60d=0.28, ret_7d=0.03, pos_20d=0.62),
+            "LEADER-USDT-SWAP": snapshot(
+                "LEADER-USDT-SWAP",
+                ret_3d=0.08,
+                ret_7d=0.22,
+                ret_20d=0.62,
+                ret_60d=1.20,
+                pos_20d=0.82,
+                pullback_from_20d_high=-0.045,
+                vol_ratio_20d=2.1,
+                upside_space_pct=0.42,
+                btc_first_wave_follow=True,
+                btc_contraction_resilient=True,
+            ),
+            "CATCH-USDT-SWAP": snapshot(
+                "CATCH-USDT-SWAP",
+                ret_3d=0.18,
+                ret_7d=0.34,
+                ret_20d=0.40,
+                ret_60d=0.08,
+                pos_20d=0.72,
+                pullback_from_20d_high=-0.01,
+                vol_ratio_20d=1.5,
+                btc_divergence_alt_rotation=True,
+            ),
+            "FALL-USDT-SWAP": snapshot(
+                "FALL-USDT-SWAP",
+                ret_3d=-0.10,
+                ret_7d=-0.24,
+                ret_20d=-0.42,
+                ret_60d=-0.70,
+                pos_20d=0.10,
+                pullback_from_20d_high=-0.40,
+                vol_ratio_20d=2.0,
+                latest_close=70.0,
+                ma_5=76.0,
+                ma_20=90.0,
+                failed_rebound_below_platform=True,
+            ),
+        }
+
+        boards = engine.rank_all_market(snapshots)
+        long_by_symbol = {row.symbol: row for row in boards["long_main_wave"]}
+        short_by_symbol = {row.symbol: row for row in boards["short_waterfall"]}
+
+        leader = long_by_symbol["LEADER-USDT-SWAP"]
+        catch = long_by_symbol["CATCH-USDT-SWAP"]
+        fall = short_by_symbol["FALL-USDT-SWAP"]
+
+        self.assertTrue(leader.selected)
+        self.assertIn("leader_altcoin", leader.reason_codes)
+        self.assertIn("btc_first_wave_follow", leader.reason_codes)
+        self.assertIn("btc_contraction_resilient", leader.reason_codes)
+        self.assertIn("upside_space_large", leader.reason_codes)
+        self.assertEqual(leader.features["symbol_selection_tag"], "leader_altcoin")
+
+        self.assertIn("catch_up_short_hold", catch.reason_codes)
+        self.assertEqual(catch.features["symbol_selection_tag"], "catch_up_short_hold")
+        self.assertIn("not_leader_catch_up", catch.filter_codes)
+
+        self.assertTrue(fall.selected)
+        self.assertIn("failed_rebound_below_platform", fall.reason_codes)
+        self.assertEqual(fall.features["symbol_selection_tag"], "short_waterfall")
+
+    def test_auxiliary_market_features_affect_selection_and_reasons(self):
+        engine = SelectionEngine(
+            SymbolSelectionConfig(enabled=True, style="dual_board", long_top_n=2, short_top_n=2)
+        )
+        snapshots = {
+            "BTC-USDT-SWAP": snapshot("BTC-USDT-SWAP", ret_20d=0.10, ret_60d=0.20, ret_7d=0.02),
+            "ETH-USDT-SWAP": snapshot("ETH-USDT-SWAP", ret_20d=0.08, ret_60d=0.18, ret_7d=0.01),
+            "HEALTHY-USDT-SWAP": snapshot(
+                "HEALTHY-USDT-SWAP",
+                ret_3d=0.06,
+                ret_7d=0.16,
+                ret_20d=0.42,
+                ret_60d=0.80,
+                pos_20d=0.78,
+                pullback_from_20d_high=-0.04,
+                vol_ratio_20d=1.4,
+                turnover_rank=25,
+                turnover_rank_top_n=200,
+                turnover_usdt=80_000_000,
+                oi_change_3d=0.18,
+                funding_rate_last=0.0003,
+            ),
+            "CROWDED-USDT-SWAP": snapshot(
+                "CROWDED-USDT-SWAP",
+                ret_3d=0.07,
+                ret_7d=0.17,
+                ret_20d=0.44,
+                ret_60d=0.82,
+                pos_20d=0.80,
+                pullback_from_20d_high=-0.04,
+                vol_ratio_20d=1.4,
+                turnover_rank=15,
+                turnover_rank_top_n=200,
+                turnover_usdt=120_000_000,
+                oi_change_3d=0.20,
+                funding_rate_last=0.025,
+            ),
+            "THIN-USDT-SWAP": snapshot(
+                "THIN-USDT-SWAP",
+                ret_3d=0.05,
+                ret_7d=0.14,
+                ret_20d=0.40,
+                ret_60d=0.78,
+                pos_20d=0.76,
+                pullback_from_20d_high=-0.04,
+                vol_ratio_20d=1.4,
+                turnover_rank=260,
+                turnover_rank_top_n=200,
+                turnover_usdt=3_000_000,
+                oi_change_3d=0.15,
+                funding_rate_last=0.0002,
+            ),
+        }
+
+        boards = engine.rank_all_market(snapshots)
+        long_by_symbol = {row.symbol: row for row in boards["long_main_wave"]}
+
+        healthy = long_by_symbol["HEALTHY-USDT-SWAP"]
+        crowded = long_by_symbol["CROWDED-USDT-SWAP"]
+        thin = long_by_symbol["THIN-USDT-SWAP"]
+
+        self.assertIn("liquid_top200_turnover", healthy.reason_codes)
+        self.assertIn("oi_expansion_confirmation", healthy.reason_codes)
+        self.assertGreater(healthy.selection_score, crowded.selection_score)
+        self.assertIn("funding_overheated", crowded.filter_codes)
+        self.assertIn("liquidity_rank_filtered", thin.filter_codes)
+
+    def test_native_selection_profile_does_not_add_auxiliary_reason_or_filter_codes(self):
+        engine = SelectionEngine(
+            SymbolSelectionConfig(
+                enabled=True,
+                style="dual_board",
+                scoring_profile="native",
+                long_top_n=2,
+                short_top_n=2,
+            )
+        )
+        snapshots = {
+            "BTC-USDT-SWAP": snapshot("BTC-USDT-SWAP", ret_20d=0.10, ret_60d=0.20, ret_7d=0.02),
+            "ETH-USDT-SWAP": snapshot("ETH-USDT-SWAP", ret_20d=0.08, ret_60d=0.18, ret_7d=0.01),
+            "NATIVE-USDT-SWAP": snapshot(
+                "NATIVE-USDT-SWAP",
+                ret_3d=0.06,
+                ret_7d=0.16,
+                ret_20d=0.42,
+                ret_60d=0.80,
+                pos_20d=0.78,
+                pullback_from_20d_high=-0.04,
+                vol_ratio_20d=1.4,
+                turnover_rank=260,
+                turnover_rank_top_n=200,
+                turnover_usdt=3_000_000,
+                oi_change_3d=0.18,
+                funding_rate_last=0.025,
+            ),
+        }
+
+        boards = engine.rank_all_market(snapshots)
+        result = {row.symbol: row for row in boards["long_main_wave"]}["NATIVE-USDT-SWAP"]
+
+        self.assertNotIn("liquid_top200_turnover", result.reason_codes)
+        self.assertNotIn("oi_expansion_confirmation", result.reason_codes)
+        self.assertNotIn("funding_overheated", result.filter_codes)
+        self.assertNotIn("liquidity_rank_filtered", result.filter_codes)
+
+    def test_strategy_forest_profiles_change_selection_scoring_with_same_universe(self):
+        snapshots = {
+            "BTC-USDT-SWAP": snapshot("BTC-USDT-SWAP", ret_20d=0.06, ret_60d=0.18, ret_7d=0.02),
+            "ETH-USDT-SWAP": snapshot("ETH-USDT-SWAP", ret_20d=0.04, ret_60d=0.12, ret_7d=0.01),
+            "LEADER-USDT-SWAP": snapshot(
+                "LEADER-USDT-SWAP",
+                ret_3d=0.04,
+                ret_7d=0.14,
+                ret_20d=0.45,
+                ret_60d=0.90,
+                pos_20d=0.83,
+                pullback_from_20d_high=-0.04,
+                vol_ratio_20d=1.4,
+                turnover_rank=80,
+                turnover_rank_top_n=200,
+                oi_change_3d=0.08,
+                funding_rate_last=0.001,
+                upside_space_pct=0.35,
+                btc_first_wave_follow=True,
+                btc_contraction_resilient=True,
+            ),
+            "FAST-USDT-SWAP": snapshot(
+                "FAST-USDT-SWAP",
+                ret_3d=0.10,
+                ret_7d=0.22,
+                ret_20d=0.42,
+                ret_60d=0.35,
+                pos_20d=0.96,
+                pullback_from_20d_high=-0.004,
+                vol_ratio_20d=1.8,
+                turnover_rank=30,
+                turnover_rank_top_n=200,
+                oi_change_3d=0.25,
+                funding_rate_last=0.002,
+            ),
+            "CROWDED-USDT-SWAP": snapshot(
+                "CROWDED-USDT-SWAP",
+                ret_3d=0.07,
+                ret_7d=0.16,
+                ret_20d=0.48,
+                ret_60d=0.95,
+                pos_20d=0.82,
+                pullback_from_20d_high=-0.04,
+                vol_ratio_20d=1.6,
+                turnover_rank=15,
+                turnover_rank_top_n=200,
+                oi_change_3d=0.30,
+                funding_rate_last=0.025,
+                upside_space_pct=0.32,
+                btc_first_wave_follow=True,
+                btc_contraction_resilient=True,
+            ),
+        }
+
+        select_boards = SelectionEngine(
+            SymbolSelectionConfig(
+                enabled=True,
+                style="dual_board",
+                scoring_profile="langlang_01_select",
+                long_top_n=3,
+                short_top_n=0,
+            )
+        ).rank_all_market(snapshots)
+        entry_boards = SelectionEngine(
+            SymbolSelectionConfig(
+                enabled=True,
+                style="dual_board",
+                scoring_profile="langlang_01_entry",
+                long_top_n=3,
+                short_top_n=0,
+            )
+        ).rank_all_market(snapshots)
+        loss_boards = SelectionEngine(
+            SymbolSelectionConfig(
+                enabled=True,
+                style="dual_board",
+                scoring_profile="langlang_plus_01_loss",
+                long_top_n=3,
+                short_top_n=0,
+            )
+        ).rank_all_market(snapshots)
+
+        select_leader = {row.symbol: row for row in select_boards["long_main_wave"]}["LEADER-USDT-SWAP"]
+        entry_leader = {row.symbol: row for row in entry_boards["long_main_wave"]}["LEADER-USDT-SWAP"]
+        loss_crowded = {row.symbol: row for row in loss_boards["long_main_wave"]}["CROWDED-USDT-SWAP"]
+
+        self.assertIn("profile_select_leader_priority", select_leader.reason_codes)
+        self.assertIn("profile_entry_retest_priority", entry_leader.reason_codes)
+        self.assertIn("profile_plus_funding_heat_cut", loss_crowded.filter_codes)
+        self.assertEqual(select_leader.features["selection_profile"], "langlang_01_select")
+        self.assertGreater(select_leader.features["selection_profile_delta_long"], 0)
+        self.assertLess(loss_crowded.features["selection_profile_delta_long"], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

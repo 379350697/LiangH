@@ -1,0 +1,27 @@
+{
+  "execution": {
+    "mode": "paper",
+    "exchange": "okx",
+    "executor": "paper_okx",
+    "allow_live_orders": false
+  },
+  "paper": {
+    "initial_equity_usdt": 10000,
+    "fee_bps": 5,
+    "slippage_bps": 10
+  },
+  "risk": {
+    "max_position_usdt": 1000,
+    "max_daily_loss_usdt": 300,
+    "default_leverage": 3,
+    "max_slippage_bps": 10,
+    "min_signal_strength": 0.35
+  },
+  "market_data": {
+    "symbols": ["BTC-USDT-SWAP", "ETH-USDT-SWAP"],
+    "bars": ["1m", "5m", "15m", "1H", "1D"],
+    "candle_limit": 120
+  },
+  "ledger_path": "runtime/langlang_trader.sqlite3",
+  "strategy_version": "rules_v01"
+}
