@@ -15,15 +15,28 @@ class RiskEngine:
         account: AccountSnapshot,
         latest_price: float,
         existing_position: Position | None = None,
+        open_positions: list[Position] | None = None,
     ) -> OrderIntent | None:
         if signal.strength < self.config.min_signal_strength:
             return None
         if existing_position is not None:
             return None
+        open_positions = open_positions or []
+        if self.config.max_open_positions is not None and len(open_positions) >= self.config.max_open_positions:
+            return None
+        if self.config.max_total_position_usdt is not None:
+            current_notional = sum(abs(position.qty * position.avg_price) for position in open_positions)
+            if current_notional >= self.config.max_total_position_usdt:
+                return None
         if account.realized_pnl_usdt <= -abs(self.config.max_daily_loss_usdt):
             return None
         available_notional = max(account.equity_usdt, 0.0) * self.config.default_leverage
         notional = min(self.config.max_position_usdt, available_notional)
+        if self.config.max_total_position_usdt is not None:
+            remaining_notional = self.config.max_total_position_usdt - sum(
+                abs(position.qty * position.avg_price) for position in open_positions
+            )
+            notional = min(notional, remaining_notional)
         if latest_price <= 0 or notional <= 0:
             return None
         qty = notional / latest_price

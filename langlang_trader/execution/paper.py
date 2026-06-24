@@ -19,6 +19,7 @@ class PaperExecutor:
         exchange: str = "okx",
         order_id_prefix: str | None = None,
         exchange_symbol_mapper: Callable[[str], str] | None = None,
+        quote_fallback: Callable[[str], float] | None = None,
     ):
         self.exchange = exchange
         self.ledger = ledger.scoped(
@@ -29,6 +30,7 @@ class PaperExecutor:
         )
         self.paper_config = paper_config
         self.price_provider = price_provider
+        self.quote_fallback = quote_fallback
         self.order_id_prefix = order_id_prefix or f"paper-{exchange}"
         self.exchange_symbol_mapper = exchange_symbol_mapper or (lambda symbol: symbol)
         self.cash_usdt = paper_config.initial_equity_usdt
@@ -42,16 +44,7 @@ class PaperExecutor:
             try:
                 mark = self.price_provider(position.symbol)
             except Exception as exc:
-                mark = position.avg_price
-                self.ledger.record_risk_event(
-                    "missing_mark_price_fallback",
-                    {
-                        "error": repr(exc),
-                        "fallback_price": mark,
-                        "source": "position_avg_price",
-                    },
-                    symbol=position.symbol,
-                )
+                mark = self._recover_mark_price(position, exc)
             notional = position.qty * mark
             margin_used += notional / max(position.leverage, 1)
             unrealized += (mark - position.avg_price) * position.qty * position.side.sign
@@ -61,6 +54,41 @@ class PaperExecutor:
             margin_used_usdt=margin_used,
             realized_pnl_usdt=self.realized_pnl_usdt,
         )
+
+    def _recover_mark_price(self, position: Position, original_error: Exception) -> float:
+        if self.quote_fallback is not None:
+            try:
+                mark = self.quote_fallback(position.symbol)
+                self.ledger.record_risk_event(
+                    "missing_mark_price_recovered",
+                    {
+                        "error": repr(original_error),
+                        "fallback_price": mark,
+                        "source": "quote_fallback",
+                    },
+                    symbol=position.symbol,
+                )
+                return mark
+            except Exception as fallback_error:
+                self.ledger.record_risk_event(
+                    "missing_mark_price_quote_fallback_failed",
+                    {
+                        "error": repr(original_error),
+                        "fallback_error": repr(fallback_error),
+                    },
+                    symbol=position.symbol,
+                )
+        mark = position.avg_price
+        self.ledger.record_risk_event(
+            "missing_mark_price_fallback",
+            {
+                "error": repr(original_error),
+                "fallback_price": mark,
+                "source": "position_avg_price",
+            },
+            symbol=position.symbol,
+        )
+        return mark
 
     def get_positions(self) -> list[Position]:
         return self.ledger.list_positions()
@@ -286,7 +314,14 @@ def binance_exchange_symbol(symbol: str) -> str:
 
 
 class OkxPaperExecutor(PaperExecutor):
-    def __init__(self, *, ledger: Ledger, paper_config: PaperConfig, price_provider: Callable[[str], float]):
+    def __init__(
+        self,
+        *,
+        ledger: Ledger,
+        paper_config: PaperConfig,
+        price_provider: Callable[[str], float],
+        quote_fallback: Callable[[str], float] | None = None,
+    ):
         super().__init__(
             ledger=ledger,
             paper_config=paper_config,
@@ -294,11 +329,19 @@ class OkxPaperExecutor(PaperExecutor):
             exchange="okx",
             order_id_prefix="paper-okx",
             exchange_symbol_mapper=okx_exchange_symbol,
+            quote_fallback=quote_fallback,
         )
 
 
 class BinancePaperExecutor(PaperExecutor):
-    def __init__(self, *, ledger: Ledger, paper_config: PaperConfig, price_provider: Callable[[str], float]):
+    def __init__(
+        self,
+        *,
+        ledger: Ledger,
+        paper_config: PaperConfig,
+        price_provider: Callable[[str], float],
+        quote_fallback: Callable[[str], float] | None = None,
+    ):
         super().__init__(
             ledger=ledger,
             paper_config=paper_config,
@@ -306,6 +349,7 @@ class BinancePaperExecutor(PaperExecutor):
             exchange="binance",
             order_id_prefix="paper-binance",
             exchange_symbol_mapper=binance_exchange_symbol,
+            quote_fallback=quote_fallback,
         )
 
 
@@ -317,14 +361,26 @@ class MultiExchangePaperExecutor:
         paper_config: PaperConfig,
         price_provider: Callable[[str], float],
         router: ExecutionRouter,
+        quote_fallback: Callable[[str], float] | None = None,
     ):
         self.ledger = ledger
         self.paper_config = paper_config
         self.price_provider = price_provider
+        self.quote_fallback = quote_fallback
         self.router = router
         self.executors = {
-            "okx": OkxPaperExecutor(ledger=ledger, paper_config=paper_config, price_provider=price_provider),
-            "binance": BinancePaperExecutor(ledger=ledger, paper_config=paper_config, price_provider=price_provider),
+            "okx": OkxPaperExecutor(
+                ledger=ledger,
+                paper_config=paper_config,
+                price_provider=price_provider,
+                quote_fallback=quote_fallback,
+            ),
+            "binance": BinancePaperExecutor(
+                ledger=ledger,
+                paper_config=paper_config,
+                price_provider=price_provider,
+                quote_fallback=quote_fallback,
+            ),
         }
 
     def get_account(self) -> AccountSnapshot:

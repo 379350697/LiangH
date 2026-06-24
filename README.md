@@ -35,7 +35,7 @@ python3 -m langlang_trader.fleet_cli --config output/fleet/latest/selected_fleet
 python3 -m langlang_trader.fleet_cli --config output/fleet/latest/selected_fleet_config.json --loop
 ```
 
-当前 10 bot 策略树簇 paper 配置保存在 `configs/fleet/selected_fleet_config_langlang_10bot.json`。它使用固定 `run_id=langlang-paper-main-v1` 和持久化 SQLite 账本路径，重启后不会重置同一批 bot 的 paper 账本：
+当前 10 bot 策略树簇 paper 配置保存在 `configs/fleet/selected_fleet_config_langlang_10bot.json`。它使用固定 `run_id=langlang-paper-main-v1` 和持久化 SQLite 账本路径，重启后不会重置同一批 bot 的 paper 账本。默认风险闸门为单笔名义不超过 1000 USDT、单 bot 最多 5 个开仓、总入场名义不超过 5000 USDT：
 
 ```bash
 python3 -m langlang_trader.fleet_cli \

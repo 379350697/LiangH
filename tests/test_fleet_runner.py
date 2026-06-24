@@ -194,6 +194,42 @@ class FleetRunnerTest(unittest.TestCase):
             self.assertEqual(len(bot_ledger.list_rows("orders", run_id="unit-run", bot_id="bot-1")), 1)
             self.assertEqual(len(bot_ledger.list_rows("fills", run_id="unit-run", bot_id="bot-1")), 1)
 
+    def test_bot_risk_caps_total_open_positions_and_notional(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            symbols = ["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP"]
+            variant = StrategyVariant("fleet-loose", 0.12, 0.32, 0.45, 0.18, 0.005)
+            config = FleetConfig(
+                run_id="unit-risk-cap-run",
+                execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_okx"),
+                paper=PaperConfig(initial_equity_usdt=10_000, fee_bps=5, slippage_bps=10),
+                risk=RiskConfig(
+                    max_position_usdt=1_000,
+                    max_total_position_usdt=2_000,
+                    max_open_positions=2,
+                    max_daily_loss_usdt=500,
+                    default_leverage=5,
+                ),
+                market_data=MarketDataConfig(symbols=symbols),
+                ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                bots=[BotConfig(bot_id="bot-1", variant=variant)],
+            )
+            ledger = Ledger(config.ledger_path)
+            runner = FleetRunner(
+                config=config,
+                market_data=StaticMarketData({symbol: candles(symbol) for symbol in symbols}),
+                ledger=ledger,
+            )
+
+            cycle = runner.run_once()
+
+            self.assertEqual(cycle["signals"], 3)
+            self.assertEqual(cycle["fills"], 2)
+            self.assertEqual(cycle["risk_rejections"], 1)
+            positions = ledger.list_rows("positions", run_id="unit-risk-cap-run", bot_id="bot-1")
+            gross_notional = sum(abs(row["qty"] * row["avg_price"]) for row in positions)
+            self.assertEqual(len(positions), 2)
+            self.assertLessEqual(gross_notional, 2_010.0)
+
     def test_bot_level_strategy_versions_run_together_and_record_separate_versions(self):
         with tempfile.TemporaryDirectory() as tmp:
             native = LangLangNativeVariant(

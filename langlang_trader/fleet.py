@@ -354,19 +354,35 @@ class FleetRunner:
                 bot_id=bot.bot_id,
                 variant_id=bot.variant.variant_id,
             )
-            price_provider = lambda symbol, prices=latest_prices: prices[symbol]
+            def price_provider(symbol: str, prices=latest_prices) -> float:
+                return prices[symbol]
+
+            def quote_fallback(symbol: str) -> float:
+                market_data = market_data_by_symbol.get(symbol, self.market_data)
+                try:
+                    return market_data.latest_price(symbol)
+                except Exception:
+                    rows = market_data.get_candles(
+                        symbol,
+                        bar="1m",
+                        limit=1,
+                    )
+                    return _latest_close_from_candles({"1m": rows})
+
             if self.config.execution.executor == "paper_multi" and execution_router is not None:
                 executor = MultiExchangePaperExecutor(
                     ledger=bot_ledger,
                     paper_config=self.config.paper,
                     price_provider=price_provider,
                     router=execution_router,
+                    quote_fallback=quote_fallback,
                 )
             else:
                 executor = PaperExecutor(
                     ledger=bot_ledger,
                     paper_config=self.config.paper,
                     price_provider=price_provider,
+                    quote_fallback=quote_fallback,
                 )
             _record_bot_account_snapshot(bot_ledger, executor, bot_strategy_version)
             strategy = strategy_from_version(bot_strategy_version, bot.variant)
@@ -436,6 +452,7 @@ class FleetRunner:
                         account=executor.get_account(),
                         latest_price=latest_prices[symbol],
                         existing_position=_position_for_symbol(executor.get_positions(), symbol),
+                        open_positions=executor.get_positions(),
                     )
                     if intent is None:
                         bot_ledger.record_risk_event(

@@ -132,6 +132,45 @@ class PaperLedgerTest(unittest.TestCase):
             self.assertEqual(len(events), 1)
             self.assertEqual(events[0]["symbol"], "BIGTIME-USDT-SWAP")
 
+    def test_account_snapshot_uses_quote_fallback_before_position_average(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(os.path.join(tmp, "paper.sqlite3"))
+            config = PaperConfig(initial_equity_usdt=10_000, fee_bps=0, slippage_bps=0)
+            first = PaperExecutor(
+                ledger=ledger,
+                paper_config=config,
+                price_provider=lambda symbol: 100.0,
+            )
+            first.place_order(
+                OrderIntent(
+                    symbol="BIGTIME-USDT-SWAP",
+                    side=Side.LONG,
+                    order_type="market",
+                    qty=1.0,
+                    leverage=3,
+                    reduce_only=False,
+                    entry_reason="quote_fallback_test",
+                    stop_loss=95.0,
+                    max_slippage_bps=10.0,
+                )
+            )
+
+            def missing_mark(symbol: str) -> float:
+                raise KeyError(symbol)
+
+            restored = PaperExecutor(
+                ledger=ledger,
+                paper_config=config,
+                price_provider=missing_mark,
+                quote_fallback=lambda symbol: 112.0,
+            )
+
+            account = restored.get_account()
+            events = ledger.list_rows("risk_events")
+            self.assertAlmostEqual(account.equity_usdt, 10_012.0)
+            self.assertEqual([event["reason"] for event in events], ["missing_mark_price_recovered"])
+            self.assertEqual(events[0]["symbol"], "BIGTIME-USDT-SWAP")
+
 
 if __name__ == "__main__":
     unittest.main()
