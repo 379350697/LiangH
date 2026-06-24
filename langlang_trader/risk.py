@@ -45,6 +45,15 @@ class RiskEngine:
                 max_open_positions=self.config.max_open_positions,
             )
             return None
+        if self.config.max_open_symbols is not None:
+            open_symbols = {position.symbol for position in open_positions if abs(position.qty) > 0}
+            if signal.symbol not in open_symbols and len(open_symbols) >= self.config.max_open_symbols:
+                self._reject(
+                    "max_open_symbols",
+                    open_symbol_count=len(open_symbols),
+                    max_open_symbols=self.config.max_open_symbols,
+                )
+                return None
         if self.config.max_total_position_usdt is not None:
             current_notional = sum(abs(position.qty * position.avg_price) for position in open_positions)
             if current_notional >= self.config.max_total_position_usdt:

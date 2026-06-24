@@ -35,7 +35,7 @@ python3 -m langlang_trader.fleet_cli --config output/fleet/latest/selected_fleet
 python3 -m langlang_trader.fleet_cli --config output/fleet/latest/selected_fleet_config.json --loop
 ```
 
-当前 10 bot 策略树簇 paper 配置保存在 `configs/fleet/selected_fleet_config_langlang_10bot.json`。它使用固定 `run_id=langlang-paper-main-v1` 和持久化 SQLite 账本路径，重启后不会重置同一批 bot 的 paper 账本。默认仓位为浪浪 W 单位模型：用初始权益的 30% 作为活跃资金、分成 3 个 W，按浪位/市场季节/高低位纪律调整保证金；硬闸为单 bot 最多 5 个开仓、单笔名义不超过 5000 USDT、总入场名义不超过 25000 USDT：
+当前 10 bot 策略树簇 paper 配置保存在 `configs/fleet/selected_fleet_config_langlang_10bot.json`。它使用固定 `run_id=langlang-paper-main-v1` 和持久化 SQLite 账本路径，重启后不会重置同一批 bot 的 paper 账本。默认仓位为浪浪 W 单位模型：用初始权益的 30% 作为活跃资金、分成 3 个 W，按浪位/市场季节/高低位纪律调整保证金；开仓数由 `output/langlang_v1_3/position_concurrency/position_concurrency_report.md` 的交割单并发统计反推，硬闸为单 bot 最多 3 个开仓、最多 3 个币、单笔名义不超过 5000 USDT、总入场名义不超过 25000 USDT：
 
 ```bash
 python3 -m langlang_trader.fleet_cli \
