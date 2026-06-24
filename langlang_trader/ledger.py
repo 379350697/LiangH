@@ -228,6 +228,32 @@ class Ledger:
                     source text not null,
                     payload_json text not null
                 );
+
+                create table if not exists position_sizing_decisions (
+                    id integer primary key autoincrement,
+                    run_id text not null default 'default',
+                    bot_id text not null default 'default',
+                    variant_id text not null default 'rules_v01_default',
+                    exchange text not null default 'okx',
+                    created_at text not null,
+                    signal_id integer,
+                    symbol text not null,
+                    side text not null,
+                    risk_unit text not null,
+                    risk_unit_w_usdt real not null,
+                    capital_step_level integer not null,
+                    size_multiplier real not null,
+                    leverage integer not null,
+                    margin_usdt real not null,
+                    notional_usdt real not null,
+                    capped_by_json text not null default '[]',
+                    reason_codes_json text not null default '[]',
+                    decision_trace_json text not null default '{}',
+                    strategy_version text,
+                    regime text,
+                    setup text,
+                    historical_match_score real
+                );
                 """
             )
             self._migrate_context_columns(conn)
@@ -238,7 +264,15 @@ class Ledger:
             "bot_id": "text not null default 'default'",
             "variant_id": "text not null default 'rules_v01_default'",
         }
-        for table in ("signals", "order_intents", "orders", "fills", "equity_snapshots", "risk_events"):
+        for table in (
+            "signals",
+            "order_intents",
+            "orders",
+            "fills",
+            "equity_snapshots",
+            "risk_events",
+            "position_sizing_decisions",
+        ):
             existing = self._columns(conn, table)
             for column, definition in context_columns.items():
                 if column not in existing:
@@ -303,6 +337,13 @@ class Ledger:
                 "strategy_version": "text",
                 "regime": "text",
                 "setup": "text",
+            },
+            "position_sizing_decisions": {
+                "exchange": "text not null default 'okx'",
+                "strategy_version": "text",
+                "regime": "text",
+                "setup": "text",
+                "historical_match_score": "real",
             },
         }
         for table, columns in extra_columns.items():
@@ -451,6 +492,40 @@ class Ledger:
                     intent.stop_loss,
                     intent.max_slippage_bps,
                     *self._intent_context_tuple(intent),
+                ),
+            )
+            return int(cur.lastrowid)
+
+    def record_position_sizing_decision(self, intent: OrderIntent, signal_id: int | None = None) -> int:
+        trace = getattr(intent, "decision_trace", {}) or {}
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                insert into position_sizing_decisions (
+                    run_id, bot_id, variant_id, exchange, created_at, signal_id, symbol, side,
+                    risk_unit, risk_unit_w_usdt, capital_step_level, size_multiplier, leverage,
+                    margin_usdt, notional_usdt, capped_by_json, reason_codes_json, decision_trace_json,
+                    strategy_version, regime, setup, historical_match_score
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    *self._context_tuple(),
+                    self.exchange,
+                    utc_now_iso(),
+                    signal_id,
+                    intent.symbol,
+                    intent.side.value,
+                    str(trace.get("risk_unit", "")),
+                    float(trace.get("risk_unit_w_usdt", 0.0)),
+                    int(trace.get("capital_step_level", 0)),
+                    float(trace.get("position_size_multiplier", 0.0)),
+                    intent.leverage,
+                    float(trace.get("position_margin_usdt", 0.0)),
+                    float(trace.get("position_notional_usdt", 0.0)),
+                    json.dumps(to_jsonable(trace.get("position_sizing_capped_by", [])), ensure_ascii=False, sort_keys=True),
+                    json.dumps(to_jsonable(trace.get("position_sizing_reason_codes", [])), ensure_ascii=False, sort_keys=True),
+                    json.dumps(to_jsonable(trace), ensure_ascii=False, sort_keys=True),
+                    *_intent_context_tuple_without_trace(intent),
                 ),
             )
             return int(cur.lastrowid)
@@ -728,6 +803,7 @@ class Ledger:
             "equity_snapshots",
             "risk_events",
             "raw_exchange_payloads",
+            "position_sizing_decisions",
         }
         if table not in allowed:
             raise ValueError(f"unsupported ledger table: {table}")
@@ -758,3 +834,12 @@ def _enum_value(value: Any) -> Any:
     if hasattr(value, "value"):
         return value.value
     return value
+
+
+def _intent_context_tuple_without_trace(intent: OrderIntent) -> tuple[Any, Any, Any, Any]:
+    return (
+        getattr(intent, "strategy_version", None),
+        _enum_value(getattr(intent, "regime", None)),
+        _enum_value(getattr(intent, "setup", None)),
+        getattr(intent, "historical_match_score", None),
+    )

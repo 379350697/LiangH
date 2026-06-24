@@ -15,11 +15,15 @@
     "slippage_bps": 10.0
   },
   "risk": {
-    "max_position_usdt": 1000.0,
-    "max_total_position_usdt": 5000.0,
+    "position_sizing_mode": "langlang_w_unit",
+    "active_capital_fraction": 0.3,
+    "max_position_usdt": 5000.0,
+    "max_total_position_usdt": 25000.0,
     "max_open_positions": 5,
     "max_daily_loss_usdt": 300.0,
     "default_leverage": 5,
+    "alt_leverage": 5,
+    "reference_leverage": 10,
     "max_slippage_bps": 10.0,
     "min_signal_strength": 0.35
   },

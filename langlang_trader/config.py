@@ -28,11 +28,15 @@ class PaperConfig:
 
 @dataclass(frozen=True)
 class RiskConfig:
+    position_sizing_mode: str = "fixed_notional"
+    active_capital_fraction: float = 0.30
     max_position_usdt: float = 1_000.0
     max_total_position_usdt: float | None = None
     max_open_positions: int | None = None
     max_daily_loss_usdt: float = 300.0
     default_leverage: int = 3
+    alt_leverage: int = 5
+    reference_leverage: int = 10
     max_slippage_bps: float = 10.0
     min_signal_strength: float = 0.35
 

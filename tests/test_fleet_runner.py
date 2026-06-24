@@ -1,4 +1,5 @@
 import os
+import json
 import tempfile
 import threading
 import time
@@ -229,6 +230,60 @@ class FleetRunnerTest(unittest.TestCase):
             gross_notional = sum(abs(row["qty"] * row["avg_price"]) for row in positions)
             self.assertEqual(len(positions), 2)
             self.assertLessEqual(gross_notional, 2_010.0)
+
+    def test_langlang_w_unit_sizing_records_decision_and_enriches_order_trace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            native = LangLangNativeVariant(
+                variant_id="langlang_01",
+                allowed_side="long",
+                exploratory=True,
+                ret_20d_min=0.10,
+                ret_60d_min=0.30,
+                min_upside_space_pct=0.0,
+                min_vol_ratio_20d=0.0,
+            )
+            config = FleetConfig(
+                run_id="unit-w-sizing-run",
+                strategy_version="rules_langlang_native_final",
+                execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_okx"),
+                paper=PaperConfig(initial_equity_usdt=10_000, fee_bps=5, slippage_bps=10),
+                risk=RiskConfig(
+                    position_sizing_mode="langlang_w_unit",
+                    active_capital_fraction=0.30,
+                    max_position_usdt=5_000,
+                    max_total_position_usdt=25_000,
+                    max_open_positions=5,
+                    max_daily_loss_usdt=500,
+                    alt_leverage=5,
+                    reference_leverage=10,
+                ),
+                market_data=MarketDataConfig(symbols=["BTC-USDT-SWAP"]),
+                ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                bots=[BotConfig(bot_id="bot-native", variant=native, strategy_version="rules_langlang_native_final")],
+            )
+            ledger = Ledger(config.ledger_path)
+            runner = FleetRunner(
+                config=config,
+                market_data=StaticMarketData({"BTC-USDT-SWAP": multi_timeframe_candles()}),
+                ledger=ledger,
+            )
+
+            cycle = runner.run_once()
+
+            self.assertEqual(cycle["fills"], 1)
+            sizing_rows = ledger.list_rows("position_sizing_decisions", run_id="unit-w-sizing-run", bot_id="bot-native")
+            self.assertEqual(len(sizing_rows), 1)
+            self.assertAlmostEqual(sizing_rows[0]["risk_unit_w_usdt"], 1_000.0)
+            self.assertEqual(sizing_rows[0]["leverage"], 10)
+            self.assertAlmostEqual(sizing_rows[0]["notional_usdt"], sizing_rows[0]["margin_usdt"] * 10)
+            self.assertGreater(sizing_rows[0]["notional_usdt"], 0)
+            orders = ledger.list_rows("orders", run_id="unit-w-sizing-run", bot_id="bot-native")
+            trace = json.loads(orders[0]["decision_trace_json"])
+            self.assertAlmostEqual(trace["risk_unit_w_usdt"], 1_000.0)
+            self.assertAlmostEqual(trace["position_notional_usdt"], sizing_rows[0]["notional_usdt"])
+            self.assertTrue(
+                any(reason.startswith("entry_position:") for reason in trace["position_sizing_reason_codes"])
+            )
 
     def test_bot_level_strategy_versions_run_together_and_record_separate_versions(self):
         with tempfile.TemporaryDirectory() as tmp:

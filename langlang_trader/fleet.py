@@ -386,7 +386,7 @@ class FleetRunner:
                 )
             _record_bot_account_snapshot(bot_ledger, executor, bot_strategy_version)
             strategy = strategy_from_version(bot_strategy_version, bot.variant)
-            risk_engine = RiskEngine(self.config.risk)
+            risk_engine = RiskEngine(self.config.risk, initial_equity_usdt=self.config.paper.initial_equity_usdt)
             bot_selection_state = selection_states_by_profile.get(_bot_selection_profile(self.config, bot))
             for symbol in candles_by_symbol:
                 try:
@@ -457,7 +457,12 @@ class FleetRunner:
                     if intent is None:
                         bot_ledger.record_risk_event(
                             "intent_rejected",
-                            {"signal_id": signal_id, "strength": signal.strength},
+                            {
+                                "signal_id": signal_id,
+                                "strength": signal.strength,
+                                "risk_rejection_reason": risk_engine.last_rejection_reason,
+                                "risk_rejection_trace": risk_engine.last_rejection_trace,
+                            },
                             symbol=symbol,
                         )
                         cycle["risk_rejections"] += 1
@@ -481,6 +486,8 @@ class FleetRunner:
                         if routed_intent is not None
                         else bot_ledger
                     )
+                    if "risk_unit_w_usdt" in (intent.decision_trace or {}):
+                        intent_ledger.record_position_sizing_decision(intent, signal_id=signal_id)
                     intent_ledger.record_order_intent(intent, signal_id=signal_id)
                     cycle["intents"] += 1
                     result = executor.place_order(intent, route=routed_intent)
