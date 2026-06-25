@@ -73,6 +73,26 @@ class LangLangV13StrategyTest(unittest.TestCase):
         self.assertIn("selection_reason_codes", signal.decision_trace)
         self.assertTrue(signal.hold_plan["runner"])
 
+    def test_missing_m5_data_does_not_fake_small_divergence_absorption(self):
+        strategy = RulesLangLangV1_3Strategy(LangLangV1_3Variant(variant_id="v1.3-test"))
+
+        decision = strategy.decide(
+            snapshot(
+                symbol_cycle="main_wave",
+                pullback_from_20d_high=-0.01,
+                high_60d=180.0,
+                m15_ret_8=-0.006,
+                m15_data_available=True,
+                m5_ret_6=0.0,
+                m5_data_available=False,
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.ENTER)
+        self.assertEqual(decision.signal.decision_trace["entry_position_id"], "1_startup_long")
+        self.assertNotIn("small_divergence_absorbed", decision.signal.reason_codes)
+        self.assertNotIn("intraday_reclaim_confirmed", decision.signal.reason_codes)
+
     def test_position_2_third_small_divergence_is_skipped(self):
         strategy = RulesLangLangV1_3Strategy(LangLangV1_3Variant(variant_id="v1.3-test"))
 
@@ -321,6 +341,100 @@ class LangLangV13StrategyTest(unittest.TestCase):
 
         self.assertEqual(decision.action, StrategyAction.SKIP)
         self.assertIn(FailureFilter.STRUCTURE_BREAK, decision.filter_codes)
+
+    def test_wyckoff_spring_can_safely_substitute_lagging_trend(self):
+        strategy = RulesLangLangV1_3Strategy(LangLangV1_3Variant(variant_id="v1.3-test"))
+
+        decision = strategy.decide(
+            snapshot(
+                symbol_cycle="box_chop",
+                ret_20d=0.10,
+                ret_60d=0.38,
+                pos_20d=0.50,
+                latest_close=109.0,
+                ma_5=104.0,
+                ma_20=110.0,
+                wyckoff_phase_tag="accumulation",
+                wyckoff_long_setup_tag="spring_reclaim",
+                wyckoff_long_score=0.72,
+                h1_wyckoff_long_score=0.52,
+                wyckoff_reason_codes=["wyckoff_spring_reclaim"],
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.ENTER)
+        self.assertEqual(decision.signal.decision_trace["entry_position_id"], "1_startup_long")
+        self.assertIn("wyckoff_long_confirmed", decision.signal.reason_codes)
+        self.assertIn("wyckoff_trend_substitute", decision.signal.reason_codes)
+
+    def test_wyckoff_distribution_risk_blocks_long_entry(self):
+        strategy = RulesLangLangV1_3Strategy(LangLangV1_3Variant(variant_id="v1.3-test"))
+
+        decision = strategy.decide(
+            snapshot(
+                symbol_cycle="platform_start",
+                strong_pattern_tag="leader_platform_start",
+                leader_platform_start_score=0.78,
+                strong_pattern_score=0.78,
+                wyckoff_phase_tag="distribution",
+                wyckoff_risk_score=0.74,
+                wyckoff_exit_score=0.72,
+                wyckoff_exit_tag="utad_risk",
+                wyckoff_reason_codes=["wyckoff_utad_risk"],
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.SKIP)
+        self.assertIn(FailureFilter.WYCKOFF_RISK, decision.filter_codes)
+
+    def test_wyckoff_exit_reduces_open_long_position(self):
+        strategy = RulesLangLangV1_3Strategy(LangLangV1_3Variant(variant_id="v1.3-test"))
+
+        decision = strategy.decide(
+            snapshot(
+                current_position_side="long",
+                symbol_cycle="platform_start",
+                wyckoff_phase_tag="distribution",
+                wyckoff_exit_score=0.72,
+                wyckoff_exit_tag="utad_risk",
+                wyckoff_risk_score=0.74,
+                wyckoff_reason_codes=["wyckoff_utad_risk"],
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.REDUCE)
+        self.assertIn(FailureFilter.WYCKOFF_RISK, decision.filter_codes)
+        self.assertIn("wyckoff_exit", decision.explanation)
+
+    def test_wyckoff_short_setup_can_trigger_short_entry_when_side_allows(self):
+        strategy = RulesLangLangV1_3Strategy(
+            LangLangV1_3Variant(variant_id="v1.3-wyck-short", allowed_side="short")
+        )
+
+        decision = strategy.decide(
+            snapshot(
+                requested_side="short",
+                symbol_cycle="box_chop",
+                ret_20d=-0.08,
+                ret_60d=0.18,
+                pos_20d=0.40,
+                latest_close=96.0,
+                ma_5=98.0,
+                ma_20=104.0,
+                high_20d=112.0,
+                low_20d=90.0,
+                wyckoff_phase_tag="distribution",
+                wyckoff_short_setup_tag="sow_breakdown",
+                wyckoff_short_score=0.74,
+                m15_wyckoff_short_score=0.50,
+                wyckoff_reason_codes=["wyckoff_sow_breakdown"],
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.ENTER)
+        self.assertEqual(decision.signal.side, Side.SHORT)
+        self.assertIn(decision.signal.setup, {EntrySetup.TOP_SHORT, EntrySetup.WATERFALL_CONTINUATION})
+        self.assertIn("wyckoff_short_confirmed", decision.signal.reason_codes)
 
 
 if __name__ == "__main__":

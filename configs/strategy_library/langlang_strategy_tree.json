@@ -36,6 +36,20 @@
         "right_tail_capture_score >= native_parent * 0.8",
         "paper_validation_required_before_live"
       ]
+    },
+    {
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "family_id": "langlang",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "在 langlang-plus-01-loss 的硬风控和亏损过滤主干上，加入强形态 K 线结构识别与威科夫价量确认，用于辅助选币、开仓、做空和离场时机。",
+      "promotion_rules": [
+        "paper_only_until_shadow_validation_passes",
+        "strong_pattern_and_wyckoff_attribution_must_be_positive_by_bucket",
+        "validation_signals_must_be_nonzero_outside_exploratory_only",
+        "risk_pattern_and_wyckoff_risk_filters_must_reduce_big_loss_overlap",
+        "no_live_without_separate_authorization"
+      ]
     }
   ],
   "variants": [
@@ -57,7 +71,12 @@
           "leading_altcoin_main_wave",
           "waterfall_short_candidates"
         ],
-        "market_cycle": ["spring", "summer", "autumn", "winter"],
+        "market_cycle": [
+          "spring",
+          "summer",
+          "autumn",
+          "winter"
+        ],
         "symbol_cycle": [
           "base_platform",
           "wave_start",
@@ -83,8 +102,15 @@
           "btc_divergence_altcoin_downgrade",
           "catch_up_short_hold_only"
         ],
-        "risk": ["W_risk_unit", "altcoin_max_5x", "btc_eth_max_10x"],
-        "hold": ["runner_only_for_position_1_4_and_quality_second_wave", "short_hold_for_catch_up_and_high_small_divergence"]
+        "risk": [
+          "W_risk_unit",
+          "altcoin_max_5x",
+          "btc_eth_max_10x"
+        ],
+        "hold": [
+          "runner_only_for_position_1_4_and_quality_second_wave",
+          "short_hold_for_catch_up_and_high_small_divergence"
+        ]
       },
       "changed_factors": [],
       "core_logic": [
@@ -133,7 +159,13 @@
         "line": "enhanced",
         "side": "both",
         "base_candidate_source": "langlang_01",
-        "meta_label_actions": ["do_trade", "skip", "reduce_size", "short_hold", "allow_runner"],
+        "meta_label_actions": [
+          "do_trade",
+          "skip",
+          "reduce_size",
+          "short_hold",
+          "allow_runner"
+        ],
         "filters": [
           "rational_trade_similarity",
           "big_loss_similarity_filter",
@@ -143,8 +175,15 @@
           "turnover_expansion",
           "consecutive_stop_loss_cooldown"
         ],
-        "hold": ["right_tail_eligibility_filter", "catch_up_short_hold", "high_small_divergence_short_hold"],
-        "risk": ["reduce_size_on_weak_history_support", "skip_on_no_historical_support_when_not_exploratory"]
+        "hold": [
+          "right_tail_eligibility_filter",
+          "catch_up_short_hold",
+          "high_small_divergence_short_hold"
+        ],
+        "risk": [
+          "reduce_size_on_weak_history_support",
+          "skip_on_no_historical_support_when_not_exploratory"
+        ]
       },
       "changed_factors": [
         "rational_trade_similarity",
@@ -570,14 +609,34 @@
       "factor_set": {
         "line": "native",
         "side": "long",
-        "entry": ["position_1_startup_long", "position_2_small_divergence", "position_4_second_wave"],
-        "filters": ["high_breakout_skip", "third_small_divergence_skip", "btc_divergence_downgrade"],
-        "exit": ["document_stop", "runner_for_position_1_and_4"]
+        "entry": [
+          "position_1_startup_long",
+          "position_2_small_divergence",
+          "position_4_second_wave"
+        ],
+        "filters": [
+          "high_breakout_skip",
+          "third_small_divergence_skip",
+          "btc_divergence_downgrade"
+        ],
+        "exit": [
+          "document_stop",
+          "runner_for_position_1_and_4"
+        ]
       },
       "changed_factors": [],
-      "source_basis": ["pdf"],
-      "risk_profile": {"risk_unit": "W", "alt_leverage": 5, "anchor_leverage": 10},
-      "promotion_rules": ["right_tail_capture_score > 0", "max_drawdown_review_required"]
+      "source_basis": [
+        "pdf"
+      ],
+      "risk_profile": {
+        "risk_unit": "W",
+        "alt_leverage": 5,
+        "anchor_leverage": 10
+      },
+      "promotion_rules": [
+        "right_tail_capture_score > 0",
+        "max_drawdown_review_required"
+      ]
     },
     {
       "variant_id": "native_short_document_default",
@@ -589,14 +648,31 @@
       "factor_set": {
         "line": "native",
         "side": "short",
-        "entry": ["waterfall_breakdown", "rebound_failure"],
-        "filters": ["main_wave_normal_short_forbidden"],
-        "exit": ["document_stop", "short_runner_when_waterfall_quality_high"]
+        "entry": [
+          "waterfall_breakdown",
+          "rebound_failure"
+        ],
+        "filters": [
+          "main_wave_normal_short_forbidden"
+        ],
+        "exit": [
+          "document_stop",
+          "short_runner_when_waterfall_quality_high"
+        ]
       },
       "changed_factors": [],
-      "source_basis": ["pdf"],
-      "risk_profile": {"risk_unit": "W", "alt_leverage": 5, "anchor_leverage": 10},
-      "promotion_rules": ["profit_factor_review_required", "main_wave_short_drift == 0"]
+      "source_basis": [
+        "pdf"
+      ],
+      "risk_profile": {
+        "risk_unit": "W",
+        "alt_leverage": 5,
+        "anchor_leverage": 10
+      },
+      "promotion_rules": [
+        "profit_factor_review_required",
+        "main_wave_short_drift == 0"
+      ]
     },
     {
       "variant_id": "native_document_countertrend_observer",
@@ -608,14 +684,31 @@
       "factor_set": {
         "line": "native",
         "side": "both",
-        "entry": ["position_3_first_large_divergence_short", "position_5_exhaustion_short"],
-        "filters": ["countertrend_small_size_only"],
-        "exit": ["tight_structure_stop"]
+        "entry": [
+          "position_3_first_large_divergence_short",
+          "position_5_exhaustion_short"
+        ],
+        "filters": [
+          "countertrend_small_size_only"
+        ],
+        "exit": [
+          "tight_structure_stop"
+        ]
       },
-      "changed_factors": ["countertrend_short_observer"],
-      "source_basis": ["pdf"],
-      "risk_profile": {"risk_unit": "fractional_W", "alt_leverage": 5, "anchor_leverage": 10},
-      "promotion_rules": ["cannot_promote_to_live_without_manual_override"]
+      "changed_factors": [
+        "countertrend_short_observer"
+      ],
+      "source_basis": [
+        "pdf"
+      ],
+      "risk_profile": {
+        "risk_unit": "fractional_W",
+        "alt_leverage": 5,
+        "anchor_leverage": 10
+      },
+      "promotion_rules": [
+        "cannot_promote_to_live_without_manual_override"
+      ]
     },
     {
       "variant_id": "enhanced_exploratory",
@@ -627,14 +720,37 @@
       "factor_set": {
         "line": "enhanced",
         "side": "both",
-        "entry": ["document_core_candidates"],
-        "filters": ["historical_match_soft", "big_loss_similarity_monitor", "funding_overheat_monitor", "liquidity_top200"],
-        "exit": ["enhanced_hold_plan_monitor"]
+        "entry": [
+          "document_core_candidates"
+        ],
+        "filters": [
+          "historical_match_soft",
+          "big_loss_similarity_monitor",
+          "funding_overheat_monitor",
+          "liquidity_top200"
+        ],
+        "exit": [
+          "enhanced_hold_plan_monitor"
+        ]
       },
-      "changed_factors": ["historical_match_soft", "derivative_market_monitor", "liquidity_top200"],
-      "source_basis": ["pdf", "excel_events", "market_features"],
-      "risk_profile": {"risk_unit": "W", "alt_leverage": 5, "anchor_leverage": 10},
-      "promotion_rules": ["must_spawn_strict_child_before_paper_candidate"]
+      "changed_factors": [
+        "historical_match_soft",
+        "derivative_market_monitor",
+        "liquidity_top200"
+      ],
+      "source_basis": [
+        "pdf",
+        "excel_events",
+        "market_features"
+      ],
+      "risk_profile": {
+        "risk_unit": "W",
+        "alt_leverage": 5,
+        "anchor_leverage": 10
+      },
+      "promotion_rules": [
+        "must_spawn_strict_child_before_paper_candidate"
+      ]
     },
     {
       "variant_id": "enhanced_long_r20_0.18_hm_0.30",
@@ -643,11 +759,28 @@
       "strategy_version": "rules_langlang_enhanced_payoff_v1",
       "status": "backtested",
       "hypothesis": "低门槛历史相似度增强多头，用于观察是否提升右尾捕获。",
-      "factor_set": {"line": "enhanced", "side": "long", "ret_20d_min": 0.18, "historical_match_score": 0.3},
-      "changed_factors": ["historical_match_score", "ret_20d_min"],
-      "source_basis": ["pdf", "excel_events"],
-      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
-      "promotion_rules": ["loss_suppression_score >= parent", "right_tail_capture_score >= parent * 0.8"]
+      "factor_set": {
+        "line": "enhanced",
+        "side": "long",
+        "ret_20d_min": 0.18,
+        "historical_match_score": 0.3
+      },
+      "changed_factors": [
+        "historical_match_score",
+        "ret_20d_min"
+      ],
+      "source_basis": [
+        "pdf",
+        "excel_events"
+      ],
+      "risk_profile": {
+        "risk_unit": "W",
+        "alt_leverage": 5
+      },
+      "promotion_rules": [
+        "loss_suppression_score >= parent",
+        "right_tail_capture_score >= parent * 0.8"
+      ]
     },
     {
       "variant_id": "enhanced_long_r20_0.18_hm_0.45",
@@ -656,11 +789,27 @@
       "strategy_version": "rules_langlang_enhanced_payoff_v1",
       "status": "backtested",
       "hypothesis": "提高历史相似度门槛，验证严格样本支持是否压制亏损。",
-      "factor_set": {"line": "enhanced", "side": "long", "ret_20d_min": 0.18, "historical_match_score": 0.45},
-      "changed_factors": ["historical_match_score"],
-      "source_basis": ["pdf", "excel_events"],
-      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
-      "promotion_rules": ["signal_count >= minimum", "loss_suppression_score >= parent"]
+      "factor_set": {
+        "line": "enhanced",
+        "side": "long",
+        "ret_20d_min": 0.18,
+        "historical_match_score": 0.45
+      },
+      "changed_factors": [
+        "historical_match_score"
+      ],
+      "source_basis": [
+        "pdf",
+        "excel_events"
+      ],
+      "risk_profile": {
+        "risk_unit": "W",
+        "alt_leverage": 5
+      },
+      "promotion_rules": [
+        "signal_count >= minimum",
+        "loss_suppression_score >= parent"
+      ]
     },
     {
       "variant_id": "enhanced_long_r20_0.24_hm_0.30",
@@ -669,11 +818,28 @@
       "strategy_version": "rules_langlang_enhanced_payoff_v1",
       "status": "backtested",
       "hypothesis": "提高 20 日强度门槛，验证更强主升浪是否更贴合博大损小。",
-      "factor_set": {"line": "enhanced", "side": "long", "ret_20d_min": 0.24, "historical_match_score": 0.3},
-      "changed_factors": ["ret_20d_min", "historical_match_score"],
-      "source_basis": ["pdf", "excel_events"],
-      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
-      "promotion_rules": ["right_tail_capture_score >= parent", "profit_factor >= parent"]
+      "factor_set": {
+        "line": "enhanced",
+        "side": "long",
+        "ret_20d_min": 0.24,
+        "historical_match_score": 0.3
+      },
+      "changed_factors": [
+        "ret_20d_min",
+        "historical_match_score"
+      ],
+      "source_basis": [
+        "pdf",
+        "excel_events"
+      ],
+      "risk_profile": {
+        "risk_unit": "W",
+        "alt_leverage": 5
+      },
+      "promotion_rules": [
+        "right_tail_capture_score >= parent",
+        "profit_factor >= parent"
+      ]
     },
     {
       "variant_id": "enhanced_long_r20_0.24_hm_0.45",
@@ -682,11 +848,27 @@
       "strategy_version": "rules_langlang_enhanced_payoff_v1",
       "status": "backtested",
       "hypothesis": "强趋势加严格历史相似度，验证是否过度过滤。",
-      "factor_set": {"line": "enhanced", "side": "long", "ret_20d_min": 0.24, "historical_match_score": 0.45},
-      "changed_factors": ["historical_match_score"],
-      "source_basis": ["pdf", "excel_events"],
-      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
-      "promotion_rules": ["signal_count >= minimum", "right_tail_capture_score_review"]
+      "factor_set": {
+        "line": "enhanced",
+        "side": "long",
+        "ret_20d_min": 0.24,
+        "historical_match_score": 0.45
+      },
+      "changed_factors": [
+        "historical_match_score"
+      ],
+      "source_basis": [
+        "pdf",
+        "excel_events"
+      ],
+      "risk_profile": {
+        "risk_unit": "W",
+        "alt_leverage": 5
+      },
+      "promotion_rules": [
+        "signal_count >= minimum",
+        "right_tail_capture_score_review"
+      ]
     },
     {
       "variant_id": "enhanced_long_r20_0.30_hm_0.30",
@@ -695,11 +877,28 @@
       "strategy_version": "rules_langlang_enhanced_payoff_v1",
       "status": "backtested",
       "hypothesis": "高 20 日强度门槛，验证是否只保留最强龙头。",
-      "factor_set": {"line": "enhanced", "side": "long", "ret_20d_min": 0.3, "historical_match_score": 0.3},
-      "changed_factors": ["ret_20d_min", "historical_match_score"],
-      "source_basis": ["pdf", "excel_events"],
-      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
-      "promotion_rules": ["signal_count >= minimum", "right_tail_capture_score >= parent"]
+      "factor_set": {
+        "line": "enhanced",
+        "side": "long",
+        "ret_20d_min": 0.3,
+        "historical_match_score": 0.3
+      },
+      "changed_factors": [
+        "ret_20d_min",
+        "historical_match_score"
+      ],
+      "source_basis": [
+        "pdf",
+        "excel_events"
+      ],
+      "risk_profile": {
+        "risk_unit": "W",
+        "alt_leverage": 5
+      },
+      "promotion_rules": [
+        "signal_count >= minimum",
+        "right_tail_capture_score >= parent"
+      ]
     },
     {
       "variant_id": "enhanced_long_r20_0.30_hm_0.45",
@@ -708,11 +907,27 @@
       "strategy_version": "rules_langlang_enhanced_payoff_v1",
       "status": "backtested",
       "hypothesis": "最严格多头增强线，主要用于检测过度过滤风险。",
-      "factor_set": {"line": "enhanced", "side": "long", "ret_20d_min": 0.3, "historical_match_score": 0.45},
-      "changed_factors": ["historical_match_score"],
-      "source_basis": ["pdf", "excel_events"],
-      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
-      "promotion_rules": ["signal_count >= minimum", "no_zero_signal_promotion"]
+      "factor_set": {
+        "line": "enhanced",
+        "side": "long",
+        "ret_20d_min": 0.3,
+        "historical_match_score": 0.45
+      },
+      "changed_factors": [
+        "historical_match_score"
+      ],
+      "source_basis": [
+        "pdf",
+        "excel_events"
+      ],
+      "risk_profile": {
+        "risk_unit": "W",
+        "alt_leverage": 5
+      },
+      "promotion_rules": [
+        "signal_count >= minimum",
+        "no_zero_signal_promotion"
+      ]
     },
     {
       "variant_id": "enhanced_short_r20_0.14",
@@ -721,11 +936,28 @@
       "strategy_version": "rules_langlang_enhanced_payoff_v1",
       "status": "backtested",
       "hypothesis": "弱势瀑布空头增强，观察破位延续是否优于原生空头。",
-      "factor_set": {"line": "enhanced", "side": "short", "short_ret_20d_max": -0.14, "historical_match_score": 0.3},
-      "changed_factors": ["short_ret_20d_max", "historical_match_score"],
-      "source_basis": ["pdf", "excel_events"],
-      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
-      "promotion_rules": ["main_wave_short_drift == 0", "profit_factor >= parent"]
+      "factor_set": {
+        "line": "enhanced",
+        "side": "short",
+        "short_ret_20d_max": -0.14,
+        "historical_match_score": 0.3
+      },
+      "changed_factors": [
+        "short_ret_20d_max",
+        "historical_match_score"
+      ],
+      "source_basis": [
+        "pdf",
+        "excel_events"
+      ],
+      "risk_profile": {
+        "risk_unit": "W",
+        "alt_leverage": 5
+      },
+      "promotion_rules": [
+        "main_wave_short_drift == 0",
+        "profit_factor >= parent"
+      ]
     },
     {
       "variant_id": "enhanced_short_r20_0.22",
@@ -734,11 +966,2155 @@
       "strategy_version": "rules_langlang_enhanced_payoff_v1",
       "status": "backtested",
       "hypothesis": "更弱势的瀑布空头门槛，验证是否减少震荡假破位。",
-      "factor_set": {"line": "enhanced", "side": "short", "short_ret_20d_max": -0.22, "historical_match_score": 0.3},
-      "changed_factors": ["short_ret_20d_max"],
-      "source_basis": ["pdf", "excel_events"],
-      "risk_profile": {"risk_unit": "W", "alt_leverage": 5},
-      "promotion_rules": ["signal_count >= minimum", "loss_suppression_score >= parent"]
+      "factor_set": {
+        "line": "enhanced",
+        "side": "short",
+        "short_ret_20d_max": -0.22,
+        "historical_match_score": 0.3
+      },
+      "changed_factors": [
+        "short_ret_20d_max"
+      ],
+      "source_basis": [
+        "pdf",
+        "excel_events"
+      ],
+      "risk_profile": {
+        "risk_unit": "W",
+        "alt_leverage": 5
+      },
+      "promotion_rules": [
+        "signal_count >= minimum",
+        "loss_suppression_score >= parent"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_long_r20_0.18_space_0.10_hm_0.30",
+      "display_name": "llv1.3 shape+wyckoff long r20 0.18 space 0.10 hm 0.30",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。",
+      "factor_set": {
+        "variant_id": "llv1_3_long_r20_0.18_space_0.10_hm_0.30",
+        "ret_20d_min": 0.18,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.16,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "long",
+        "min_upside_space_pct": 0.1,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.3,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": true,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "ret_20d_min",
+        "min_upside_space_pct",
+        "min_historical_match_score"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_long_r20_0.18_space_0.10_hm_0.45",
+      "display_name": "llv1.3 shape+wyckoff long r20 0.18 space 0.10 hm 0.45",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。",
+      "factor_set": {
+        "variant_id": "llv1_3_long_r20_0.18_space_0.10_hm_0.45",
+        "ret_20d_min": 0.18,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.16,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "long",
+        "min_upside_space_pct": 0.1,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.45,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": true,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "ret_20d_min",
+        "min_upside_space_pct",
+        "min_historical_match_score"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_long_r20_0.18_space_0.18_hm_0.30",
+      "display_name": "llv1.3 shape+wyckoff long r20 0.18 space 0.18 hm 0.30",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。",
+      "factor_set": {
+        "variant_id": "llv1_3_long_r20_0.18_space_0.18_hm_0.30",
+        "ret_20d_min": 0.18,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.16,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "long",
+        "min_upside_space_pct": 0.18,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.3,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": true,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "ret_20d_min",
+        "min_upside_space_pct",
+        "min_historical_match_score"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_long_r20_0.18_space_0.18_hm_0.45",
+      "display_name": "llv1.3 shape+wyckoff long r20 0.18 space 0.18 hm 0.45",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。",
+      "factor_set": {
+        "variant_id": "llv1_3_long_r20_0.18_space_0.18_hm_0.45",
+        "ret_20d_min": 0.18,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.16,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "long",
+        "min_upside_space_pct": 0.18,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.45,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": true,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "ret_20d_min",
+        "min_upside_space_pct",
+        "min_historical_match_score"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_long_r20_0.24_space_0.10_hm_0.30",
+      "display_name": "llv1.3 shape+wyckoff long r20 0.24 space 0.10 hm 0.30",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。",
+      "factor_set": {
+        "variant_id": "llv1_3_long_r20_0.24_space_0.10_hm_0.30",
+        "ret_20d_min": 0.24,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.16,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "long",
+        "min_upside_space_pct": 0.1,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.3,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": true,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "ret_20d_min",
+        "min_upside_space_pct",
+        "min_historical_match_score"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_long_r20_0.24_space_0.10_hm_0.45",
+      "display_name": "llv1.3 shape+wyckoff long r20 0.24 space 0.10 hm 0.45",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。",
+      "factor_set": {
+        "variant_id": "llv1_3_long_r20_0.24_space_0.10_hm_0.45",
+        "ret_20d_min": 0.24,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.16,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "long",
+        "min_upside_space_pct": 0.1,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.45,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": true,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "ret_20d_min",
+        "min_upside_space_pct",
+        "min_historical_match_score"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_long_r20_0.24_space_0.18_hm_0.30",
+      "display_name": "llv1.3 shape+wyckoff long r20 0.24 space 0.18 hm 0.30",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。",
+      "factor_set": {
+        "variant_id": "llv1_3_long_r20_0.24_space_0.18_hm_0.30",
+        "ret_20d_min": 0.24,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.16,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "long",
+        "min_upside_space_pct": 0.18,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.3,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": true,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "ret_20d_min",
+        "min_upside_space_pct",
+        "min_historical_match_score"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_long_r20_0.24_space_0.18_hm_0.45",
+      "display_name": "llv1.3 shape+wyckoff long r20 0.24 space 0.18 hm 0.45",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。",
+      "factor_set": {
+        "variant_id": "llv1_3_long_r20_0.24_space_0.18_hm_0.45",
+        "ret_20d_min": 0.24,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.16,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "long",
+        "min_upside_space_pct": 0.18,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.45,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": true,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "ret_20d_min",
+        "min_upside_space_pct",
+        "min_historical_match_score"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_long_r20_0.30_space_0.10_hm_0.30",
+      "display_name": "llv1.3 shape+wyckoff long r20 0.30 space 0.10 hm 0.30",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。",
+      "factor_set": {
+        "variant_id": "llv1_3_long_r20_0.30_space_0.10_hm_0.30",
+        "ret_20d_min": 0.3,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.16,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "long",
+        "min_upside_space_pct": 0.1,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.3,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": true,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "ret_20d_min",
+        "min_upside_space_pct",
+        "min_historical_match_score"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_long_r20_0.30_space_0.10_hm_0.45",
+      "display_name": "llv1.3 shape+wyckoff long r20 0.30 space 0.10 hm 0.45",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。",
+      "factor_set": {
+        "variant_id": "llv1_3_long_r20_0.30_space_0.10_hm_0.45",
+        "ret_20d_min": 0.3,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.16,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "long",
+        "min_upside_space_pct": 0.1,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.45,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": true,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "ret_20d_min",
+        "min_upside_space_pct",
+        "min_historical_match_score"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_long_r20_0.30_space_0.18_hm_0.30",
+      "display_name": "llv1.3 shape+wyckoff long r20 0.30 space 0.18 hm 0.30",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。",
+      "factor_set": {
+        "variant_id": "llv1_3_long_r20_0.30_space_0.18_hm_0.30",
+        "ret_20d_min": 0.3,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.16,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "long",
+        "min_upside_space_pct": 0.18,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.3,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": true,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "ret_20d_min",
+        "min_upside_space_pct",
+        "min_historical_match_score"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_long_r20_0.30_space_0.18_hm_0.45",
+      "display_name": "llv1.3 shape+wyckoff long r20 0.30 space 0.18 hm 0.45",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。",
+      "factor_set": {
+        "variant_id": "llv1_3_long_r20_0.30_space_0.18_hm_0.45",
+        "ret_20d_min": 0.3,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.16,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "long",
+        "min_upside_space_pct": 0.18,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.45,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": true,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "ret_20d_min",
+        "min_upside_space_pct",
+        "min_historical_match_score"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_short_r20_0.14_hm_0.25",
+      "display_name": "llv1.3 shape+wyckoff short r20 0.14 hm 0.25",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "空头纸盘机器人：用威科夫派发、SOW、LPSY 与浪浪高位/瀑布结构辅助做空时机，但受 allowed_side 和硬风控限制。",
+      "factor_set": {
+        "variant_id": "llv1_3_short_r20_0.14_hm_0.25",
+        "ret_20d_min": 0.18,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.14,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "short",
+        "min_upside_space_pct": 0.08,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.25,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": false,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "short_ret_20d_max",
+        "min_historical_match_score",
+        "wyckoff_short_setup"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_short_r20_0.14_hm_0.40",
+      "display_name": "llv1.3 shape+wyckoff short r20 0.14 hm 0.40",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "空头纸盘机器人：用威科夫派发、SOW、LPSY 与浪浪高位/瀑布结构辅助做空时机，但受 allowed_side 和硬风控限制。",
+      "factor_set": {
+        "variant_id": "llv1_3_short_r20_0.14_hm_0.40",
+        "ret_20d_min": 0.18,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.14,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "short",
+        "min_upside_space_pct": 0.08,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.4,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": false,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "short_ret_20d_max",
+        "min_historical_match_score",
+        "wyckoff_short_setup"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_short_r20_0.20_hm_0.25",
+      "display_name": "llv1.3 shape+wyckoff short r20 0.20 hm 0.25",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "空头纸盘机器人：用威科夫派发、SOW、LPSY 与浪浪高位/瀑布结构辅助做空时机，但受 allowed_side 和硬风控限制。",
+      "factor_set": {
+        "variant_id": "llv1_3_short_r20_0.20_hm_0.25",
+        "ret_20d_min": 0.18,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.2,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "short",
+        "min_upside_space_pct": 0.08,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.25,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": false,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "short_ret_20d_max",
+        "min_historical_match_score",
+        "wyckoff_short_setup"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_short_r20_0.20_hm_0.40",
+      "display_name": "llv1.3 shape+wyckoff short r20 0.20 hm 0.40",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "空头纸盘机器人：用威科夫派发、SOW、LPSY 与浪浪高位/瀑布结构辅助做空时机，但受 allowed_side 和硬风控限制。",
+      "factor_set": {
+        "variant_id": "llv1_3_short_r20_0.20_hm_0.40",
+        "ret_20d_min": 0.18,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.2,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "short",
+        "min_upside_space_pct": 0.08,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.4,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": false,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "short_ret_20d_max",
+        "min_historical_match_score",
+        "wyckoff_short_setup"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_short_r20_0.28_hm_0.25",
+      "display_name": "llv1.3 shape+wyckoff short r20 0.28 hm 0.25",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "空头纸盘机器人：用威科夫派发、SOW、LPSY 与浪浪高位/瀑布结构辅助做空时机，但受 allowed_side 和硬风控限制。",
+      "factor_set": {
+        "variant_id": "llv1_3_short_r20_0.28_hm_0.25",
+        "ret_20d_min": 0.18,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.28,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "short",
+        "min_upside_space_pct": 0.08,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.25,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": false,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "short_ret_20d_max",
+        "min_historical_match_score",
+        "wyckoff_short_setup"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_short_r20_0.28_hm_0.40",
+      "display_name": "llv1.3 shape+wyckoff short r20 0.28 hm 0.40",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "空头纸盘机器人：用威科夫派发、SOW、LPSY 与浪浪高位/瀑布结构辅助做空时机，但受 allowed_side 和硬风控限制。",
+      "factor_set": {
+        "variant_id": "llv1_3_short_r20_0.28_hm_0.40",
+        "ret_20d_min": 0.18,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.28,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "short",
+        "min_upside_space_pct": 0.08,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.4,
+        "exploratory": false,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": false,
+        "max_small_divergence_count": 2,
+        "leader_only_long": false,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "short_ret_20d_max",
+        "min_historical_match_score",
+        "wyckoff_short_setup"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "llv1_3_exploratory",
+      "display_name": "llv1.3 shape+wyckoff exploratory",
+      "lineage_group": "langlang_v1_3_shape_wyckoff",
+      "strategy_id": "langlang_v1_3_shape_wyckoff",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_candidate",
+      "hypothesis": "探索纸盘机器人：同时观察强形态、威科夫多空事件和风险过滤的归因表现，只用于 shadow/paper 校准。",
+      "factor_set": {
+        "variant_id": "llv1_3_exploratory",
+        "ret_20d_min": 0.18,
+        "ret_60d_min": 0.42,
+        "pos_20d_min": 0.55,
+        "max_pullback_pct": 0.16,
+        "min_pullback_pct": 0.015,
+        "breakout_tolerance": 0.008,
+        "overheat_ret_20d": 0.55,
+        "overheat_pos_20d": 0.92,
+        "overheat_h1_ret_24": 0.075,
+        "short_ret_20d_max": -0.16,
+        "short_ret_60d_max": -0.28,
+        "short_pos_20d_max": 0.38,
+        "waterfall_h1_ret_24_max": -0.055,
+        "intraday_confirm_ret_min": 0.004,
+        "intraday_breakdown_ret_max": -0.004,
+        "min_vol_ratio_20d": 0.2,
+        "structure_stop_pct": 0.08,
+        "partial_take_profit_r": 2.0,
+        "partial_exit_fraction": 0.5,
+        "runner_take_profit_r": 4.0,
+        "time_stop_days": 14,
+        "trend_break_buffer_pct": 0.01,
+        "historical_match_score": 0.5,
+        "allowed_side": "both",
+        "min_upside_space_pct": 0.08,
+        "first_10x_high_pos": 0.92,
+        "max_stop_loss_cluster_24h": 2,
+        "min_historical_match_score": 0.35,
+        "exploratory": true,
+        "high_position_reduce_pos": 0.86,
+        "low_position_boost_pos": 0.55,
+        "low_position_size_multiplier": 1.2,
+        "high_position_size_multiplier": 0.6,
+        "enable_countertrend_short": true,
+        "max_small_divergence_count": 2,
+        "leader_only_long": false,
+        "catch_up_runner_allowed": false,
+        "autumn_winter_only_best_positions": true,
+        "default_alt_leverage": 5,
+        "default_anchor_leverage": 10,
+        "feature_profile": "wyckoff_enhanced_v1_3",
+        "strong_pattern_layer": true,
+        "wyckoff_enhancement_layer": true,
+        "selection_scoring_profile": "enhanced",
+        "execution_executor": "paper_multi",
+        "allow_live_orders": false,
+        "fleet_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "validated_shadow_config_path": "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      },
+      "changed_factors": [
+        "rules_langlang_v1_3_grid",
+        "strong_pattern_recognition",
+        "wyckoff_enhancement",
+        "feature_profile_wyckoff_enhanced_v1_3",
+        "exploratory",
+        "enable_countertrend_short",
+        "both_sides_shadow_observation"
+      ],
+      "core_logic": [
+        "inherits_langlang_plus_01_loss_hard_risk_filters",
+        "rules_langlang_v1_3_parameter_grid",
+        "strong_pattern_entry_timing",
+        "strong_pattern_trend_substitute_with_safety_floor",
+        "wyckoff_price_volume_confirmation",
+        "wyckoff_risk_and_exit_filtering",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "configs/strategy_library/langlang_strategy_tree.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/experiment_matrix_report.md",
+        "output/fleet/langlang_v1_3_shape_wyckoff_matrix_latest/wyckoff_enhanced_v1_3/leaderboard_v1_3.csv",
+        "output/fleet/langlang_v1_3_shape_wyckoff_paper_fleet_19/selected_fleet_config_v1_3.json",
+        "output/fleet/langlang_v1_3_shape_wyckoff_validated_shadow/selected_fleet_config_v1_3.json"
+      ],
+      "risk_profile": {
+        "inherits": "langlang_plus_01_loss",
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "risk_unit_cap": "W",
+        "hard_filters_preserved": [
+          "low_liquidity",
+          "stop_loss_cluster",
+          "third_small_divergence",
+          "upside_space_insufficient",
+          "no_historical_support",
+          "btc_divergence",
+          "five_wave_late_risk",
+          "false_breakout_risk",
+          "wyckoff_risk_or_exit"
+        ]
+      },
+      "iteration_notes": "登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。",
+      "promotion_rules": [
+        "paper_shadow_first",
+        "bucket_attribution_required_before_live",
+        "non_exploratory_signal_count_required",
+        "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
     }
   ]
 }

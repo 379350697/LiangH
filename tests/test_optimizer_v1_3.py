@@ -4,7 +4,7 @@ import os
 import tempfile
 import unittest
 
-from langlang_trader.optimize import HistoricalReplayOptimizer, OptimizerConfig
+from langlang_trader.optimize import HistoricalReplayOptimizer, OptimizerConfig, _rank_rows
 from langlang_trader.strategy import LangLangV1_3Variant
 
 
@@ -41,6 +41,55 @@ def write_cache(cache_dir, symbol):
 
 
 class OptimizerV13Test(unittest.TestCase):
+    def test_v1_3_optimizer_prefers_nonzero_signal_variants_for_selection(self):
+        rows = _rank_rows(
+            [
+                {
+                    "variant_id": "zero_signal_pretty",
+                    "eligible": True,
+                    "validation_signals": 0,
+                    "raw_validation_signals": 0,
+                    "validation_net_pnl": 0.0,
+                    "validation_profit_factor": 0.0,
+                    "max_drawdown": 0.0,
+                    "big_win_recall": 0.0,
+                    "big_loss_overlap": 0.0,
+                    "validation_realized_pnl_usdt": 0.0,
+                    "right_tail_capture_score": 1.0,
+                    "right_tail_return_capture": 1.0,
+                    "loss_suppression_score": 1.0,
+                    "payoff_asymmetry_score": 1.0,
+                    "avg_win_loss_ratio": 0.0,
+                    "max_single_loss": 0.0,
+                    "loss_cap_score": 1.0,
+                    "excel_event_support_score": 0.0,
+                },
+                {
+                    "variant_id": "nonzero_signal_real",
+                    "eligible": True,
+                    "validation_signals": 3,
+                    "raw_validation_signals": 3,
+                    "validation_net_pnl": 0.01,
+                    "validation_profit_factor": 1.1,
+                    "max_drawdown": 0.02,
+                    "big_win_recall": 0.0,
+                    "big_loss_overlap": 0.0,
+                    "validation_realized_pnl_usdt": 100.0,
+                    "right_tail_capture_score": 0.0,
+                    "right_tail_return_capture": 0.0,
+                    "loss_suppression_score": 0.5,
+                    "payoff_asymmetry_score": 0.5,
+                    "avg_win_loss_ratio": 1.0,
+                    "max_single_loss": -0.01,
+                    "loss_cap_score": 0.5,
+                    "excel_event_support_score": 0.0,
+                },
+            ]
+        )
+
+        self.assertEqual(rows[0]["variant_id"], "nonzero_signal_real")
+        self.assertEqual(rows[0]["rank"], 1)
+
     def test_v1_3_optimizer_writes_final_strategy_multi_exchange_fleet_config(self):
         with tempfile.TemporaryDirectory() as tmp:
             trades = os.path.join(tmp, "standard_trades.csv")
@@ -81,6 +130,7 @@ class OptimizerV13Test(unittest.TestCase):
             self.assertEqual(config["execution"]["exchange"], "multi")
             self.assertEqual(config["execution"]["executor"], "paper_multi")
             self.assertEqual(config["universe"]["mode"], "okx_binance_usdt_swap_observe")
+            self.assertEqual(config["universe"]["snapshot_path"], os.path.join(out, "universe_snapshot.json"))
             self.assertEqual(config["selection"]["style"], "dual_board")
 
 

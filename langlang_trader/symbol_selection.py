@@ -226,6 +226,7 @@ class SelectionEngine:
             if not native_profile:
                 filter_codes.extend(_auxiliary_filter_codes(features))
             filter_codes.extend(_pattern_filter_codes(features))
+            filter_codes.extend(_wyckoff_filter_codes(features))
             penalty = _long_filter_penalty(filter_codes)
             if native_profile:
                 long_score = _clamp(
@@ -315,6 +316,19 @@ class SelectionEngine:
                 "pattern_reason_codes": features.get("pattern_reason_codes", []),
                 "strong_pattern_reason_codes": features.get("strong_pattern_reason_codes", []),
                 "risk_pattern_reason_codes": features.get("risk_pattern_reason_codes", []),
+                "wyckoff_phase_tag": features.get("wyckoff_phase_tag", "none"),
+                "wyckoff_long_setup_tag": features.get("wyckoff_long_setup_tag", ""),
+                "wyckoff_short_setup_tag": features.get("wyckoff_short_setup_tag", ""),
+                "wyckoff_exit_tag": features.get("wyckoff_exit_tag", ""),
+                "wyckoff_long_score": _float(features.get("wyckoff_long_score")),
+                "wyckoff_short_score": _float(features.get("wyckoff_short_score")),
+                "wyckoff_risk_score": _float(features.get("wyckoff_risk_score")),
+                "wyckoff_exit_score": _float(features.get("wyckoff_exit_score")),
+                "wyckoff_reason_codes": features.get("wyckoff_reason_codes", []),
+                "wyckoff_long_reason_codes": features.get("wyckoff_long_reason_codes", []),
+                "wyckoff_short_reason_codes": features.get("wyckoff_short_reason_codes", []),
+                "wyckoff_risk_reason_codes": features.get("wyckoff_risk_reason_codes", []),
+                "wyckoff_exit_reason_codes": features.get("wyckoff_exit_reason_codes", []),
             }
             upside_space = _float(features.get("upside_space_pct"), 0.0)
             long_reasons = _long_reason_codes(
@@ -346,6 +360,7 @@ class SelectionEngine:
                     oi_change_3d=oi_change_3d,
                     funding_rate_last=funding_rate_last,
                 )
+            long_reasons = _with_wyckoff_long_selection_codes(long_reasons, features=features)
             long_tag = _long_selection_tag(long_reasons)
             long_filter_codes = list(filter_codes)
             if long_tag == "catch_up_short_hold":
@@ -355,6 +370,7 @@ class SelectionEngine:
             elif long_tag == "catch_up_short_hold":
                 long_score = _clamp(long_score - 0.04)
             long_score = _clamp(long_score + _pattern_score_delta(features))
+            long_score = _clamp(long_score + _wyckoff_long_score_delta(features))
             short_reasons = _short_reason_codes(
                 ret_3d=ret_3d,
                 ret_7d=ret_7d,
@@ -365,6 +381,7 @@ class SelectionEngine:
                 features=features,
             )
             short_reasons = _with_v1_3_short_selection_codes(short_reasons, features=features)
+            short_reasons = _with_wyckoff_short_selection_codes(short_reasons, features=features)
             if not native_profile:
                 short_reasons = _with_auxiliary_short_selection_codes(
                     short_reasons,
@@ -413,6 +430,7 @@ class SelectionEngine:
             )
             long_score = _clamp(long_score + profile_long["delta"])
             short_score = _clamp(short_score + profile_short["delta"])
+            short_score = _clamp(short_score + _wyckoff_short_score_delta(features))
             long_reasons = _dedupe([*long_reasons, *profile_long["reason_codes"]])
             short_reasons = _dedupe([*short_reasons, *profile_short["reason_codes"]])
             long_filter_codes = _dedupe([*long_filter_codes, *profile_long["filter_codes"]])
@@ -763,6 +781,8 @@ def _has_required_structure(result: SymbolSelectionResult, required_structure: s
         return True
     reasons = set(result.reason_codes)
     if required_structure == "long_main_wave":
+        if "wyckoff_long_confirmed" in reasons:
+            return True
         if reasons & {"leader_platform_start", "golden_pit_reclaim", "small_divergence_absorb", "second_wave_start"}:
             return True
         if "main_wave_acceleration" in reasons:
@@ -773,6 +793,8 @@ def _has_required_structure(result: SymbolSelectionResult, required_structure: s
             return "short_term_reclaim" in reasons or "volume_expansion" in reasons
         return False
     if required_structure == "short_waterfall":
+        if "wyckoff_short_confirmed" in reasons:
+            return True
         if "waterfall_breakdown" in reasons:
             return True
         return (
@@ -822,6 +844,19 @@ def _pattern_filter_codes(features: dict[str, Any]) -> list[str]:
     return filters
 
 
+def _wyckoff_filter_codes(features: dict[str, Any]) -> list[str]:
+    filters: list[str] = []
+    if (
+        str(features.get("wyckoff_phase_tag", "")) == "distribution"
+        or _float(features.get("wyckoff_risk_score")) >= 0.70
+        or _float(features.get("wyckoff_exit_score")) >= 0.70
+    ):
+        filters.append("wyckoff_distribution_risk")
+    if "wyckoff_no_demand_breakout" in set(str(code) for code in features.get("wyckoff_reason_codes", [])):
+        filters.append("wyckoff_no_demand_breakout")
+    return filters
+
+
 def _pattern_score_delta(features: dict[str, Any]) -> float:
     positive = max(
         _float(features.get("leader_platform_start_score")),
@@ -836,6 +871,17 @@ def _pattern_score_delta(features: dict[str, Any]) -> float:
         _float(features.get("risk_pattern_score")),
     )
     return _clamp(0.12 * positive - 0.20 * risk, -0.30, 0.16)
+
+
+def _wyckoff_long_score_delta(features: dict[str, Any]) -> float:
+    positive = _float(features.get("wyckoff_long_score"))
+    risk = max(_float(features.get("wyckoff_risk_score")), _float(features.get("wyckoff_exit_score")))
+    return _clamp(0.14 * positive - 0.24 * risk, -0.34, 0.16)
+
+
+def _wyckoff_short_score_delta(features: dict[str, Any]) -> float:
+    short_score = _float(features.get("wyckoff_short_score"))
+    return _clamp(0.16 * short_score, 0.0, 0.16)
 
 
 def _is_strong_pattern_trend_substitute_candidate(features: dict[str, Any]) -> bool:
@@ -866,6 +912,28 @@ def _is_strong_pattern_trend_substitute_candidate(features: dict[str, Any]) -> b
     return trend_lagging
 
 
+def _is_wyckoff_trend_substitute_candidate(features: dict[str, Any]) -> bool:
+    tag = str(features.get("wyckoff_long_setup_tag", ""))
+    if tag not in {"spring_reclaim", "sos_breakout", "lps_retest", "reaccumulation_breakout"}:
+        return False
+    if _float(features.get("wyckoff_long_score")) < 0.68:
+        return False
+    if _float(features.get("wyckoff_risk_score")) >= 0.70 or _float(features.get("wyckoff_exit_score")) >= 0.70:
+        return False
+    latest_close = _float(features.get("latest_close"))
+    ma_20 = _float(features.get("ma_20"))
+    if ma_20 <= 0 or latest_close < ma_20 * 0.985:
+        return False
+    if _float(features.get("ret_60d")) < 0.18 or _float(features.get("pos_20d"), 0.5) < 0.38:
+        return False
+    return (
+        _float(features.get("ret_20d")) < 0.18
+        or latest_close < ma_20
+        or _float(features.get("ma_5")) < ma_20
+        or _float(features.get("pos_20d"), 0.5) < 0.55
+    )
+
+
 def _long_filter_penalty(filter_codes: list[str]) -> float:
     penalty = 0.0
     if "low_liquidity" in filter_codes:
@@ -884,6 +952,10 @@ def _long_filter_penalty(filter_codes: list[str]) -> float:
         penalty += 0.24
     if "false_breakout_risk" in filter_codes:
         penalty += 0.28
+    if "wyckoff_distribution_risk" in filter_codes:
+        penalty += 0.28
+    if "wyckoff_no_demand_breakout" in filter_codes:
+        penalty += 0.18
     return penalty
 
 
@@ -1051,6 +1123,25 @@ def _with_v1_3_long_selection_codes(
     return _dedupe(result)
 
 
+def _with_wyckoff_long_selection_codes(reasons: list[str], *, features: dict[str, Any]) -> list[str]:
+    result = list(reasons)
+    tag = str(features.get("wyckoff_long_setup_tag", ""))
+    if _float(features.get("wyckoff_long_score")) >= 0.68 and tag in {
+        "spring_reclaim",
+        "sos_breakout",
+        "lps_retest",
+        "reaccumulation_breakout",
+    }:
+        result.append("wyckoff_long_confirmed")
+        result.append(f"wyckoff_{tag}")
+        result.extend(str(code) for code in features.get("wyckoff_long_reason_codes", []))
+    if _is_wyckoff_trend_substitute_candidate(features):
+        result.append("wyckoff_trend_substitute_candidate")
+    if _float(features.get("wyckoff_risk_score")) >= 0.70 or str(features.get("wyckoff_phase_tag", "")) == "distribution":
+        result.append("wyckoff_distribution_risk")
+    return _dedupe(result)
+
+
 def _long_selection_tag(reason_codes: list[str]) -> str:
     if "spoon_bottom_confirmed" in reason_codes:
         return "catch_up_short_hold"
@@ -1067,6 +1158,21 @@ def _with_v1_3_short_selection_codes(reasons: list[str], *, features: dict[str, 
         result.append("failed_rebound_below_platform")
     if bool(features.get("new_listing_contraction_breakdown")):
         result.append("new_listing_contraction_breakdown")
+    return _dedupe(result)
+
+
+def _with_wyckoff_short_selection_codes(reasons: list[str], *, features: dict[str, Any]) -> list[str]:
+    result = list(reasons)
+    tag = str(features.get("wyckoff_short_setup_tag", ""))
+    if _float(features.get("wyckoff_short_score")) >= 0.70 and tag in {
+        "upthrust_reversal",
+        "utad_risk",
+        "sow_breakdown",
+        "lpsy_retest",
+    }:
+        result.append("wyckoff_short_confirmed")
+        result.append(f"wyckoff_{tag}")
+        result.extend(str(code) for code in features.get("wyckoff_short_reason_codes", []))
     return _dedupe(result)
 
 

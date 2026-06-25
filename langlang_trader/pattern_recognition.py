@@ -115,7 +115,7 @@ class PatternConsensusScorer:
         if not daily:
             return _default_features()
         features = dict(daily)
-        for prefix, bar in (("h1", "1H"), ("m15", "15m"), ("m5", "5m")):
+        for prefix, bar in (("h4", "4H"), ("h1", "1H"), ("m15", "15m"), ("m5", "5m")):
             detected = self.detector.detect(candles_by_bar.get(bar, []))
             for key in (*POSITIVE_PATTERN_KEYS, *RISK_PATTERN_KEYS):
                 features[f"{prefix}_{key}"] = detected.get(key, 0.0)

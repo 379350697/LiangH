@@ -48,6 +48,17 @@ class MarketDataConfig:
     bars: list[str] = field(default_factory=lambda: ["1m", "5m", "15m", "1H", "1D"])
     candle_limit: int = 120
     max_fetch_workers: int = 1
+    cache_enabled: bool = False
+    cache_dir: str = "output/fleet/runtime_kline_cache"
+    cache_observation_bars: list[str] = field(default_factory=lambda: ["1D", "4H", "1H"])
+    cache_selected_bars: list[str] = field(default_factory=lambda: ["15m", "5m"])
+    cache_hot_bars: list[str] = field(default_factory=lambda: ["1m"])
+    cache_freshness_multiplier: int = 2
+    market_snapshot_cache_enabled: bool = False
+    market_snapshot_cache_dir: str = ""
+    market_metrics_cache_enabled: bool = False
+    market_metrics_cache_dir: str = ""
+    market_metrics_ttl_seconds: int = 300
 
 
 @dataclass(frozen=True)

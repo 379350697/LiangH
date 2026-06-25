@@ -6,6 +6,7 @@ from typing import Any
 
 from langlang_trader.models import Candle, utc_now_iso
 from langlang_trader.pattern_recognition import PatternConsensusScorer, StrongPatternDetector
+from langlang_trader.wyckoff_enhancement import WyckoffConsensusScorer, WyckoffEventDetector
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,8 @@ class DailyFeatureBuilder:
         vol_ratio_20d = latest.volume / avg_vol_20d if avg_vol_20d > 0 else 0.0
 
         pattern_features = StrongPatternDetector().detect(rows)
+        wyckoff_features = WyckoffEventDetector().detect(rows)
+        candlestick_features = _candlestick_features("", rows, atr_14=atr_14, avg_volume=avg_vol_20d)
 
         return FeatureSnapshot(
             symbol=symbol,
@@ -79,7 +82,9 @@ class DailyFeatureBuilder:
                 "latest_close": latest.close,
                 "latest_volume": latest.volume,
                 "vol_ratio_20d": vol_ratio_20d,
+                **candlestick_features,
                 **pattern_features,
+                **wyckoff_features,
             },
         )
 
@@ -92,6 +97,7 @@ class MultiTimeframeFeatureBuilder:
 
         features = dict(daily.features)
         for prefix, bar, windows in (
+            ("h4", "4H", (6, 18, 36)),
             ("h1", "1H", (6, 24, 48)),
             ("m15", "15m", (8, 32, 64)),
             ("m5", "5m", (6, 24, 48)),
@@ -99,6 +105,7 @@ class MultiTimeframeFeatureBuilder:
         ):
             features.update(_bar_features(prefix, candles_by_bar.get(bar, []), windows))
         features.update(PatternConsensusScorer().score(candles_by_bar))
+        features.update(WyckoffConsensusScorer().score(candles_by_bar))
 
         return FeatureSnapshot(
             symbol=symbol,
@@ -119,6 +126,8 @@ def _bar_features(prefix: str, candles: list[Candle], windows: tuple[int, int, i
     rows = sorted(candles, key=lambda candle: candle.ts)
     if not rows:
         return {
+            f"{prefix}_data_available": False,
+            f"{prefix}_candle_count": 0,
             f"{prefix}_ret_{windows[0]}": 0.0,
             f"{prefix}_ret_{windows[1]}": 0.0,
             f"{prefix}_pos_{windows[1]}": 0.5,
@@ -132,6 +141,7 @@ def _bar_features(prefix: str, candles: list[Candle], windows: tuple[int, int, i
             f"{prefix}_macd_hist": 0.0,
             f"{prefix}_atr_14": 0.0,
             f"{prefix}_rsi_14": 0.0,
+            **_empty_candlestick_features(prefix),
         }
 
     closes = [row.close for row in rows]
@@ -151,7 +161,10 @@ def _bar_features(prefix: str, candles: list[Candle], windows: tuple[int, int, i
     macd_dif, macd_dea, macd_hist = _macd(closes)
     atr_14 = _atr(rows, 14)
     rsi_14 = _rsi(closes, 14)
+    avg_volume = fmean([row.volume for row in rows[-min(20, len(rows)) :]]) if rows else 0.0
     return {
+        f"{prefix}_data_available": True,
+        f"{prefix}_candle_count": len(rows),
         f"{prefix}_ret_{short}": ret_short,
         f"{prefix}_ret_{medium}": ret_medium,
         f"{prefix}_pos_{medium}": pos_medium,
@@ -165,7 +178,96 @@ def _bar_features(prefix: str, candles: list[Candle], windows: tuple[int, int, i
         f"{prefix}_macd_hist": macd_hist,
         f"{prefix}_atr_14": atr_14,
         f"{prefix}_rsi_14": rsi_14,
+        **_candlestick_features(prefix, rows, atr_14=atr_14, avg_volume=avg_volume),
     }
+
+
+def _empty_candlestick_features(prefix: str) -> dict[str, Any]:
+    key = _prefixed(prefix)
+    return {
+        f"{key}latest_candle_direction": "none",
+        f"{key}latest_body_pct": 0.0,
+        f"{key}latest_upper_shadow_pct": 0.0,
+        f"{key}latest_lower_shadow_pct": 0.0,
+        f"{key}latest_body_atr_ratio": 0.0,
+        f"{key}latest_volume_ratio": 0.0,
+        f"{key}latest_is_big_bull_candle": False,
+        f"{key}latest_is_big_bear_candle": False,
+        f"{key}latest_is_volume_expansion": False,
+        f"{key}latest_is_long_upper_shadow": False,
+        f"{key}latest_is_long_lower_shadow": False,
+        f"{key}recent_big_bull_count_20": 0,
+        f"{key}recent_big_bear_count_20": 0,
+        f"{key}recent_long_upper_shadow_count_20": 0,
+        f"{key}recent_long_lower_shadow_count_20": 0,
+    }
+
+
+def _candlestick_features(prefix: str, rows: list[Candle], *, atr_14: float, avg_volume: float) -> dict[str, Any]:
+    if not rows:
+        return _empty_candlestick_features(prefix)
+    key = _prefixed(prefix)
+    latest = rows[-1]
+    latest_stats = _single_candlestick_stats(latest, atr_14=atr_14, avg_volume=avg_volume)
+    recent = rows[-min(20, len(rows)) :]
+    recent_stats = [_single_candlestick_stats(row, atr_14=atr_14, avg_volume=avg_volume) for row in recent]
+    return {
+        f"{key}latest_candle_direction": latest_stats["direction"],
+        f"{key}latest_body_pct": latest_stats["body_pct"],
+        f"{key}latest_upper_shadow_pct": latest_stats["upper_shadow_pct"],
+        f"{key}latest_lower_shadow_pct": latest_stats["lower_shadow_pct"],
+        f"{key}latest_body_atr_ratio": latest_stats["body_atr_ratio"],
+        f"{key}latest_volume_ratio": latest_stats["volume_ratio"],
+        f"{key}latest_is_big_bull_candle": latest_stats["is_big_bull_candle"],
+        f"{key}latest_is_big_bear_candle": latest_stats["is_big_bear_candle"],
+        f"{key}latest_is_volume_expansion": latest_stats["is_volume_expansion"],
+        f"{key}latest_is_long_upper_shadow": latest_stats["is_long_upper_shadow"],
+        f"{key}latest_is_long_lower_shadow": latest_stats["is_long_lower_shadow"],
+        f"{key}recent_big_bull_count_20": sum(1 for stats in recent_stats if stats["is_big_bull_candle"]),
+        f"{key}recent_big_bear_count_20": sum(1 for stats in recent_stats if stats["is_big_bear_candle"]),
+        f"{key}recent_long_upper_shadow_count_20": sum(1 for stats in recent_stats if stats["is_long_upper_shadow"]),
+        f"{key}recent_long_lower_shadow_count_20": sum(1 for stats in recent_stats if stats["is_long_lower_shadow"]),
+    }
+
+
+def _single_candlestick_stats(candle: Candle, *, atr_14: float, avg_volume: float) -> dict[str, Any]:
+    candle_range = max(0.0, candle.high - candle.low)
+    signed_body = candle.close - candle.open
+    body = abs(signed_body)
+    upper_shadow = max(0.0, candle.high - max(candle.open, candle.close))
+    lower_shadow = max(0.0, min(candle.open, candle.close) - candle.low)
+    body_pct = body / candle_range if candle_range > 0 else 0.0
+    upper_shadow_pct = upper_shadow / candle_range if candle_range > 0 else 0.0
+    lower_shadow_pct = lower_shadow / candle_range if candle_range > 0 else 0.0
+    body_atr_ratio = body / atr_14 if atr_14 > 0 else 0.0
+    volume_ratio = candle.volume / avg_volume if avg_volume > 0 else 0.0
+    if candle_range <= 0 or body_pct <= 0.10:
+        direction = "doji"
+    elif signed_body > 0:
+        direction = "bullish"
+    elif signed_body < 0:
+        direction = "bearish"
+    else:
+        direction = "doji"
+    is_volume_expansion = volume_ratio >= 1.2
+    is_big_body = body_pct >= 0.55 and body_atr_ratio >= 0.8
+    return {
+        "direction": direction,
+        "body_pct": body_pct,
+        "upper_shadow_pct": upper_shadow_pct,
+        "lower_shadow_pct": lower_shadow_pct,
+        "body_atr_ratio": body_atr_ratio,
+        "volume_ratio": volume_ratio,
+        "is_volume_expansion": is_volume_expansion,
+        "is_big_bull_candle": direction == "bullish" and is_big_body and is_volume_expansion,
+        "is_big_bear_candle": direction == "bearish" and is_big_body and is_volume_expansion,
+        "is_long_upper_shadow": upper_shadow_pct >= 0.45 and upper_shadow >= body * 1.2,
+        "is_long_lower_shadow": lower_shadow_pct >= 0.45 and lower_shadow >= body * 1.2,
+    }
+
+
+def _prefixed(prefix: str) -> str:
+    return f"{prefix}_" if prefix else ""
 
 
 def _window_return(closes: list[float], window: int) -> float:

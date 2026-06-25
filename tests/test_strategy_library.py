@@ -279,6 +279,29 @@ class StrategyLibraryTest(unittest.TestCase):
 
         self.assertEqual(library.lineage("langlang_plus_01_loss"), ["langlang_01", "langlang_plus_01", "langlang_plus_01_loss"])
 
+    def test_real_registry_contains_v1_3_shape_wyckoff_cluster(self):
+        library = StrategyLibrary.load(DEFAULT_REGISTRY_PATH)
+
+        cluster = [
+            row
+            for row in library.variants.values()
+            if row.strategy_id == "langlang_v1_3_shape_wyckoff"
+        ]
+
+        self.assertEqual(len(cluster), 19)
+        exploratory = library.variant("llv1_3_exploratory")
+        self.assertEqual(exploratory.parent_id, "langlang_plus_01_loss")
+        self.assertEqual(exploratory.strategy_version, "rules_langlang_v1_3")
+        self.assertEqual(exploratory.lineage_group, "langlang_v1_3_shape_wyckoff")
+        self.assertIn("strong_pattern_entry_timing", exploratory.core_logic)
+        self.assertIn("wyckoff_price_volume_confirmation", exploratory.core_logic)
+        self.assertIn("paper_only", exploratory.risk_profile)
+
+        long_variant = library.variant("llv1_3_long_r20_0.18_space_0.10_hm_0.30")
+        self.assertEqual(long_variant.parent_id, "langlang_plus_01_loss")
+        self.assertEqual(long_variant.factor_set["feature_profile"], "wyckoff_enhanced_v1_3")
+        self.assertEqual(long_variant.factor_set["allow_live_orders"], False)
+
     def test_optimizer_appends_strategy_library_ledger_without_changing_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             registry_path = os.path.join(tmp, "registry.json")

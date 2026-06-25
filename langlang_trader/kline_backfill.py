@@ -20,11 +20,13 @@ BAR_MS = {
     "5m": 5 * 60_000,
     "15m": 15 * 60_000,
     "1H": 60 * 60_000,
+    "4H": 4 * 60 * 60_000,
     "1D": 24 * 60 * 60_000,
 }
-BINANCE_INTERVALS = {"1m": "1m", "5m": "5m", "15m": "15m", "1H": "1h", "1D": "1d"}
+BINANCE_INTERVALS = {"1m": "1m", "5m": "5m", "15m": "15m", "1H": "1h", "4H": "4h", "1D": "1d"}
 WINDOWS = {
     "1D": {"before_ms": 180 * BAR_MS["1D"], "after_ms": 30 * BAR_MS["1D"]},
+    "4H": {"before_ms": 90 * BAR_MS["1D"], "after_ms": 14 * BAR_MS["1D"]},
     "1H": {"before_ms": 45 * BAR_MS["1D"], "after_ms": 7 * BAR_MS["1D"]},
     "15m": {"before_ms": 10 * BAR_MS["1D"], "after_ms": 3 * BAR_MS["1D"]},
     "5m": {"before_ms": 3 * BAR_MS["1D"], "after_ms": 1 * BAR_MS["1D"]},
@@ -631,7 +633,7 @@ def _merge_windows(windows: list[RequiredWindow]) -> list[RequiredWindow]:
 
 
 def _bar_sort_key(bar: str) -> tuple[int, str]:
-    order = {"1D": 0, "1H": 1, "15m": 2, "5m": 3, "1m": 4}
+    order = {"1D": 0, "4H": 1, "1H": 2, "15m": 3, "5m": 4, "1m": 5}
     return (order.get(bar, 99), bar)
 
 

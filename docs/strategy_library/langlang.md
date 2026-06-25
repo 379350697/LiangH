@@ -119,6 +119,182 @@
   - hypothesis: 加强筛币变体：在原生筛币后只叠加流动性、成交额扩张、funding/OI 可用状态，验证辅助市场数据是否提升选币质量。
   - iteration_notes: 只动增强筛币辅助因子，不改变原文方向；OI 缺失时不把空值当 0。
 
+### langlang_v1_3_shape_wyckoff
+
+在 langlang-plus-01-loss 的硬风控和亏损过滤主干上，加入强形态 K 线结构识别与威科夫价量确认，用于辅助选币、开仓、做空和离场时机。
+
+- `llv1.3 shape+wyckoff exploratory` (`llv1_3_exploratory`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff exploratory`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, exploratory, enable_countertrend_short, both_sides_shadow_observation`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 探索纸盘机器人：同时观察强形态、威科夫多空事件和风险过滤的归因表现，只用于 shadow/paper 校准。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=6.1032, max_drawdown=0.0043
+- `llv1.3 shape+wyckoff long r20 0.18 space 0.10 hm 0.30` (`llv1_3_long_r20_0.18_space_0.10_hm_0.30`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff long r20 0.18 space 0.10 hm 0.30`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, ret_20d_min, min_upside_space_pct, min_historical_match_score`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff long r20 0.18 space 0.10 hm 0.45` (`llv1_3_long_r20_0.18_space_0.10_hm_0.45`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff long r20 0.18 space 0.10 hm 0.45`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, ret_20d_min, min_upside_space_pct, min_historical_match_score`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff long r20 0.18 space 0.18 hm 0.30` (`llv1_3_long_r20_0.18_space_0.18_hm_0.30`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff long r20 0.18 space 0.18 hm 0.30`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, ret_20d_min, min_upside_space_pct, min_historical_match_score`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff long r20 0.18 space 0.18 hm 0.45` (`llv1_3_long_r20_0.18_space_0.18_hm_0.45`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff long r20 0.18 space 0.18 hm 0.45`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, ret_20d_min, min_upside_space_pct, min_historical_match_score`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff long r20 0.24 space 0.10 hm 0.30` (`llv1_3_long_r20_0.24_space_0.10_hm_0.30`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff long r20 0.24 space 0.10 hm 0.30`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, ret_20d_min, min_upside_space_pct, min_historical_match_score`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff long r20 0.24 space 0.10 hm 0.45` (`llv1_3_long_r20_0.24_space_0.10_hm_0.45`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff long r20 0.24 space 0.10 hm 0.45`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, ret_20d_min, min_upside_space_pct, min_historical_match_score`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff long r20 0.24 space 0.18 hm 0.30` (`llv1_3_long_r20_0.24_space_0.18_hm_0.30`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff long r20 0.24 space 0.18 hm 0.30`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, ret_20d_min, min_upside_space_pct, min_historical_match_score`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff long r20 0.24 space 0.18 hm 0.45` (`llv1_3_long_r20_0.24_space_0.18_hm_0.45`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff long r20 0.24 space 0.18 hm 0.45`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, ret_20d_min, min_upside_space_pct, min_historical_match_score`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff long r20 0.30 space 0.10 hm 0.30` (`llv1_3_long_r20_0.30_space_0.10_hm_0.30`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff long r20 0.30 space 0.10 hm 0.30`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, ret_20d_min, min_upside_space_pct, min_historical_match_score`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff long r20 0.30 space 0.10 hm 0.45` (`llv1_3_long_r20_0.30_space_0.10_hm_0.45`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff long r20 0.30 space 0.10 hm 0.45`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, ret_20d_min, min_upside_space_pct, min_historical_match_score`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff long r20 0.30 space 0.18 hm 0.30` (`llv1_3_long_r20_0.30_space_0.18_hm_0.30`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff long r20 0.30 space 0.18 hm 0.30`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, ret_20d_min, min_upside_space_pct, min_historical_match_score`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff long r20 0.30 space 0.18 hm 0.45` (`llv1_3_long_r20_0.30_space_0.18_hm_0.45`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff long r20 0.30 space 0.18 hm 0.45`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, ret_20d_min, min_upside_space_pct, min_historical_match_score`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 多头纸盘机器人：用强形态与威科夫确认辅助浪浪主升浪选币和开仓，但不绕过硬风控。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff short r20 0.14 hm 0.25` (`llv1_3_short_r20_0.14_hm_0.25`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff short r20 0.14 hm 0.25`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, short_ret_20d_max, min_historical_match_score, wyckoff_short_setup`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 空头纸盘机器人：用威科夫派发、SOW、LPSY 与浪浪高位/瀑布结构辅助做空时机，但受 allowed_side 和硬风控限制。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff short r20 0.14 hm 0.40` (`llv1_3_short_r20_0.14_hm_0.40`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff short r20 0.14 hm 0.40`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, short_ret_20d_max, min_historical_match_score, wyckoff_short_setup`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 空头纸盘机器人：用威科夫派发、SOW、LPSY 与浪浪高位/瀑布结构辅助做空时机，但受 allowed_side 和硬风控限制。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff short r20 0.20 hm 0.25` (`llv1_3_short_r20_0.20_hm_0.25`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff short r20 0.20 hm 0.25`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, short_ret_20d_max, min_historical_match_score, wyckoff_short_setup`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 空头纸盘机器人：用威科夫派发、SOW、LPSY 与浪浪高位/瀑布结构辅助做空时机，但受 allowed_side 和硬风控限制。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff short r20 0.20 hm 0.40` (`llv1_3_short_r20_0.20_hm_0.40`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff short r20 0.20 hm 0.40`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, short_ret_20d_max, min_historical_match_score, wyckoff_short_setup`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 空头纸盘机器人：用威科夫派发、SOW、LPSY 与浪浪高位/瀑布结构辅助做空时机，但受 allowed_side 和硬风控限制。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff short r20 0.28 hm 0.25` (`llv1_3_short_r20_0.28_hm_0.25`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff short r20 0.28 hm 0.25`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, short_ret_20d_max, min_historical_match_score, wyckoff_short_setup`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 空头纸盘机器人：用威科夫派发、SOW、LPSY 与浪浪高位/瀑布结构辅助做空时机，但受 allowed_side 和硬风控限制。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+- `llv1.3 shape+wyckoff short r20 0.28 hm 0.40` (`llv1_3_short_r20_0.28_hm_0.40`)
+  - parent: `langlang-plus-01-loss`
+  - lineage: `langlang-01 -> langlang-plus-01 -> langlang-plus-01-loss -> llv1.3 shape+wyckoff short r20 0.28 hm 0.40`
+  - lineage_group: `langlang_v1_3_shape_wyckoff`
+  - changed_factors: `rules_langlang_v1_3_grid, strong_pattern_recognition, wyckoff_enhancement, feature_profile_wyckoff_enhanced_v1_3, short_ret_20d_max, min_historical_match_score, wyckoff_short_setup`
+  - core_logic: `inherits_langlang_plus_01_loss_hard_risk_filters, rules_langlang_v1_3_parameter_grid, strong_pattern_entry_timing, strong_pattern_trend_substitute_with_safety_floor, wyckoff_price_volume_confirmation, wyckoff_risk_and_exit_filtering, paper_multi_executor_only`
+  - hypothesis: 空头纸盘机器人：用威科夫派发、SOW、LPSY 与浪浪高位/瀑布结构辅助做空时机，但受 allowed_side 和硬风控限制。
+  - iteration_notes: 登记为强形态 K 线识别 + 威科夫增强的 v1.3 纸盘机器人簇；当前用于 paper/shadow 与 replay 分桶归因，不代表真仓上线批准。
+  - latest_run: `shape-wyckoff-matrix-20260625`, decision=`candidate`, profit_factor=0.0000, max_drawdown=0.0000
+
 ### native_payoff
 
 只复刻浪浪原文五浪、六类开仓位置和博大损小框架，用于衡量文档打法本身的解释力。

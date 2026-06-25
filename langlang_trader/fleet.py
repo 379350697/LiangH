@@ -20,7 +20,8 @@ from langlang_trader.execution.routing import ExecutionRouter
 from langlang_trader.features import DailyFeatureBuilder, FeatureSnapshot, MultiTimeframeFeatureBuilder
 from langlang_trader.historical_patterns import HistoricalPatternMatcher, read_historical_patterns
 from langlang_trader.ledger import Ledger
-from langlang_trader.market_data import FallbackMarketData, MarketData
+from langlang_trader.market_cache import MarketMetricsCache, MarketSnapshotCache, RollingKlineCacheMarketData
+from langlang_trader.market_data import FallbackMarketData, MarketData, market_microstructure_metrics
 from langlang_trader.models import Position
 from langlang_trader.risk import RiskEngine
 from langlang_trader.strategy import (
@@ -47,6 +48,7 @@ from langlang_trader.universe import (
     OkxBinanceUniverseProvider,
     OkxUniverseProvider,
     UniverseProvider,
+    UniverseSnapshot,
     read_universe_snapshot,
     write_universe_snapshot,
 )
@@ -175,6 +177,28 @@ class FleetRunner:
         self.multi_feature_builder = MultiTimeframeFeatureBuilder()
         self.strategy_versions = _fleet_strategy_versions(config)
         self.uses_multi_timeframe = any(version in V1_MULTI_TIMEFRAME_STRATEGIES for version in self.strategy_versions)
+        self._market_data_cache_wrappers: dict[int, RollingKlineCacheMarketData] = {}
+        snapshot_cache_dir = (
+            config.market_data.market_snapshot_cache_dir
+            or str(Path(config.market_data.cache_dir) / "market_snapshots")
+        )
+        self.market_snapshot_cache = (
+            MarketSnapshotCache(snapshot_cache_dir)
+            if config.market_data.market_snapshot_cache_enabled
+            else None
+        )
+        metrics_cache_dir = (
+            config.market_data.market_metrics_cache_dir
+            or str(Path(config.market_data.cache_dir) / "market_metrics")
+        )
+        self.market_metrics_cache = (
+            MarketMetricsCache(
+                metrics_cache_dir,
+                ttl_seconds=config.market_data.market_metrics_ttl_seconds,
+            )
+            if config.market_data.market_metrics_cache_enabled
+            else None
+        )
         patterns = (
             read_historical_patterns(config.historical_patterns_path)
             if any(version in HISTORICAL_MATCH_STRATEGIES for version in self.strategy_versions)
@@ -202,7 +226,16 @@ class FleetRunner:
             if universe_snapshot is not None
             else set(symbols)
         )
-        market_data_by_symbol = _market_data_by_symbol(self.market_data, universe_snapshot)
+        market_data_by_symbol = _market_data_by_symbol(
+            self.market_data,
+            universe_snapshot,
+            shared_symbol_policy=self.config.routing.shared_symbol_policy,
+        )
+        market_data_by_symbol = {
+            symbol: self._cached_market_data(market_data)
+            for symbol, market_data in market_data_by_symbol.items()
+        }
+        default_market_data = self._cached_market_data(self.market_data)
         cycle = {
             "bots": len(self.config.bots),
             "symbols": len(symbols),
@@ -217,9 +250,10 @@ class FleetRunner:
             "market_data_errors": 0,
             "errors": 0,
         }
+        market_cache_stats_before = self._market_cache_stats()
         candles_by_symbol: dict[str, dict[str, Any]] = {}
         latest_prices: dict[str, float] = {}
-        startup_bars = ["1D"] if self._should_stage_multi_timeframe_fetch() else None
+        startup_bars = self._startup_bars()
         max_workers = max(1, int(getattr(self.config.market_data, "max_fetch_workers", 1) or 1))
         if max_workers > 1 and len(symbols) > 1:
             with ThreadPoolExecutor(max_workers=min(max_workers, len(symbols))) as pool:
@@ -227,7 +261,7 @@ class FleetRunner:
                     pool.submit(
                         self._fetch_symbol_market_data,
                         symbol,
-                        market_data_by_symbol.get(symbol, self.market_data),
+                        market_data_by_symbol.get(symbol, default_market_data),
                         startup_bars,
                         startup_bars is None,
                     ): symbol
@@ -247,7 +281,7 @@ class FleetRunner:
                 try:
                     symbol_candles, latest_price = self._fetch_symbol_market_data(
                         symbol,
-                        market_data_by_symbol.get(symbol, self.market_data),
+                        market_data_by_symbol.get(symbol, default_market_data),
                         startup_bars,
                         startup_bars is None,
                     )
@@ -257,7 +291,11 @@ class FleetRunner:
                     self.fleet_ledger.record_risk_event("market_data_error", {"error": repr(exc)}, symbol=symbol)
                     cycle["market_data_errors"] += 1
 
-        snapshots_by_symbol = self._build_snapshots(candles_by_symbol)
+        snapshots_by_symbol = _with_universe_market_features(
+            self._build_snapshots(candles_by_symbol),
+            universe_snapshot,
+            liquidity_top_n=self.config.universe.liquidity_top_n,
+        )
         selected_symbols = set(snapshots_by_symbol)
         long_selected_symbols: set[str] = set()
         short_selected_symbols: set[str] = set()
@@ -342,9 +380,26 @@ class FleetRunner:
                 candles_by_symbol=candles_by_symbol,
                 latest_prices=latest_prices,
                 market_data_by_symbol=market_data_by_symbol,
+                default_market_data=default_market_data,
                 cycle=cycle,
             )
-            snapshots_by_symbol = self._build_snapshots(candles_by_symbol)
+            snapshots_by_symbol = _with_universe_market_features(
+                self._build_snapshots(candles_by_symbol),
+                universe_snapshot,
+                liquidity_top_n=self.config.universe.liquidity_top_n,
+            )
+        self._enrich_selected_market_metrics(
+            symbols=sorted(selected_symbols & set(snapshots_by_symbol)),
+            snapshots_by_symbol=snapshots_by_symbol,
+            market_data_by_symbol=market_data_by_symbol,
+            default_market_data=default_market_data,
+            cycle=cycle,
+        )
+        self._persist_market_snapshots(
+            snapshots_by_symbol=snapshots_by_symbol,
+            by_side=selection_results_by_side,
+            selection_results=selection_results,
+        )
 
         for bot in self.config.bots:
             allowed_side = _bot_allowed_side(bot.variant)
@@ -358,7 +413,7 @@ class FleetRunner:
                 return prices[symbol]
 
             def quote_fallback(symbol: str) -> float:
-                market_data = market_data_by_symbol.get(symbol, self.market_data)
+                market_data = market_data_by_symbol.get(symbol, default_market_data)
                 try:
                     return market_data.latest_price(symbol)
                 except Exception:
@@ -498,6 +553,7 @@ class FleetRunner:
                 except Exception as exc:  # pragma: no cover - operational safety path
                     bot_ledger.record_risk_event("fleet_runner_error", {"error": repr(exc)}, symbol=symbol)
                     cycle["errors"] += 1
+        self._record_market_cache_stats(cycle, before=market_cache_stats_before)
         return cycle
 
     def _runtime_symbols(self) -> tuple[list[str], Any | None]:
@@ -512,6 +568,20 @@ class FleetRunner:
                 if not snapshot_path.exists():
                     raise
                 snapshot = read_universe_snapshot(snapshot_path)
+                rejection_reason = _cached_universe_snapshot_rejection_reason(snapshot, self.config.universe)
+                if rejection_reason:
+                    self.fleet_ledger.record_risk_event(
+                        "universe_snapshot_fallback_rejected",
+                        {
+                            "error": repr(exc),
+                            "snapshot_path": self.config.universe.snapshot_path,
+                            "snapshot_generated_at": snapshot.generated_at,
+                            "snapshot_mode": snapshot.mode,
+                            "expected_mode": self.config.universe.mode,
+                            "reason": rejection_reason,
+                        },
+                    )
+                    raise RuntimeError(f"incompatible cached universe snapshot: {rejection_reason}") from exc
                 self.fleet_ledger.record_risk_event(
                     "universe_snapshot_fallback",
                     {
@@ -552,22 +622,51 @@ class FleetRunner:
         market_data = market_data or self.market_data
         bars_to_fetch = bars or self.config.market_data.bars
         if self.uses_multi_timeframe:
-            candles_by_bar = {
-                bar: market_data.get_candles(
-                    symbol,
-                    bar=bar,
-                    limit=self.config.market_data.candle_limit,
-                )
-                for bar in bars_to_fetch
-            }
+            candles_by_bar: dict[str, list[Any]] = {}
+            errors: dict[str, str] = {}
+            for bar in bars_to_fetch:
+                try:
+                    rows = market_data.get_candles(
+                        symbol,
+                        bar=bar,
+                        limit=self.config.market_data.candle_limit,
+                    )
+                    if not rows:
+                        raise RuntimeError(f"empty market data response for {symbol} {bar}")
+                    candles_by_bar[bar] = rows
+                except Exception as exc:
+                    errors[bar] = repr(exc)
+                    if bar == "1D":
+                        self.fleet_ledger.record_risk_event(
+                            "market_data_error",
+                            {"bar": bar, "error": repr(exc), "phase": "startup_market_data"},
+                            symbol=symbol,
+                        )
+                        raise RuntimeError(f"required 1D market data failed for {symbol}: {exc!r}") from exc
+                    self.fleet_ledger.record_risk_event(
+                        "market_data_partial_bar_error",
+                        {"bar": bar, "error": repr(exc), "phase": "startup_market_data"},
+                        symbol=symbol,
+                    )
+            if not candles_by_bar:
+                raise RuntimeError(f"all market data bars failed for {symbol}: {errors}")
         else:
-            candles_by_bar = {
-                "1D": market_data.get_candles(
+            try:
+                daily_rows = market_data.get_candles(
                     symbol,
                     bar="1D",
                     limit=self.config.market_data.candle_limit,
                 )
-            }
+                if not daily_rows:
+                    raise RuntimeError(f"empty market data response for {symbol} 1D")
+            except Exception as exc:
+                self.fleet_ledger.record_risk_event(
+                    "market_data_error",
+                    {"bar": "1D", "error": repr(exc), "phase": "startup_market_data"},
+                    symbol=symbol,
+                )
+                raise RuntimeError(f"required 1D market data failed for {symbol}: {exc!r}") from exc
+            candles_by_bar = {"1D": daily_rows}
         if fetch_latest_ticker:
             try:
                 latest_price = market_data.latest_price(symbol)
@@ -585,6 +684,17 @@ class FleetRunner:
     def _should_stage_multi_timeframe_fetch(self) -> bool:
         return self.uses_multi_timeframe and self.config.selection.enabled and self.config.selection.style == "dual_board"
 
+    def _startup_bars(self) -> list[str] | None:
+        if not self._should_stage_multi_timeframe_fetch():
+            return None
+        if self.config.market_data.cache_enabled:
+            return _configured_bars(
+                self.config.market_data.cache_observation_bars,
+                allowed=self.config.market_data.bars,
+                fallback=["1D"],
+            )
+        return ["1D"]
+
     def _enrich_selected_multi_timeframe_data(
         self,
         *,
@@ -592,23 +702,53 @@ class FleetRunner:
         candles_by_symbol: dict[str, dict[str, Any]],
         latest_prices: dict[str, float],
         market_data_by_symbol: dict[str, MarketData],
+        default_market_data: MarketData,
         cycle: dict[str, int],
     ) -> None:
-        intraday_bars = [bar for bar in self.config.market_data.bars if bar != "1D"]
+        if self.config.market_data.cache_enabled:
+            selected_bars = _configured_bars(
+                self.config.market_data.cache_selected_bars,
+                allowed=self.config.market_data.bars,
+                fallback=[bar for bar in self.config.market_data.bars if bar not in {"1D", "4H", "1H"}],
+            )
+            hot_bars = _configured_bars(
+                self.config.market_data.cache_hot_bars,
+                allowed=self.config.market_data.bars,
+                fallback=[],
+            )
+            intraday_bars = []
+            for bar in [*selected_bars, *hot_bars]:
+                if bar not in intraday_bars:
+                    intraday_bars.append(bar)
+        else:
+            intraday_bars = [bar for bar in self.config.market_data.bars if bar != "1D"]
         if not intraday_bars or not symbols:
             return
         max_workers = max(1, int(getattr(self.config.market_data, "max_fetch_workers", 1) or 1))
 
         def fetch_intraday(symbol: str) -> tuple[str, dict[str, Any]]:
-            market_data = market_data_by_symbol.get(symbol, self.market_data)
-            rows = {
-                bar: market_data.get_candles(
-                    symbol,
-                    bar=bar,
-                    limit=self.config.market_data.candle_limit,
-                )
-                for bar in intraday_bars
-            }
+            market_data = market_data_by_symbol.get(symbol, default_market_data)
+            rows: dict[str, Any] = {}
+            errors: dict[str, str] = {}
+            for bar in intraday_bars:
+                try:
+                    candles = market_data.get_candles(
+                        symbol,
+                        bar=bar,
+                        limit=self.config.market_data.candle_limit,
+                    )
+                    if not candles:
+                        raise RuntimeError(f"empty market data response for {symbol} {bar}")
+                    rows[bar] = candles
+                except Exception as exc:
+                    errors[bar] = repr(exc)
+                    self.fleet_ledger.record_risk_event(
+                        "market_data_partial_bar_error",
+                        {"bar": bar, "error": repr(exc), "phase": "selected_intraday_enrichment"},
+                        symbol=symbol,
+                    )
+            if not rows:
+                raise RuntimeError(f"all selected intraday bars failed for {symbol}: {errors}")
             return symbol, rows
 
         if max_workers > 1 and len(symbols) > 1:
@@ -698,6 +838,125 @@ class FleetRunner:
                 snapshots[symbol] = snapshot
         return snapshots
 
+    def _cached_market_data(self, market_data: MarketData) -> MarketData:
+        if not self.config.market_data.cache_enabled:
+            return market_data
+        if isinstance(market_data, FallbackMarketData):
+            return FallbackMarketData(
+                self._cached_market_data(market_data.primary),
+                self._cached_market_data(market_data.fallback),
+            )
+        key = id(market_data)
+        if key not in self._market_data_cache_wrappers:
+            self._market_data_cache_wrappers[key] = RollingKlineCacheMarketData(
+                self.config.market_data.cache_dir,
+                market_data,
+                freshness_multiplier=self.config.market_data.cache_freshness_multiplier,
+            )
+        return self._market_data_cache_wrappers[key]
+
+    def _enrich_selected_market_metrics(
+        self,
+        *,
+        symbols: list[str],
+        snapshots_by_symbol: dict[str, FeatureSnapshot],
+        market_data_by_symbol: dict[str, MarketData],
+        default_market_data: MarketData,
+        cycle: dict[str, int],
+    ) -> None:
+        if self.market_metrics_cache is None or not symbols:
+            return
+        for symbol in symbols:
+            cached = self.market_metrics_cache.get(symbol)
+            if cached is not None:
+                metrics = dict(cached)
+                metrics["market_metrics_cache_status"] = "cache_hit"
+                cycle["market_metrics_cache_hits"] = cycle.get("market_metrics_cache_hits", 0) + 1
+            else:
+                market_data = market_data_by_symbol.get(symbol, default_market_data)
+                try:
+                    metrics = _fetch_runtime_market_metrics(market_data, symbol)
+                    metrics["market_metrics_cache_status"] = "fetched"
+                    self.market_metrics_cache.put(symbol, metrics)
+                    cycle["market_metrics_fetches"] = cycle.get("market_metrics_fetches", 0) + 1
+                except Exception as exc:
+                    metrics = {
+                        "funding_rate_status": "exchange_error",
+                        "funding_rate_last": "",
+                        "open_interest_status": "exchange_error",
+                        "open_interest_usd": "",
+                        "book_depth_status": "exchange_error",
+                        "book_depth_usdt_1pct": "",
+                        "spread_status": "exchange_error",
+                        "spread_bps": "",
+                        "market_cap_status": "provider_limited",
+                        "market_cap_usd": "",
+                        "market_metrics_cache_status": "fetch_error",
+                        "market_metrics_error": repr(exc),
+                    }
+                    self.market_metrics_cache.put(symbol, metrics)
+                    self.fleet_ledger.record_risk_event(
+                        "market_metrics_error",
+                        {"error": repr(exc), "phase": "selected_market_metrics_enrichment"},
+                        symbol=symbol,
+                    )
+                    cycle["market_metrics_errors"] = cycle.get("market_metrics_errors", 0) + 1
+            snapshot = snapshots_by_symbol.get(symbol)
+            if snapshot is None:
+                continue
+            features = dict(snapshot.features)
+            features.update(metrics)
+            snapshots_by_symbol[symbol] = FeatureSnapshot(
+                symbol=snapshot.symbol,
+                bar=snapshot.bar,
+                last_ts=snapshot.last_ts,
+                features=features,
+                created_at=snapshot.created_at,
+            )
+
+    def _market_cache_stats(self) -> dict[str, int]:
+        totals: dict[str, int] = {}
+        for wrapper in self._market_data_cache_wrappers.values():
+            for key, value in wrapper.stats.items():
+                totals[key] = totals.get(key, 0) + int(value)
+        return totals
+
+    def _persist_market_snapshots(
+        self,
+        *,
+        snapshots_by_symbol: dict[str, FeatureSnapshot],
+        by_side: dict[str, dict[str, Any]],
+        selection_results: dict[str, Any],
+    ) -> None:
+        if self.market_snapshot_cache is None:
+            return
+        for symbol, snapshot in sorted(snapshots_by_symbol.items()):
+            selection_result = _best_selection_result(
+                selection_results.get(symbol),
+                _best_selection_result(by_side.get("long", {}).get(symbol), by_side.get("short", {}).get(symbol)),
+            )
+            enriched = _with_selection_features(snapshot, selection_result)
+            self.market_snapshot_cache.write_snapshot(
+                run_id=self.config.run_id,
+                phase="selection",
+                symbol=symbol,
+                bar=enriched.bar,
+                last_ts=enriched.last_ts,
+                features=enriched.features,
+            )
+
+    def _record_market_cache_stats(self, cycle: dict[str, int], *, before: dict[str, int] | None = None) -> None:
+        if not self._market_data_cache_wrappers:
+            return
+        totals = self._market_cache_stats()
+        baseline = before or {}
+        delta = {key: value - baseline.get(key, 0) for key, value in totals.items()}
+        cycle["market_data_cache_hits"] = delta.get("cache_hit", 0)
+        cycle["market_data_cache_stale"] = delta.get("cache_stale", 0)
+        cycle["market_data_tail_fetch_empty"] = delta.get("tail_fetch_empty", 0)
+        cycle["market_data_tail_fetch_errors"] = delta.get("tail_fetch_error", 0)
+        self.fleet_ledger.record_risk_event("market_data_cache_stats", delta)
+
 
 def _position_for_symbol(positions: list[Position], symbol: str) -> Position | None:
     for position in positions:
@@ -743,11 +1002,25 @@ def _universe_provider_for_config(config: UniverseConfig) -> UniverseProvider:
     return OkxUniverseProvider(config=config)
 
 
+def _cached_universe_snapshot_rejection_reason(snapshot: UniverseSnapshot, config: UniverseConfig) -> str:
+    if snapshot.mode != config.mode:
+        return f"mode_mismatch:{snapshot.mode}!={config.mode}"
+    available_symbols = set(snapshot.reference_symbols) | set(snapshot.observed_symbols) | set(snapshot.symbols)
+    missing_references = [symbol for symbol in config.reference_symbols if symbol not in available_symbols]
+    if missing_references:
+        return "missing_reference_symbols:" + ",".join(missing_references)
+    if config.mode == "okx_binance_usdt_swap_observe" and not snapshot.observed_symbols:
+        return "missing_observed_symbols"
+    if config.mode == "okx_all_usdt_swap" and not snapshot.symbols:
+        return "missing_symbols"
+    return ""
+
+
 def _with_selection_features(snapshot: FeatureSnapshot, selection_result: Any | None) -> FeatureSnapshot:
     if selection_result is None:
         return snapshot
-    features = dict(snapshot.features)
-    features.update(selection_result.features)
+    features = dict(selection_result.features)
+    features.update(snapshot.features)
     features["selection_reason_codes"] = selection_result.reason_codes
     features["selection_filter_codes"] = getattr(selection_result, "filter_codes", [])
     features["selection_mode"] = getattr(selection_result, "selection_mode", "mixed")
@@ -760,6 +1033,86 @@ def _with_selection_features(snapshot: FeatureSnapshot, selection_result: Any | 
         features=features,
         created_at=snapshot.created_at,
     )
+
+
+def _with_universe_market_features(
+    snapshots_by_symbol: dict[str, FeatureSnapshot],
+    universe_snapshot: Any | None,
+    *,
+    liquidity_top_n: int,
+) -> dict[str, FeatureSnapshot]:
+    if universe_snapshot is None:
+        return snapshots_by_symbol
+    liquidity_by_symbol: dict[str, float] = {}
+    rank_by_symbol: dict[str, int] = {}
+    for row in getattr(universe_snapshot, "rows", []) or []:
+        symbol = getattr(row, "symbol", "")
+        if not symbol:
+            continue
+        liquidity = getattr(row, "liquidity_usdt_24h", None)
+        if liquidity is not None:
+            try:
+                liquidity_value = float(liquidity)
+            except (TypeError, ValueError):
+                liquidity_value = 0.0
+            if liquidity_value > 0:
+                liquidity_by_symbol[symbol] = max(liquidity_by_symbol.get(symbol, 0.0), liquidity_value)
+        rank = getattr(row, "liquidity_rank", None)
+        if rank is not None:
+            try:
+                rank_value = int(rank)
+            except (TypeError, ValueError):
+                rank_value = 0
+            if rank_value > 0:
+                previous = rank_by_symbol.get(symbol)
+                rank_by_symbol[symbol] = rank_value if previous is None else min(previous, rank_value)
+    enriched: dict[str, FeatureSnapshot] = {}
+    for symbol, snapshot in snapshots_by_symbol.items():
+        features = dict(snapshot.features)
+        if symbol in liquidity_by_symbol:
+            liquidity = liquidity_by_symbol[symbol]
+            features["liquidity_usdt_24h"] = liquidity
+            features["turnover_usdt"] = liquidity
+            features["liquidity_source"] = "universe_ticker_24h"
+        else:
+            features.setdefault("liquidity_source", "universe_missing")
+        if symbol in rank_by_symbol:
+            features["liquidity_rank"] = rank_by_symbol[symbol]
+            features["turnover_rank"] = rank_by_symbol[symbol]
+            features["turnover_rank_top_n"] = liquidity_top_n
+        features.setdefault("market_cap_status", "provider_limited")
+        features.setdefault("market_cap_usd", "")
+        enriched[symbol] = FeatureSnapshot(
+            symbol=snapshot.symbol,
+            bar=snapshot.bar,
+            last_ts=snapshot.last_ts,
+            features=features,
+            created_at=snapshot.created_at,
+        )
+    return enriched
+
+
+def _fetch_runtime_market_metrics(market_data: MarketData, symbol: str) -> dict[str, Any]:
+    metrics = dict(market_data.get_market_metrics(symbol))
+    if (
+        metrics.get("book_depth_usdt_1pct") in {None, ""}
+        or metrics.get("spread_bps") in {None, ""}
+        or metrics.get("book_depth_status") != "available"
+        or metrics.get("spread_status") != "available"
+    ):
+        ticker = market_data.get_ticker(symbol)
+        order_book = market_data.get_order_book(symbol)
+        microstructure = market_microstructure_metrics(ticker=ticker, order_book=order_book)
+        for key, value in microstructure.items():
+            if metrics.get(key) in {None, ""} or str(metrics.get(f"{key}_status", "")) != "available":
+                metrics[key] = value
+    metrics.setdefault("funding_rate_status", "provider_limited")
+    metrics.setdefault("funding_rate_last", "")
+    metrics.setdefault("open_interest_status", "provider_limited")
+    metrics.setdefault("open_interest_usd", "")
+    metrics.setdefault("market_cap_status", "provider_limited")
+    metrics.setdefault("market_cap_usd", "")
+    return metrics
 
 
 def _best_selection_result(left: Any | None, right: Any | None) -> Any | None:
@@ -809,6 +1162,14 @@ def _selection_result_for_side(
         by_side.get("long", {}).get(symbol),
         by_side.get("short", {}).get(symbol),
     )
+
+
+def _configured_bars(bars: list[str], *, allowed: list[str], fallback: list[str]) -> list[str]:
+    allowed_set = set(allowed)
+    selected = [bar for bar in bars if bar in allowed_set]
+    if selected:
+        return selected
+    return [bar for bar in fallback if bar in allowed_set] or list(fallback)
 
 
 def _selection_states_for_profiles(
@@ -880,16 +1241,32 @@ def _with_historical_match(snapshot: FeatureSnapshot, matcher: HistoricalPattern
     )
 
 
-def _market_data_by_symbol(market_data: MarketData, universe_snapshot: Any | None) -> dict[str, MarketData]:
+def _market_data_by_symbol(
+    market_data: MarketData,
+    universe_snapshot: Any | None,
+    *,
+    shared_symbol_policy: str = "binance_first",
+) -> dict[str, MarketData]:
     if universe_snapshot is None or not isinstance(market_data, FallbackMarketData):
         return {}
+    rows_by_symbol: dict[str, list[Any]] = {}
+    for row in universe_snapshot.rows:
+        rows_by_symbol.setdefault(row.symbol, []).append(row)
     routed: dict[str, MarketData] = {}
-    for row in universe_snapshot.rows:
-        if row.source_exchange == "okx" and (row.tradable or row.is_reference):
-            routed[row.symbol] = market_data.primary
-    for row in universe_snapshot.rows:
-        if row.source_exchange == "binance" and row.symbol not in routed:
-            routed[row.symbol] = market_data.fallback
+    for symbol, rows in rows_by_symbol.items():
+        has_okx = any(row.source_exchange == "okx" and (row.tradable or row.is_reference) for row in rows)
+        has_binance = any(row.source_exchange == "binance" for row in rows)
+        if has_okx and has_binance:
+            if shared_symbol_policy == "binance_first":
+                routed[symbol] = FallbackMarketData(market_data.fallback, market_data.primary)
+            else:
+                routed[symbol] = market_data
+            continue
+        if has_okx:
+            routed[symbol] = market_data.primary
+            continue
+        if has_binance:
+            routed[symbol] = market_data.fallback
     return routed
 
 

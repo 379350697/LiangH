@@ -404,7 +404,7 @@ class RulesLangLangV1Strategy:
             and pos_20d >= variant.overheat_pos_20d
             and pullback >= -variant.min_pullback_pct
             and h1_ret_24 >= variant.overheat_h1_ret_24
-            and (m15_ret_8 <= 0 or m5_ret_6 <= 0)
+            and (_ret_le(features, "m15", m15_ret_8, 0) or _ret_le(features, "m5", m5_ret_6, 0))
         )
         if overheated:
             return StrategyDecision(
@@ -416,7 +416,7 @@ class RulesLangLangV1Strategy:
             )
 
         if long_trend:
-            if m15_ret_8 < -abs(variant.intraday_confirm_ret_min) and m5_ret_6 < 0:
+            if _ret_lt(features, "m15", m15_ret_8, -abs(variant.intraday_confirm_ret_min)) and _ret_lt(features, "m5", m5_ret_6, 0):
                 return _skip("skip:large_divergence", [FailureFilter.LARGE_DIVERGENCE])
             if pullback <= -variant.min_pullback_pct and pullback >= -variant.max_pullback_pct:
                 regime = MarketRegime.STRONG_PULLBACK
@@ -430,7 +430,7 @@ class RulesLangLangV1Strategy:
             stop_loss = max(low_20d, latest_close * (1 - variant.structure_stop_pct))
             risk_per_unit = max(latest_close - stop_loss, latest_close * 0.01)
             reason_codes = ["daily_main_uptrend", f"variant:{variant.variant_id}"]
-            if m15_ret_8 >= variant.intraday_confirm_ret_min or m5_ret_6 >= variant.intraday_confirm_ret_min:
+            if _ret_ge(features, "m15", m15_ret_8, variant.intraday_confirm_ret_min) or _ret_ge(features, "m5", m5_ret_6, variant.intraday_confirm_ret_min):
                 reason_codes.append("intraday_reclaim_confirmed")
             if setup is EntrySetup.FIRST_PULLBACK:
                 reason_codes.append("pullback_not_broken")
@@ -448,7 +448,7 @@ class RulesLangLangV1Strategy:
             )
 
         if short_trend:
-            if h1_ret_24 <= variant.waterfall_h1_ret_24_max or m15_ret_8 <= variant.intraday_breakdown_ret_max:
+            if _ret_le(features, "h1", h1_ret_24, variant.waterfall_h1_ret_24_max) or _ret_le(features, "m15", m15_ret_8, variant.intraday_breakdown_ret_max):
                 setup = EntrySetup.WATERFALL_CONTINUATION
             else:
                 setup = EntrySetup.SHORT_REBOUND_FAILURE
@@ -605,8 +605,8 @@ class RulesLangLangV1_1Strategy(RulesLangLangV1Strategy):
             and ret_20d >= variant.overheat_ret_20d
             and pos_20d >= variant.overheat_pos_20d
             and h1_ret_24 >= variant.overheat_h1_ret_24
-            and m15_ret_8 < 0
-            and m5_ret_6 < 0
+            and _ret_lt(features, "m15", m15_ret_8, 0)
+            and _ret_lt(features, "m5", m5_ret_6, 0)
         )
         if super_large_divergence:
             return StrategyDecision(
@@ -618,11 +618,13 @@ class RulesLangLangV1_1Strategy(RulesLangLangV1Strategy):
             )
 
         if long_trend:
-            if large_divergence_recent and bottom_lift_confirmed and (m15_ret_8 > 0 or m5_ret_6 > 0):
+            if large_divergence_recent and bottom_lift_confirmed and (
+                _ret_gt(features, "m15", m15_ret_8, 0) or _ret_gt(features, "m5", m5_ret_6, 0)
+            ):
                 regime = MarketRegime.POST_LARGE_DIVERGENCE
                 setup = EntrySetup.POST_DIVERGENCE_REBOUND
                 reason_codes = ["post_large_divergence_rebound", f"variant:{variant.variant_id}"]
-            elif m15_ret_8 < 0 <= m5_ret_6:
+            elif _ret_lt(features, "m15", m15_ret_8, 0) and _ret_ge(features, "m5", m5_ret_6, 0):
                 regime = MarketRegime.FIRST_DIVERGENCE
                 setup = EntrySetup.SMALL_DIVERGENCE_ENTRY
                 reason_codes = ["daily_main_uptrend", "small_divergence_absorbed", f"variant:{variant.variant_id}"]
@@ -638,7 +640,7 @@ class RulesLangLangV1_1Strategy(RulesLangLangV1Strategy):
                 regime = MarketRegime.MAIN_UPTREND
                 setup = EntrySetup.STARTER_BUY
                 reason_codes = ["daily_main_uptrend", "starter_buy", f"variant:{variant.variant_id}"]
-            if m15_ret_8 >= variant.intraday_confirm_ret_min or m5_ret_6 >= variant.intraday_confirm_ret_min:
+            if _ret_ge(features, "m15", m15_ret_8, variant.intraday_confirm_ret_min) or _ret_ge(features, "m5", m5_ret_6, variant.intraday_confirm_ret_min):
                 reason_codes.append("intraday_reclaim_confirmed")
             stop_loss = max(low_20d, latest_close * (1 - variant.structure_stop_pct))
             risk_per_unit = max(latest_close - stop_loss, latest_close * 0.01)
@@ -658,7 +660,7 @@ class RulesLangLangV1_1Strategy(RulesLangLangV1Strategy):
         if short_trend:
             setup = (
                 EntrySetup.WATERFALL_CONTINUATION
-                if h1_ret_24 <= variant.waterfall_h1_ret_24_max or m15_ret_8 <= variant.intraday_breakdown_ret_max
+                if _ret_le(features, "h1", h1_ret_24, variant.waterfall_h1_ret_24_max) or _ret_le(features, "m15", m15_ret_8, variant.intraday_breakdown_ret_max)
                 else EntrySetup.SHORT_REBOUND_FAILURE
             )
             stop_loss = min(high_20d, latest_close * (1 + variant.structure_stop_pct))
@@ -831,19 +833,50 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
         second_wave_start_score = _float_feature(features, "second_wave_start_score")
         five_wave_late_risk_score = _float_feature(features, "five_wave_late_risk_score")
         false_breakout_risk_score = _float_feature(features, "false_breakout_risk_score")
+        wyckoff_phase_tag = _str_feature(features, "wyckoff_phase_tag", "")
+        wyckoff_long_setup_tag = _str_feature(features, "wyckoff_long_setup_tag", "")
+        wyckoff_short_setup_tag = _str_feature(features, "wyckoff_short_setup_tag", "")
+        wyckoff_exit_tag = _str_feature(features, "wyckoff_exit_tag", "")
+        wyckoff_long_score = _float_feature(features, "wyckoff_long_score")
+        wyckoff_short_score = _float_feature(features, "wyckoff_short_score")
+        wyckoff_risk_score = _float_feature(features, "wyckoff_risk_score")
+        wyckoff_exit_score = _float_feature(features, "wyckoff_exit_score")
         market_season = _infer_market_season(features)
         symbol_cycle = _infer_symbol_cycle(features)
         requested_side = _str_feature(features, "requested_side", "").lower()
+        current_position_side = _str_feature(features, "current_position_side", "").lower()
 
         if latest_close <= 0:
             return _skip("skip:missing_latest_close", [FailureFilter.STRUCTURE_BREAK])
+        if current_position_side == "long" and (wyckoff_exit_score >= 0.70 or wyckoff_risk_score >= 0.70):
+            exit_action = (
+                StrategyAction.CLOSE
+                if (wyckoff_exit_tag or wyckoff_short_setup_tag) in {"sow_breakdown", "lpsy_retest"}
+                else StrategyAction.REDUCE
+            )
+            return StrategyDecision(
+                action=exit_action,
+                explanation=f"{exit_action.value}:wyckoff_exit:{wyckoff_exit_tag or wyckoff_short_setup_tag or wyckoff_phase_tag}",
+                matched_historical_patterns=matched_trade_examples,
+                risk_notes=["威科夫派发/供给信号触发多头减仓或离场"],
+                filter_codes=[FailureFilter.WYCKOFF_RISK],
+            )
         if vol_ratio < variant.min_vol_ratio_20d:
             return _skip("skip:low_liquidity", [FailureFilter.LOW_LIQUIDITY])
         if self._uses_enhanced_loss_filters() and stop_loss_cluster >= variant.max_stop_loss_cluster_24h:
             return _skip("skip:stop_loss_cluster", [FailureFilter.STOP_LOSS_CLUSTER, FailureFilter.EMOTIONAL_REVENGE_PROXY])
         if int(_float_feature(features, "small_divergence_count", 0.0)) > variant.max_small_divergence_count:
             return _skip("skip:third_small_divergence_five_wave_high", [FailureFilter.THIRD_SMALL_DIVERGENCE])
-        if requested_side == "short" and symbol_cycle in {"main_wave", "small_divergence", "platform_start"} and not variant.enable_countertrend_short:
+        wyckoff_short_candidate = (
+            wyckoff_short_score >= 0.70
+            and wyckoff_short_setup_tag in {"upthrust_reversal", "utad_risk", "sow_breakdown", "lpsy_retest"}
+        )
+        if (
+            requested_side == "short"
+            and symbol_cycle in {"main_wave", "small_divergence", "platform_start"}
+            and not variant.enable_countertrend_short
+            and not wyckoff_short_candidate
+        ):
             return _skip("skip:main_wave_countertrend_short_disabled", [FailureFilter.COUNTER_TREND_SHORT_DISABLED])
         if (
             variant.autumn_winter_only_best_positions
@@ -862,6 +895,15 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             return _skip("skip:false_breakout_risk_pattern", [FailureFilter.FALSE_BREAKOUT_AFTER_CONTRACTION])
         if five_wave_late_risk_score >= 0.70 or risk_pattern_tag == "five_wave_late_risk":
             return _skip("skip:five_wave_late_risk", [FailureFilter.FIVE_WAVE_LATE_RISK])
+        if (
+            requested_side != "short"
+            and (
+                wyckoff_phase_tag == "distribution"
+                or wyckoff_risk_score >= 0.70
+                or wyckoff_exit_score >= 0.70
+            )
+        ):
+            return _skip(f"skip:wyckoff_risk:{wyckoff_exit_tag or wyckoff_short_setup_tag or wyckoff_phase_tag}", [FailureFilter.WYCKOFF_RISK])
         if _truthy_feature(features, "btc_divergence_alt_breakout") and requested_side != "short":
             return _skip("skip:btc_divergence_alt_breakout", [FailureFilter.BTC_DIVERGENCE_ALT_BREAKOUT])
         if _truthy_feature(features, "false_breakout_after_contraction"):
@@ -901,38 +943,66 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             m5_ret_6=m5_ret_6,
             bottom_lift_confirmed=bottom_lift_confirmed,
         )
+        wyckoff_long_trend_ok = _wyckoff_long_trend_ok(
+            features=features,
+            variant=variant,
+            ret_20d=ret_20d,
+            ret_60d=ret_60d,
+            pos_20d=pos_20d,
+            latest_close=latest_close,
+            ma_5=ma_5,
+            ma_20=ma_20,
+            vol_ratio=vol_ratio,
+            m15_ret_8=m15_ret_8,
+            m5_ret_6=m5_ret_6,
+        )
         short_trend = (
             (ret_20d <= variant.short_ret_20d_max or ret_60d <= variant.short_ret_60d_max)
             and pos_20d <= variant.short_pos_20d_max
             and latest_close <= ma_20
             and ma_5 <= ma_20
         )
+        wyckoff_short_ok = _wyckoff_short_trend_ok(features=features, variant=variant, m15_ret_8=m15_ret_8, m5_ret_6=m5_ret_6)
         allowed_side = _variant_allowed_side(variant)
-        if (long_trend or strong_pattern_long_trend_ok) and allowed_side == "short" and requested_side != "short":
+        if (long_trend or strong_pattern_long_trend_ok or wyckoff_long_trend_ok) and allowed_side == "short" and requested_side != "short":
             return _skip("skip:variant_side_not_allowed_long", [FailureFilter.VARIANT_SIDE_NOT_ALLOWED])
-        if short_trend and allowed_side == "long":
+        if (short_trend or wyckoff_short_ok) and allowed_side == "long":
             return _skip("skip:variant_side_not_allowed_short", [FailureFilter.VARIANT_SIDE_NOT_ALLOWED])
 
-        if short_trend:
-            setup = (
-                EntrySetup.WATERFALL_CONTINUATION
-                if symbol_cycle == "weak_waterfall" or h1_ret_24 <= variant.waterfall_h1_ret_24_max or m15_ret_8 <= variant.intraday_breakdown_ret_max
-                else EntrySetup.SHORT_REBOUND_FAILURE
-            )
+        if short_trend or wyckoff_short_ok:
+            if wyckoff_short_ok:
+                setup = (
+                    EntrySetup.TOP_SHORT
+                    if wyckoff_short_setup_tag in {"upthrust_reversal", "utad_risk"}
+                    else EntrySetup.WATERFALL_CONTINUATION
+                )
+            else:
+                setup = (
+                    EntrySetup.WATERFALL_CONTINUATION
+                    if symbol_cycle == "weak_waterfall" or _ret_le(features, "h1", h1_ret_24, variant.waterfall_h1_ret_24_max) or _ret_le(features, "m15", m15_ret_8, variant.intraday_breakdown_ret_max)
+                    else EntrySetup.SHORT_REBOUND_FAILURE
+                )
             stop_loss = min(high_20d, latest_close * (1 + variant.structure_stop_pct))
             if stop_loss <= latest_close:
                 stop_loss = latest_close * (1 + variant.structure_stop_pct)
             risk_per_unit = max(stop_loss - latest_close, latest_close * 0.01)
+            short_reasons = ["short_weak_waterfall", "waterfall_or_rebound_failure", f"variant:{variant.variant_id}"]
+            if wyckoff_short_ok:
+                short_reasons = [
+                    "wyckoff_short_confirmed",
+                    wyckoff_short_setup_tag or "wyckoff_short_setup",
+                    f"variant:{variant.variant_id}",
+                ]
             return self._enter_v1_3_decision(
                 snapshot=snapshot,
                 side=Side.SHORT,
-                regime=MarketRegime.WEAK_WATERFALL,
+                regime=MarketRegime.TOP_DIVERGENCE if setup is EntrySetup.TOP_SHORT else MarketRegime.WEAK_WATERFALL,
                 setup=setup,
-                entry_position_id="short_waterfall_continuation",
+                entry_position_id="3_wyckoff_distribution_top_short" if setup is EntrySetup.TOP_SHORT else "short_waterfall_continuation",
                 market_season=market_season,
                 symbol_cycle=symbol_cycle,
-                strength=min(1.0, 0.42 + abs(ret_20d) * 0.85 + abs(ret_60d) * 0.20 + historical_match_score * 0.12),
-                reason_codes=["short_weak_waterfall", "waterfall_or_rebound_failure", f"variant:{variant.variant_id}"],
+                strength=min(1.0, 0.42 + abs(ret_20d) * 0.85 + abs(ret_60d) * 0.20 + historical_match_score * 0.12 + wyckoff_short_score * 0.12),
+                reason_codes=short_reasons,
                 invalidation_price=stop_loss,
                 take_profit_hint=latest_close - risk_per_unit * variant.runner_take_profit_r,
                 matched_trade_examples=matched_trade_examples,
@@ -971,7 +1041,7 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
                 force_no_runner=True,
             )
 
-        if not (long_trend or strong_pattern_long_trend_ok):
+        if not (long_trend or strong_pattern_long_trend_ok or wyckoff_long_trend_ok):
             return StrategyDecision(
                 action=StrategyAction.SKIP,
                 explanation="skip:regime=choppy_invalid filters=structure_break",
@@ -993,6 +1063,15 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
                 strong_pattern_tag or "leader_platform_or_golden_pit",
                 f"variant:{variant.variant_id}",
             ]
+        elif wyckoff_long_setup_tag in {"spring_reclaim", "sos_breakout", "lps_retest", "reaccumulation_breakout"} or wyckoff_long_score >= 0.68:
+            entry_position_id = "1_startup_long" if wyckoff_long_setup_tag in {"spring_reclaim", "sos_breakout", "reaccumulation_breakout"} else "2_small_divergence_long"
+            regime = MarketRegime.PRE_MAIN_UPTREND if entry_position_id == "1_startup_long" else MarketRegime.BREAKOUT_RETEST
+            setup = EntrySetup.STARTER_BUY if entry_position_id == "1_startup_long" else EntrySetup.PLATFORM_RETEST
+            reason_codes = [
+                "wyckoff_long_confirmed",
+                wyckoff_long_setup_tag or "wyckoff_long_setup",
+                f"variant:{variant.variant_id}",
+            ]
         elif strong_pattern_tag == "second_wave_start" or second_wave_start_score >= 0.65:
             entry_position_id = "4_second_wave_long"
             regime = MarketRegime.POST_LARGE_DIVERGENCE
@@ -1008,7 +1087,9 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             regime = MarketRegime.PRE_MAIN_UPTREND
             setup = EntrySetup.STARTER_BUY
             reason_codes = ["leader_platform_start", "starter_buy", f"variant:{variant.variant_id}"]
-        elif large_divergence_recent and bottom_lift_confirmed and (m15_ret_8 > 0 or m5_ret_6 > 0):
+        elif large_divergence_recent and bottom_lift_confirmed and (
+            _ret_gt(features, "m15", m15_ret_8, 0) or _ret_gt(features, "m5", m5_ret_6, 0)
+        ):
             entry_position_id = "4_second_wave_long"
             regime = MarketRegime.POST_LARGE_DIVERGENCE
             setup = EntrySetup.POST_DIVERGENCE_REBOUND
@@ -1018,7 +1099,9 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             regime = MarketRegime.CHOPPY_INVALID
             setup = EntrySetup.BOX_REBOUND_LONG
             reason_codes = ["box_rebound_low_confidence", f"variant:{variant.variant_id}"]
-        elif symbol_cycle == "small_divergence" or m15_ret_8 < 0 <= m5_ret_6:
+        elif symbol_cycle == "small_divergence" or (
+            _ret_lt(features, "m15", m15_ret_8, 0) and _ret_ge(features, "m5", m5_ret_6, 0)
+        ):
             entry_position_id = "2_small_divergence_long"
             regime = MarketRegime.FIRST_DIVERGENCE
             setup = EntrySetup.SMALL_DIVERGENCE_ENTRY
@@ -1038,7 +1121,9 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             return _skip("skip:box_rebound_low_quality", [FailureFilter.BOX_REBOUND_LOW_QUALITY])
         if strong_pattern_long_trend_ok and not long_trend:
             reason_codes.append("strong_pattern_trend_substitute")
-        if m15_ret_8 >= variant.intraday_confirm_ret_min or m5_ret_6 >= variant.intraday_confirm_ret_min:
+        if wyckoff_long_trend_ok and not long_trend:
+            reason_codes.append("wyckoff_trend_substitute")
+        if _ret_ge(features, "m15", m15_ret_8, variant.intraday_confirm_ret_min) or _ret_ge(features, "m5", m5_ret_6, variant.intraday_confirm_ret_min):
             reason_codes.append("intraday_reclaim_confirmed")
         if selection_tag == "leader_altcoin":
             reason_codes.append("leader_altcoin_selected")
@@ -1369,6 +1454,26 @@ def _truthy_feature(features: dict, key: str) -> bool:
     return bool(value)
 
 
+def _bar_data_available(features: dict, prefix: str) -> bool:
+    return bool(features.get(f"{prefix}_data_available", True))
+
+
+def _ret_ge(features: dict, prefix: str, value: float, threshold: float) -> bool:
+    return _bar_data_available(features, prefix) and value >= threshold
+
+
+def _ret_gt(features: dict, prefix: str, value: float, threshold: float) -> bool:
+    return _bar_data_available(features, prefix) and value > threshold
+
+
+def _ret_le(features: dict, prefix: str, value: float, threshold: float) -> bool:
+    return _bar_data_available(features, prefix) and value <= threshold
+
+
+def _ret_lt(features: dict, prefix: str, value: float, threshold: float) -> bool:
+    return _bar_data_available(features, prefix) and value < threshold
+
+
 def _strong_pattern_long_trend_ok(
     *,
     features: dict,
@@ -1459,7 +1564,71 @@ def _has_intraday_pattern_confirmation(
     reason_codes = _string_list_feature(features, "pattern_reason_codes")
     if f"{tag}_intraday_reclaim_confirmed" in reason_codes or f"{tag}_intraday_absorb_confirmed" in reason_codes:
         return True
-    return m15_ret_8 >= variant.intraday_confirm_ret_min or m5_ret_6 >= variant.intraday_confirm_ret_min
+    return _ret_ge(features, "m15", m15_ret_8, variant.intraday_confirm_ret_min) or _ret_ge(features, "m5", m5_ret_6, variant.intraday_confirm_ret_min)
+
+
+def _wyckoff_long_trend_ok(
+    *,
+    features: dict,
+    variant: LangLangV1_3Variant,
+    ret_20d: float,
+    ret_60d: float,
+    pos_20d: float,
+    latest_close: float,
+    ma_5: float,
+    ma_20: float,
+    vol_ratio: float,
+    m15_ret_8: float,
+    m5_ret_6: float,
+) -> bool:
+    tag = _str_feature(features, "wyckoff_long_setup_tag", "")
+    if tag not in {"spring_reclaim", "sos_breakout", "lps_retest", "reaccumulation_breakout"}:
+        return False
+    if _float_feature(features, "wyckoff_long_score") < 0.68:
+        return False
+    if _float_feature(features, "wyckoff_risk_score") >= 0.70 or _float_feature(features, "wyckoff_exit_score") >= 0.70:
+        return False
+    if _str_feature(features, "wyckoff_phase_tag", "") == "distribution":
+        return False
+    if ma_20 <= 0 or latest_close < ma_20 * 0.985:
+        return False
+    if pos_20d < 0.38 or ret_60d < 0.18 or vol_ratio < variant.min_vol_ratio_20d:
+        return False
+    return _has_wyckoff_intraday_confirmation(features, "long", variant, m15_ret_8, m5_ret_6)
+
+
+def _wyckoff_short_trend_ok(
+    *,
+    features: dict,
+    variant: LangLangV1_3Variant,
+    m15_ret_8: float,
+    m5_ret_6: float,
+) -> bool:
+    tag = _str_feature(features, "wyckoff_short_setup_tag", "")
+    if tag not in {"upthrust_reversal", "utad_risk", "sow_breakdown", "lpsy_retest"}:
+        return False
+    if _float_feature(features, "wyckoff_short_score") < 0.70:
+        return False
+    return _has_wyckoff_intraday_confirmation(features, "short", variant, m15_ret_8, m5_ret_6)
+
+
+def _has_wyckoff_intraday_confirmation(
+    features: dict,
+    side: str,
+    variant: LangLangV1_3Variant,
+    m15_ret_8: float,
+    m5_ret_6: float,
+) -> bool:
+    score_key = f"wyckoff_{side}_score"
+    if max(
+        _float_feature(features, f"h1_{score_key}"),
+        _float_feature(features, f"m15_{score_key}"),
+        _float_feature(features, f"m5_{score_key}"),
+    ) >= 0.45:
+        return True
+    if side == "long":
+        return _ret_ge(features, "m15", m15_ret_8, variant.intraday_confirm_ret_min) or _ret_ge(features, "m5", m5_ret_6, variant.intraday_confirm_ret_min)
+    return _ret_le(features, "m15", m15_ret_8, variant.intraday_breakdown_ret_max) or _ret_le(features, "m5", m5_ret_6, -abs(variant.intraday_confirm_ret_min))
 
 
 def _infer_market_season(features: dict) -> str:

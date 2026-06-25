@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
@@ -16,7 +17,7 @@ from langlang_trader.features import DailyFeatureBuilder, FeatureSnapshot, Multi
 from langlang_trader.fleet import BotConfig, FleetConfig
 from langlang_trader.historical_patterns import HistoricalPatternMatcher, build_historical_patterns, write_historical_patterns
 from langlang_trader.ledger import Ledger
-from langlang_trader.models import Candle, ExitPlan, OrderIntent, Side
+from langlang_trader.models import Candle, ExitPlan, OrderIntent, Side, StrategyAction
 from langlang_trader.risk import RiskEngine
 from langlang_trader.strategy import (
     LangLangEnhancedVariant,
@@ -104,6 +105,8 @@ class OptimizerConfig:
     strategy_library_registry_path: str | None = DEFAULT_REGISTRY_PATH
     strategy_library_db_path: str | None = DEFAULT_DB_PATH
     data_snapshot_id: str = "unspecified"
+    feature_profile: str = "wyckoff_enhanced_v1_3"
+    experiment_label: str = ""
 
 
 @dataclass(frozen=True)
@@ -344,6 +347,7 @@ class HistoricalReplayOptimizer:
         position_windows: list[dict[str, Any]] = []
         active_positions: dict[str, _ReplayPositionState] = {}
         raw_signal_count = 0
+        diagnostics = _new_experiment_diagnostics()
         initial_equity = 10_000.0
         current_prices: dict[str, float] = {}
         risk = RiskEngine(RiskConfig(max_position_usdt=1_000.0, max_daily_loss_usdt=1_000.0, default_leverage=3))
@@ -392,6 +396,8 @@ class HistoricalReplayOptimizer:
                         continue
                     if self.config.strategy_version in HISTORICAL_MATCH_STRATEGIES and pattern_matcher is not None:
                         snapshot = _with_v1_1_historical_match(snapshot, pattern_matcher)
+                    snapshot = _apply_experiment_feature_profile(snapshot, self.config.feature_profile)
+                    _record_snapshot_attribution(diagnostics, snapshot.features)
                     if _apply_v1_exit_plan(
                         executor=executor,
                         ledger=ledger,
@@ -404,7 +410,12 @@ class HistoricalReplayOptimizer:
                         variant=variant,
                     ):
                         continue
-                    signal = strategy.generate_from_features(snapshot)
+                    if hasattr(strategy, "decide"):
+                        decision = strategy.decide(snapshot)
+                        _record_decision_diagnostic(diagnostics, decision)
+                        signal = decision.signal if decision.action is StrategyAction.ENTER else None
+                    else:
+                        signal = strategy.generate_from_features(snapshot)
                     if signal is None:
                         continue
                     raw_signal_count += 1
@@ -435,10 +446,12 @@ class HistoricalReplayOptimizer:
                             big_wins=big_wins,
                             big_losses=big_losses,
                             excel_events_by_trade=excel_events_by_trade,
+                            diagnostics=diagnostics,
                         )
                     ledger.record_order_intent(intent, signal_id=signal_id)
                     result = executor.place_order(intent)
                     if result.filled_qty > 0:
+                        _record_signal_diagnostic(diagnostics, signal)
                         active_positions[symbol] = _state_from_signal(
                             signal=signal,
                             entry_price=result.avg_price or current.close,
@@ -499,6 +512,9 @@ class HistoricalReplayOptimizer:
             "validation_realized_pnl_usdt": realized_pnl,
             "replay_mode": "event_replay",
             "variant": variant,
+            "experiment_label": self.config.experiment_label or self.config.feature_profile,
+            "feature_profile": self.config.feature_profile,
+            "experiment_diagnostics": _freeze_experiment_diagnostics(diagnostics),
             "excel_event_support_score": _excel_event_support_score(
                 signal_events,
                 big_wins,
@@ -552,10 +568,18 @@ class HistoricalReplayOptimizer:
             risk=RiskConfig(),
             market_data=MarketDataConfig(
                 symbols=[] if self.config.strategy_version in MULTI_EXCHANGE_SELECTION_STRATEGIES else (symbols or ["BTC-USDT-SWAP"]),
+                bars=["1m", "5m", "15m", "1H", "4H", "1D"],
                 max_fetch_workers=8 if self.config.strategy_version in EVENT_REPLAY_STRATEGIES else 1,
+                cache_enabled=self.config.strategy_version in MULTI_EXCHANGE_SELECTION_STRATEGIES,
+                cache_dir=str(out_dir / "kline_cache"),
+                market_snapshot_cache_enabled=self.config.strategy_version in MULTI_EXCHANGE_SELECTION_STRATEGIES,
             ),
             universe=(
-                UniverseConfig(mode="okx_binance_usdt_swap_observe", provider="okx_binance")
+                UniverseConfig(
+                    mode="okx_binance_usdt_swap_observe",
+                    provider="okx_binance",
+                    snapshot_path=str(out_dir / "universe_snapshot.json"),
+                )
                 if self.config.strategy_version in MULTI_EXCHANGE_SELECTION_STRATEGIES
                 else UniverseConfig()
             ),
@@ -787,7 +811,7 @@ def _rank_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
         ranked.append(item)
-    ranked.sort(key=lambda row: (row["score"], row["validation_net_pnl"]), reverse=True)
+    ranked.sort(key=lambda row: _rank_sort_key(row, row["validation_net_pnl"]), reverse=True)
     for rank, row in enumerate(ranked, start=1):
         row["rank"] = rank
     return ranked
@@ -832,10 +856,18 @@ def _rank_payoff_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
         ranked.append(item)
-    ranked.sort(key=lambda row: (row["score"], row["right_tail_capture_score"], row["validation_net_pnl"]), reverse=True)
+    ranked.sort(
+        key=lambda row: _rank_sort_key(row, row["right_tail_capture_score"], row["validation_net_pnl"]),
+        reverse=True,
+    )
     for rank, row in enumerate(ranked, start=1):
         row["rank"] = rank
     return ranked
+
+
+def _rank_sort_key(row: dict[str, Any], *extra: Any) -> tuple[Any, ...]:
+    has_signal = int(row.get("validation_signals") or 0) > 0
+    return (has_signal, row.get("score", 0.0), *extra)
 
 
 def _write_leaderboard(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -1650,6 +1682,118 @@ def _state_from_signal(
     )
 
 
+def _apply_experiment_feature_profile(snapshot: FeatureSnapshot, profile: str) -> FeatureSnapshot:
+    if not profile:
+        return snapshot
+    from langlang_trader.experiment_matrix import apply_feature_profile
+
+    return apply_feature_profile(snapshot, profile)
+
+
+def _new_experiment_diagnostics() -> dict[str, Any]:
+    return {
+        "snapshot_count": 0,
+        "skip_filter_counts": Counter(),
+        "skip_explanation_counts": Counter(),
+        "action_counts": Counter(),
+        "entry_position_counts": Counter(),
+        "signal_reason_counts": Counter(),
+        "strong_pattern_tag_counts": Counter(),
+        "risk_pattern_tag_counts": Counter(),
+        "wyckoff_phase_counts": Counter(),
+        "wyckoff_long_setup_counts": Counter(),
+        "wyckoff_short_setup_counts": Counter(),
+        "strong_pattern_score_bins": Counter(),
+        "risk_pattern_score_bins": Counter(),
+        "wyckoff_long_score_bins": Counter(),
+        "wyckoff_short_score_bins": Counter(),
+        "wyckoff_exit_score_bins": Counter(),
+        "strong_pattern_released_signals": 0,
+        "wyckoff_released_signals": 0,
+        "risk_filtered_skips": 0,
+    }
+
+
+def _record_snapshot_attribution(diagnostics: dict[str, Any], features: dict[str, Any]) -> None:
+    diagnostics["snapshot_count"] += 1
+    diagnostics["strong_pattern_tag_counts"][_tag(features.get("strong_pattern_tag"))] += 1
+    diagnostics["risk_pattern_tag_counts"][_tag(features.get("risk_pattern_tag"))] += 1
+    diagnostics["wyckoff_phase_counts"][_tag(features.get("wyckoff_phase_tag"), default="none")] += 1
+    diagnostics["wyckoff_long_setup_counts"][_tag(features.get("wyckoff_long_setup_tag"))] += 1
+    diagnostics["wyckoff_short_setup_counts"][_tag(features.get("wyckoff_short_setup_tag"))] += 1
+    for field in (
+        "strong_pattern_score",
+        "risk_pattern_score",
+        "wyckoff_long_score",
+        "wyckoff_short_score",
+        "wyckoff_exit_score",
+    ):
+        diagnostics[f"{field}_bins"][_score_bin(features.get(field, 0.0))] += 1
+
+
+def _record_decision_diagnostic(diagnostics: dict[str, Any], decision: Any) -> None:
+    action = getattr(getattr(decision, "action", None), "value", str(getattr(decision, "action", ""))) or "unknown"
+    diagnostics["action_counts"][action] += 1
+    if action == StrategyAction.SKIP.value:
+        explanation = str(getattr(decision, "explanation", "skip:unknown"))
+        diagnostics["skip_explanation_counts"][explanation] += 1
+        filters = [
+            getattr(code, "value", str(code))
+            for code in getattr(decision, "filter_codes", [])
+        ]
+        if not filters:
+            filters = ["unknown_skip_filter"]
+        for code in filters:
+            diagnostics["skip_filter_counts"][code] += 1
+            if code in {
+                "wyckoff_risk",
+                "five_wave_late_risk",
+                "false_breakout_after_contraction",
+                "third_small_divergence",
+            }:
+                diagnostics["risk_filtered_skips"] += 1
+
+
+def _record_signal_diagnostic(diagnostics: dict[str, Any], signal: Any) -> None:
+    features = getattr(signal, "features", {}) or {}
+    trace = getattr(signal, "decision_trace", {}) or {}
+    entry_position_id = str(trace.get("entry_position_id") or features.get("entry_position_id") or "unknown_entry")
+    diagnostics["entry_position_counts"][entry_position_id] += 1
+    reason_codes = [str(code) for code in getattr(signal, "reason_codes", [])]
+    for code in reason_codes:
+        diagnostics["signal_reason_counts"][code] += 1
+    if any(code.startswith("strong_pattern") or "strong_pattern" in code for code in reason_codes):
+        diagnostics["strong_pattern_released_signals"] += 1
+    if any(code.startswith("wyckoff") or "wyckoff" in code for code in reason_codes):
+        diagnostics["wyckoff_released_signals"] += 1
+
+
+def _freeze_experiment_diagnostics(diagnostics: dict[str, Any]) -> dict[str, Any]:
+    frozen: dict[str, Any] = {}
+    for key, value in diagnostics.items():
+        if isinstance(value, Counter):
+            frozen[key] = dict(value)
+        else:
+            frozen[key] = value
+    return frozen
+
+
+def _tag(value: Any, *, default: str = "none") -> str:
+    text = str(value or "").strip()
+    return text or default
+
+
+def _score_bin(value: Any) -> str:
+    number = _float(value)
+    if number < 0.45:
+        return "score_000_045"
+    if number < 0.65:
+        return "score_045_065"
+    if number < 0.70:
+        return "score_065_070"
+    return "score_070_100"
+
+
 def _early_stopped_event_replay_row(
     *,
     variant: LangLangV1Variant,
@@ -1660,6 +1804,7 @@ def _early_stopped_event_replay_row(
     big_wins: list[dict[str, Any]],
     big_losses: list[dict[str, Any]],
     excel_events_by_trade: dict[str, dict[str, Any]] | None = None,
+    diagnostics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payoff_metrics = _payoff_metrics(
         deltas=[],
@@ -1681,6 +1826,7 @@ def _early_stopped_event_replay_row(
         "validation_realized_pnl_usdt": 0.0,
         "replay_mode": "event_replay_early_stop",
         "variant": variant,
+        "experiment_diagnostics": _freeze_experiment_diagnostics(diagnostics or _new_experiment_diagnostics()),
         "excel_event_support_score": _excel_event_support_score(
             signal_events,
             big_wins,

@@ -468,6 +468,120 @@ class SelectionEngineV13Test(unittest.TestCase):
         self.assertEqual(rows["SPOON-USDT-SWAP"].features["symbol_selection_tag"], "catch_up_short_hold")
         self.assertNotIn("leader_altcoin", rows["SPOON-USDT-SWAP"].reason_codes)
 
+    def test_wyckoff_long_confirmation_boosts_long_board(self):
+        engine = SelectionEngine(
+            SymbolSelectionConfig(enabled=True, style="dual_board", long_top_n=2, short_top_n=0)
+        )
+        snapshots = {
+            "BTC-USDT-SWAP": snapshot("BTC-USDT-SWAP", ret_20d=0.08, ret_60d=0.20, ret_7d=0.02),
+            "ETH-USDT-SWAP": snapshot("ETH-USDT-SWAP", ret_20d=0.05, ret_60d=0.14, ret_7d=0.01),
+            "WYCK-LONG-USDT-SWAP": snapshot(
+                "WYCK-LONG-USDT-SWAP",
+                ret_3d=0.03,
+                ret_7d=0.07,
+                ret_20d=0.16,
+                ret_60d=0.38,
+                pos_20d=0.50,
+                pullback_from_20d_high=-0.06,
+                vol_ratio_20d=1.2,
+                upside_space_pct=0.24,
+                latest_close=109.0,
+                ma_5=104.0,
+                ma_20=110.0,
+                wyckoff_phase_tag="accumulation",
+                wyckoff_long_setup_tag="spring_reclaim",
+                wyckoff_long_score=0.72,
+                h1_wyckoff_long_score=0.52,
+                wyckoff_reason_codes=["wyckoff_spring_reclaim"],
+            ),
+            "PLAIN-USDT-SWAP": snapshot(
+                "PLAIN-USDT-SWAP",
+                ret_3d=0.02,
+                ret_7d=0.04,
+                ret_20d=0.15,
+                ret_60d=0.34,
+                pos_20d=0.48,
+                pullback_from_20d_high=-0.04,
+                vol_ratio_20d=1.1,
+            ),
+        }
+
+        boards = engine.rank_all_market(snapshots)
+        rows = {row.symbol: row for row in boards["long_main_wave"]}
+
+        self.assertTrue(rows["WYCK-LONG-USDT-SWAP"].selected)
+        self.assertIn("wyckoff_long_confirmed", rows["WYCK-LONG-USDT-SWAP"].reason_codes)
+        self.assertIn("wyckoff_trend_substitute_candidate", rows["WYCK-LONG-USDT-SWAP"].reason_codes)
+        self.assertNotIn("incomplete_long_main_wave_structure", rows["WYCK-LONG-USDT-SWAP"].filter_codes)
+
+    def test_wyckoff_short_confirmation_adds_short_board_reason(self):
+        engine = SelectionEngine(
+            SymbolSelectionConfig(enabled=True, style="dual_board", long_top_n=0, short_top_n=2)
+        )
+        snapshots = {
+            "BTC-USDT-SWAP": snapshot("BTC-USDT-SWAP", ret_20d=0.08, ret_60d=0.20, ret_7d=0.02),
+            "ETH-USDT-SWAP": snapshot("ETH-USDT-SWAP", ret_20d=0.05, ret_60d=0.14, ret_7d=0.01),
+            "WYCK-SHORT-USDT-SWAP": snapshot(
+                "WYCK-SHORT-USDT-SWAP",
+                ret_3d=-0.03,
+                ret_7d=-0.08,
+                ret_20d=-0.12,
+                ret_60d=0.10,
+                pos_20d=0.34,
+                vol_ratio_20d=1.4,
+                latest_close=92.0,
+                ma_5=95.0,
+                ma_20=100.0,
+                wyckoff_phase_tag="distribution",
+                wyckoff_short_setup_tag="sow_breakdown",
+                wyckoff_short_score=0.74,
+                m15_wyckoff_short_score=0.50,
+                wyckoff_reason_codes=["wyckoff_sow_breakdown"],
+            ),
+        }
+
+        boards = engine.rank_all_market(snapshots)
+        rows = {row.symbol: row for row in boards["short_waterfall"]}
+
+        self.assertTrue(rows["WYCK-SHORT-USDT-SWAP"].selected)
+        self.assertIn("wyckoff_short_confirmed", rows["WYCK-SHORT-USDT-SWAP"].reason_codes)
+        self.assertEqual(rows["WYCK-SHORT-USDT-SWAP"].features["symbol_selection_tag"], "short_waterfall")
+
+    def test_wyckoff_distribution_risk_penalizes_long_score(self):
+        engine = SelectionEngine(
+            SymbolSelectionConfig(enabled=True, style="dual_board", long_top_n=2, short_top_n=0)
+        )
+        common = dict(
+            ret_3d=0.06,
+            ret_7d=0.15,
+            ret_20d=0.42,
+            ret_60d=0.86,
+            pos_20d=0.78,
+            pullback_from_20d_high=-0.04,
+            vol_ratio_20d=1.4,
+            upside_space_pct=0.30,
+        )
+        snapshots = {
+            "BTC-USDT-SWAP": snapshot("BTC-USDT-SWAP", ret_20d=0.08, ret_60d=0.20, ret_7d=0.02),
+            "ETH-USDT-SWAP": snapshot("ETH-USDT-SWAP", ret_20d=0.05, ret_60d=0.14, ret_7d=0.01),
+            "HEALTHY-USDT-SWAP": snapshot("HEALTHY-USDT-SWAP", **common),
+            "DISTRIBUTION-USDT-SWAP": snapshot(
+                "DISTRIBUTION-USDT-SWAP",
+                **common,
+                wyckoff_phase_tag="distribution",
+                wyckoff_risk_score=0.74,
+                wyckoff_exit_score=0.72,
+                wyckoff_exit_tag="utad_risk",
+                wyckoff_reason_codes=["wyckoff_utad_risk", "wyckoff_effort_result_divergence"],
+            ),
+        }
+
+        boards = engine.rank_all_market(snapshots)
+        rows = {row.symbol: row for row in boards["long_main_wave"]}
+
+        self.assertIn("wyckoff_distribution_risk", rows["DISTRIBUTION-USDT-SWAP"].filter_codes)
+        self.assertLess(rows["DISTRIBUTION-USDT-SWAP"].selection_score, rows["HEALTHY-USDT-SWAP"].selection_score)
+
 
 if __name__ == "__main__":
     unittest.main()
