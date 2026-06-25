@@ -500,6 +500,17 @@ class FleetRunner:
                     signal = strategy.generate_from_features(snapshot)
                     if signal is None:
                         continue
+                    if self.market_snapshot_cache is not None:
+                        self.market_snapshot_cache.write_snapshot(
+                            run_id=self.config.run_id,
+                            phase="signal",
+                            symbol=symbol,
+                            bar=snapshot.bar,
+                            last_ts=snapshot.last_ts,
+                            features=snapshot.features,
+                            full=True,
+                            update_latest=False,
+                        )
                     signal_id = bot_ledger.record_signal(signal, bot_strategy_version)
                     cycle["signals"] += 1
                     intent = risk_engine.intent_from_signal(
@@ -930,6 +941,7 @@ class FleetRunner:
     ) -> None:
         if self.market_snapshot_cache is None:
             return
+        open_position_symbols = _open_position_symbols(self.ledger, self.config.run_id)
         for symbol, snapshot in sorted(snapshots_by_symbol.items()):
             selection_result = _best_selection_result(
                 selection_results.get(symbol),
@@ -943,6 +955,12 @@ class FleetRunner:
                 bar=enriched.bar,
                 last_ts=enriched.last_ts,
                 features=enriched.features,
+                full=_requires_full_market_snapshot(
+                    symbol=symbol,
+                    features=enriched.features,
+                    selection_result=selection_result,
+                    open_position_symbols=open_position_symbols,
+                ),
             )
 
     def _record_market_cache_stats(self, cycle: dict[str, int], *, before: dict[str, int] | None = None) -> None:
@@ -1125,6 +1143,56 @@ def _best_selection_result(left: Any | None, right: Any | None) -> Any | None:
     if right is None:
         return left
     return left if left.selection_score >= right.selection_score else right
+
+
+def _requires_full_market_snapshot(
+    *,
+    symbol: str,
+    features: dict[str, Any],
+    selection_result: Any | None,
+    open_position_symbols: set[str],
+) -> bool:
+    if symbol in open_position_symbols:
+        return True
+    if bool(getattr(selection_result, "selected", False)):
+        return True
+    if _float(features.get("strong_pattern_score")) >= 0.65:
+        return True
+    if _float(features.get("risk_pattern_score")) >= 0.65:
+        return True
+    if _float(features.get("wyckoff_long_score")) >= 0.68:
+        return True
+    if _float(features.get("wyckoff_short_score")) >= 0.70:
+        return True
+    if _float(features.get("wyckoff_risk_score")) >= 0.70:
+        return True
+    if _float(features.get("wyckoff_exit_score")) >= 0.70:
+        return True
+    return _has_market_snapshot_diagnostics(features)
+
+
+def _has_market_snapshot_diagnostics(features: dict[str, Any]) -> bool:
+    flags = features.get("data_quality_flags")
+    if flags:
+        return True
+    for key, value in features.items():
+        if _empty_diagnostic_value(value):
+            continue
+        if "market_data_error" in key or "partial_bar_error" in key:
+            return True
+    return False
+
+
+def _empty_diagnostic_value(value: Any) -> bool:
+    return value is None or value == "" or value == [] or value == {}
+
+
+def _open_position_symbols(ledger: Ledger, run_id: str) -> set[str]:
+    try:
+        rows = ledger.list_rows("positions", run_id=run_id)
+    except Exception:
+        return set()
+    return {str(row["symbol"]) for row in rows if _float(row.get("qty")) > 0}
 
 
 def _bot_allowed_side(variant: Any) -> str:

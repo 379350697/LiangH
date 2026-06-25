@@ -1,4 +1,5 @@
 import csv
+import gzip
 import json
 import tempfile
 import unittest
@@ -159,11 +160,14 @@ class RuntimeMarketCacheTest(unittest.TestCase):
             self.assertEqual(market.stats["tail_fetch_empty"], 1)
             self.assertEqual(market.stats["cache_stale_served"], 1)
 
-    def test_market_snapshot_cache_persists_selection_shape_and_wyckoff_features(self):
+    def test_market_snapshot_cache_writes_lightweight_summary_full_and_latest(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cache = MarketSnapshotCache(Path(tmp) / "market_snapshots")
+            cache = MarketSnapshotCache(
+                Path(tmp) / "market_snapshots",
+                now_ms=lambda: 1_700_000_000_000,
+            )
 
-            path = cache.write_snapshot(
+            paths = cache.write_snapshot(
                 run_id="paper-run",
                 phase="selection",
                 symbol="BTC-USDT-SWAP",
@@ -175,14 +179,73 @@ class RuntimeMarketCacheTest(unittest.TestCase):
                     "strong_pattern_score": 0.72,
                     "wyckoff_long_setup_tag": "spring_reclaim",
                     "wyckoff_long_score": 0.74,
+                    "ema_12": 100.0,
                 },
+                full=True,
             )
 
-            rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
-            self.assertEqual(rows[0]["run_id"], "paper-run")
-            self.assertEqual(rows[0]["symbol"], "BTC-USDT-SWAP")
-            self.assertEqual(rows[0]["features"]["strong_pattern_tag"], "golden_pit_reclaim")
-            self.assertEqual(rows[0]["features"]["wyckoff_long_setup_tag"], "spring_reclaim")
+            summary_rows = [json.loads(line) for line in paths["summary"].read_text(encoding="utf-8").splitlines()]
+            full_rows = [json.loads(line) for line in paths["full"].read_text(encoding="utf-8").splitlines()]
+            latest = json.loads(paths["latest"].read_text(encoding="utf-8"))
+            self.assertEqual(paths["summary"].name, "2023-11-14.jsonl")
+            self.assertIn("summary", paths["summary"].parts)
+            self.assertIn("full", paths["full"].parts)
+            self.assertEqual(summary_rows[0]["run_id"], "paper-run")
+            self.assertEqual(summary_rows[0]["symbol"], "BTC-USDT-SWAP")
+            self.assertEqual(summary_rows[0]["features"]["strong_pattern_tag"], "golden_pit_reclaim")
+            self.assertEqual(summary_rows[0]["features"]["wyckoff_long_setup_tag"], "spring_reclaim")
+            self.assertNotIn("ema_12", summary_rows[0]["features"])
+            self.assertEqual(full_rows[0]["features"]["ema_12"], 100.0)
+            self.assertEqual(latest["symbol"], "BTC-USDT-SWAP")
+            self.assertEqual(latest["features"]["strong_pattern_tag"], "golden_pit_reclaim")
+
+    def test_market_snapshot_cache_skips_full_for_ordinary_symbols(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = MarketSnapshotCache(
+                Path(tmp) / "market_snapshots",
+                now_ms=lambda: 1_700_000_000_000,
+            )
+
+            paths = cache.write_snapshot(
+                run_id="paper-run",
+                phase="selection",
+                symbol="QUIET-USDT-SWAP",
+                bar="multi",
+                last_ts=1_700_000_000_000,
+                features={"ret_20d": 0.02, "ema_12": 10.0},
+                full=False,
+            )
+
+            self.assertIn("summary", paths)
+            self.assertIn("latest", paths)
+            self.assertNotIn("full", paths)
+            self.assertFalse((Path(tmp) / "market_snapshots" / "full").exists())
+
+    def test_market_snapshot_cache_compresses_old_daily_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "market_snapshots"
+            old_summary = root / "summary" / "2023-11-13.jsonl"
+            old_summary.parent.mkdir(parents=True)
+            old_summary.write_text('{"old": true}\n', encoding="utf-8")
+            cache = MarketSnapshotCache(
+                root,
+                now_ms=lambda: 1_700_000_000_000,
+            )
+
+            cache.write_snapshot(
+                run_id="paper-run",
+                phase="selection",
+                symbol="BTC-USDT-SWAP",
+                bar="multi",
+                last_ts=1_700_000_000_000,
+                features={"ret_20d": 0.1},
+            )
+
+            compressed = root / "summary" / "2023-11-13.jsonl.gz"
+            self.assertFalse(old_summary.exists())
+            self.assertTrue(compressed.exists())
+            with gzip.open(compressed, "rt", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), '{"old": true}\n')
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import tempfile
 import threading
 import time
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 from langlang_trader.config import ExecutionConfig, MarketDataConfig, PaperConfig, RiskConfig, SymbolSelectionConfig, UniverseConfig
@@ -280,11 +281,26 @@ class FleetRunnerTest(unittest.TestCase):
 
             runner.run_once()
 
-            snapshot_path = os.path.join(tmp, "kline_cache", "market_snapshots", "unit-market-snapshot-run.jsonl")
-            with open(snapshot_path, encoding="utf-8") as handle:
+            snapshot_root = os.path.join(tmp, "kline_cache", "market_snapshots")
+            summary_paths = list((Path(snapshot_root) / "summary").glob("*.jsonl"))
+            full_paths = list((Path(snapshot_root) / "full").glob("*.jsonl"))
+            latest_path = Path(snapshot_root) / "latest" / "STRONG-USDT-SWAP.json"
+            self.assertEqual(len(summary_paths), 1)
+            self.assertEqual(len(full_paths), 1)
+            with open(summary_paths[0], encoding="utf-8") as handle:
                 rows = [json.loads(line) for line in handle]
-            self.assertEqual(len(rows), 1)
-            features = rows[0]["features"]
+            with open(full_paths[0], encoding="utf-8") as handle:
+                full_rows = [json.loads(line) for line in handle]
+            self.assertGreaterEqual(len(rows), 1)
+            self.assertGreaterEqual(len(full_rows), 1)
+            self.assertTrue(latest_path.exists())
+            selection_rows = [row for row in rows if row["phase"] == "selection"]
+            signal_rows = [row for row in full_rows if row["phase"] == "signal"]
+            self.assertEqual(len(selection_rows), 1)
+            self.assertGreaterEqual(len(signal_rows), 1)
+            latest = json.loads(latest_path.read_text(encoding="utf-8"))
+            self.assertEqual(latest["phase"], "selection")
+            features = selection_rows[0]["features"]
             self.assertIn("selection_reason_codes", features)
             self.assertIn("strong_pattern_tag", features)
             self.assertIn("wyckoff_phase_tag", features)
@@ -292,6 +308,7 @@ class FleetRunnerTest(unittest.TestCase):
             self.assertEqual(features["turnover_rank"], 7)
             self.assertEqual(features["turnover_rank_top_n"], 200)
             self.assertGreater(features["liquidity_score"], 0.9)
+            self.assertIn("ema_12", full_rows[0]["features"])
 
     def test_selected_symbol_runtime_market_metrics_are_cached_and_persisted(self):
         from langlang_trader.models import OrderBook, OrderBookLevel, Ticker, utc_now_iso
@@ -398,10 +415,12 @@ class FleetRunnerTest(unittest.TestCase):
 
             runner.run_once()
 
-            snapshot_path = os.path.join(tmp, "kline_cache", "market_snapshots", "unit-runtime-metrics-run.jsonl")
-            with open(snapshot_path, encoding="utf-8") as handle:
+            snapshot_root = Path(tmp) / "kline_cache" / "market_snapshots"
+            full_paths = list((snapshot_root / "full").glob("*.jsonl"))
+            self.assertEqual(len(full_paths), 1)
+            with open(full_paths[0], encoding="utf-8") as handle:
                 rows = [json.loads(line) for line in handle]
-            features = rows[0]["features"]
+            features = [row for row in rows if row["phase"] == "selection"][0]["features"]
             self.assertEqual(features["funding_rate_last"], 0.0003)
             self.assertEqual(features["funding_rate_status"], "available")
             self.assertEqual(features["open_interest_usd"], 25_000_000.0)

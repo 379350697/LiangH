@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import csv
+from datetime import datetime, timedelta, timezone
+import gzip
 import json
 import math
 import time
@@ -100,9 +102,88 @@ class RollingKlineCacheMarketData:
         return max(1, min(requested_limit, max(missing_by_count, missing_by_time) + self.fetch_buffer_bars))
 
 
+SUMMARY_FEATURE_KEYS = {
+    "requested_side",
+    "selection_board",
+    "selection_bias",
+    "selection_score",
+    "long_selection_score",
+    "short_selection_score",
+    "selection_reason_codes",
+    "filter_codes",
+    "ret_3d",
+    "ret_7d",
+    "ret_20d",
+    "ret_60d",
+    "pos_20d",
+    "vol_ratio_20d",
+    "liquidity_score",
+    "funding_rate_last",
+    "funding_rate_status",
+    "oi_change_3d",
+    "open_interest_status",
+    "open_interest_usd",
+    "open_interest_change_24h",
+    "market_cap_status",
+    "market_cap_usd",
+    "book_depth_usdt_1pct",
+    "book_depth_usdt_2pct",
+    "spread_bps",
+    "turnover_usdt",
+    "turnover_rank",
+    "turnover_rank_top_n",
+    "strong_pattern_tag",
+    "risk_pattern_tag",
+    "strong_pattern_score",
+    "risk_pattern_score",
+    "pattern_reason_codes",
+    "strong_pattern_reason_codes",
+    "risk_pattern_reason_codes",
+    "leader_platform_start_score",
+    "golden_pit_reclaim_score",
+    "small_divergence_absorb_score",
+    "second_wave_start_score",
+    "spoon_bottom_confirmed_score",
+    "five_wave_late_risk_score",
+    "false_breakout_risk_score",
+    "leader_platform_start_reason_codes",
+    "golden_pit_reclaim_reason_codes",
+    "small_divergence_absorb_reason_codes",
+    "second_wave_start_reason_codes",
+    "spoon_bottom_confirmed_reason_codes",
+    "five_wave_late_risk_reason_codes",
+    "false_breakout_risk_reason_codes",
+    "wyckoff_phase_tag",
+    "wyckoff_long_setup_tag",
+    "wyckoff_short_setup_tag",
+    "wyckoff_exit_tag",
+    "wyckoff_long_score",
+    "wyckoff_short_score",
+    "wyckoff_risk_score",
+    "wyckoff_exit_score",
+    "wyckoff_reason_codes",
+    "wyckoff_long_reason_codes",
+    "wyckoff_short_reason_codes",
+    "wyckoff_risk_reason_codes",
+    "wyckoff_exit_reason_codes",
+    "market_data_cache_status",
+    "market_metrics_cache_status",
+    "data_quality_flags",
+}
+
+
 class MarketSnapshotCache:
-    def __init__(self, cache_dir: str | Path):
+    def __init__(
+        self,
+        cache_dir: str | Path,
+        *,
+        now_ms: Callable[[], int] | None = None,
+        retention_days: int = 30,
+    ):
         self.cache_dir = Path(cache_dir)
+        self.now_ms = now_ms or (lambda: int(time.time() * 1000))
+        self.retention_days = max(1, int(retention_days))
+        self._compressed_for_date: str | None = None
 
     def write_snapshot(
         self,
@@ -113,21 +194,71 @@ class MarketSnapshotCache:
         bar: str,
         last_ts: int,
         features: dict[str, Any],
-    ) -> Path:
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        path = self.cache_dir / f"{_safe_name(run_id)}.jsonl"
-        row = {
+        full: bool = False,
+        update_latest: bool = True,
+    ) -> dict[str, Path]:
+        created_at_ms = self.now_ms()
+        day_key = _day_key(created_at_ms)
+        self._compress_old_files(day_key)
+        row_base = {
             "run_id": run_id,
             "phase": phase,
             "symbol": symbol,
             "bar": bar,
             "last_ts": last_ts,
-            "features": _json_safe(features),
-            "created_at_ms": int(time.time() * 1000),
+            "created_at_ms": created_at_ms,
         }
+        summary_row = {
+            **row_base,
+            "features": _json_safe(_summary_features(features)),
+        }
+        paths: dict[str, Path] = {}
+        summary_path = self._append_row("summary", day_key, summary_row)
+        paths["summary"] = summary_path
+        if update_latest:
+            paths["latest"] = self._write_latest(symbol, summary_row)
+        if full:
+            full_row = {
+                **row_base,
+                "features": _json_safe(features),
+            }
+            paths["full"] = self._append_row("full", day_key, full_row)
+        return paths
+
+    def _append_row(self, kind: str, day_key: str, row: dict[str, Any]) -> Path:
+        path = self.cache_dir / kind / f"{day_key}.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
         return path
+
+    def _write_latest(self, symbol: str, row: dict[str, Any]) -> Path:
+        path = self.cache_dir / "latest" / f"{_safe_name(symbol)}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+        return path
+
+    def _compress_old_files(self, current_day: str) -> None:
+        if self._compressed_for_date == current_day:
+            return
+        self._compressed_for_date = current_day
+        cutoff = datetime.strptime(current_day, "%Y-%m-%d").replace(tzinfo=timezone.utc) - timedelta(days=self.retention_days)
+        for kind in ("summary", "full"):
+            directory = self.cache_dir / kind
+            if not directory.exists():
+                continue
+            for path in directory.glob("*.jsonl"):
+                if path.name == f"{current_day}.jsonl":
+                    continue
+                _gzip_file(path)
+            for path in directory.glob("*.jsonl.gz"):
+                day = path.name[:10]
+                try:
+                    file_day = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+                if file_day < cutoff:
+                    path.unlink(missing_ok=True)
 
 
 class MarketMetricsCache:
@@ -158,12 +289,13 @@ class MarketMetricsCache:
 
     def put(self, symbol: str, metrics: dict[str, Any]) -> Path:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        path = self._path(symbol)
         row = {
             "symbol": symbol,
             "created_at_ms": self.now_ms(),
             "metrics": _json_safe(metrics),
         }
+        path = self._path(symbol)
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
         return path
 
@@ -252,6 +384,42 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return str(value)
+
+
+def _day_key(ts_ms: int) -> str:
+    return datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+
+
+def _summary_features(features: dict[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for key, value in features.items():
+        if key in SUMMARY_FEATURE_KEYS or _is_diagnostic_feature(key):
+            summary[key] = value
+    return summary
+
+
+def _is_diagnostic_feature(key: str) -> bool:
+    return (
+        key.endswith("_error")
+        or key.endswith("_errors")
+        or key.endswith("_status")
+        or "partial_bar_error" in key
+        or "data_quality" in key
+    )
+
+
+def _gzip_file(path: Path) -> None:
+    gz_path = path.with_suffix(path.suffix + ".gz")
+    if gz_path.exists():
+        path.unlink(missing_ok=True)
+        return
+    with path.open("rb") as src, gzip.open(gz_path, "wb") as dst:
+        while True:
+            chunk = src.read(1024 * 1024)
+            if not chunk:
+                break
+            dst.write(chunk)
+    path.unlink(missing_ok=True)
 
 
 def _safe_name(value: str) -> str:
