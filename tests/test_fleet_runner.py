@@ -394,6 +394,19 @@ class FleetRunnerTest(unittest.TestCase):
         )
         self.assertEqual(len(set(profiles_by_bot.values())), 10)
 
+    def test_fleet_config_loads_langlang_10bot_clean_run(self):
+        config = load_fleet_config("configs/fleet/selected_fleet_config_langlang_10bot_clean.json")
+
+        self.assertEqual(config.run_id, "langlang-paper-clean-v1")
+        self.assertEqual(config.ledger_path, "output/fleet/langlang_strategy_forest/clean/fleet_clean.sqlite3")
+        self.assertEqual(config.universe.snapshot_path, "output/fleet/langlang_strategy_forest/clean/universe_snapshot.json")
+        self.assertEqual(config.execution.executor, "paper_multi")
+        self.assertFalse(config.execution.allow_live_orders)
+        self.assertEqual(config.risk.max_open_positions, 3)
+        self.assertEqual(config.risk.max_open_symbols, 3)
+        self.assertEqual(len(config.bots), 10)
+        self.assertEqual({bot.strategy_version for bot in config.bots}, {"rules_langlang_native_final", "rules_langlang_enhanced_final"})
+
     def test_dual_board_selection_is_computed_per_bot_profile(self):
         snapshots = {
             "BTC-USDT-SWAP": feature_snapshot("BTC-USDT-SWAP"),

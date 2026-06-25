@@ -43,6 +43,22 @@ python3 -m langlang_trader.fleet_cli \
   --loop
 ```
 
+8 小时旧 run 中曾存在旧配置留下的超额持仓，所以后续因子评估应使用干净账本配置 `configs/fleet/selected_fleet_config_langlang_10bot_clean.json`。它保留同一 10 bot 因子和 W 仓位模型，但使用 `run_id=langlang-paper-clean-v1`、独立账本 `output/fleet/langlang_strategy_forest/clean/fleet_clean.sqlite3`，用于从 0 仓位开始观察 24-72 小时后再调整因子：
+
+```bash
+python3 -m langlang_trader.fleet_cli \
+  --config configs/fleet/selected_fleet_config_langlang_10bot_clean.json \
+  --loop \
+  --interval-seconds 300
+
+python3 -m langlang_trader.fleet_report \
+  --ledger output/fleet/langlang_strategy_forest/clean/fleet_clean.sqlite3 \
+  --run-id langlang-paper-clean-v1 \
+  --out-dir output/fleet/langlang_strategy_forest/clean/reports
+```
+
+`fleet_report` 会写入 `latest.md` 和 `latest.json`，按 bot 汇总信号数、开仓/平仓、当前持仓、手续费、净权益变化和风控拒绝分布；权益只读取 `exchange=multi` 的汇总快照，避免 OKX/Binance 子账户快照重复计数。
+
 优化器输出 `leaderboard.csv`、`selected_fleet_config.json`、`optimizer_report.md`。Fleet 支持 `paper_okx` 和 `paper_multi`；真实仓仍需要单独显式授权，不会批量开启 live。
 
 `selected_fleet_config.json` 默认启用轻量筛币层：

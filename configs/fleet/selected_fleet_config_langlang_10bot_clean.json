@@ -1,0 +1,228 @@
+{
+  "run_id": "langlang-paper-clean-v1",
+  "strategy_version": "rules_langlang_native_final",
+  "historical_patterns_path": "output/langlang_distill/historical_patterns.csv",
+  "ledger_path": "output/fleet/langlang_strategy_forest/clean/fleet_clean.sqlite3",
+  "execution": {
+    "mode": "paper",
+    "exchange": "multi",
+    "executor": "paper_multi",
+    "allow_live_orders": false
+  },
+  "paper": {
+    "initial_equity_usdt": 10000.0,
+    "fee_bps": 5.0,
+    "slippage_bps": 10.0
+  },
+  "risk": {
+    "position_sizing_mode": "langlang_w_unit",
+    "active_capital_fraction": 0.3,
+    "max_position_usdt": 5000.0,
+    "max_total_position_usdt": 25000.0,
+    "max_open_positions": 3,
+    "max_open_symbols": 3,
+    "max_daily_loss_usdt": 300.0,
+    "default_leverage": 5,
+    "alt_leverage": 5,
+    "reference_leverage": 10,
+    "max_slippage_bps": 10.0,
+    "min_signal_strength": 0.35
+  },
+  "market_data": {
+    "symbols": [],
+    "bars": ["1m", "5m", "15m", "1H", "1D"],
+    "candle_limit": 120,
+    "max_fetch_workers": 4
+  },
+  "universe": {
+    "mode": "okx_binance_usdt_swap_observe",
+    "provider": "okx_binance",
+    "exclude_reference_symbols": true,
+    "reference_symbols": ["BTC-USDT-SWAP", "ETH-USDT-SWAP"],
+    "snapshot_path": "output/fleet/langlang_strategy_forest/clean/universe_snapshot.json",
+    "liquidity_top_n": 200
+  },
+  "selection": {
+    "enabled": true,
+    "top_n": 0,
+    "min_score": 0.0,
+    "min_daily_bars": 61,
+    "style": "dual_board",
+    "scoring_profile": "enhanced",
+    "long_top_n": 60,
+    "short_top_n": 40,
+    "min_long_score": 0.0,
+    "min_short_score": 0.0
+  },
+  "routing": {
+    "shared_symbol_policy": "binance_first"
+  },
+  "bots": [
+    {
+      "bot_id": "bot_langlang_01",
+      "strategy_version": "rules_langlang_native_final",
+      "selection_profile": "langlang_01",
+      "variant": {
+        "variant_id": "langlang_01",
+        "allowed_side": "both",
+        "ret_20d_min": 0.18,
+        "ret_60d_min": 0.42,
+        "min_upside_space_pct": 0.08,
+        "leader_only_long": true,
+        "enable_countertrend_short": false
+      }
+    },
+    {
+      "bot_id": "bot_langlang_plus_01",
+      "strategy_version": "rules_langlang_enhanced_final",
+      "selection_profile": "langlang_plus_01",
+      "variant": {
+        "variant_id": "langlang_plus_01",
+        "allowed_side": "both",
+        "exploratory": true,
+        "ret_20d_min": 0.18,
+        "ret_60d_min": 0.42,
+        "min_upside_space_pct": 0.08,
+        "leader_only_long": true,
+        "enable_countertrend_short": false,
+        "max_big_loss_overlap_count": 0,
+        "max_funding_rate_last": 0.015,
+        "max_turnover_rank_24h": 200,
+        "min_oi_expansion_3d": -0.35
+      }
+    },
+    {
+      "bot_id": "bot_langlang_01_select",
+      "strategy_version": "rules_langlang_native_final",
+      "selection_profile": "langlang_01_select",
+      "variant": {
+        "variant_id": "langlang_01_select",
+        "allowed_side": "long",
+        "ret_20d_min": 0.24,
+        "ret_60d_min": 0.55,
+        "min_upside_space_pct": 0.12,
+        "leader_only_long": true,
+        "enable_countertrend_short": false
+      }
+    },
+    {
+      "bot_id": "bot_langlang_01_entry",
+      "strategy_version": "rules_langlang_native_final",
+      "selection_profile": "langlang_01_entry",
+      "variant": {
+        "variant_id": "langlang_01_entry",
+        "allowed_side": "long",
+        "intraday_confirm_ret_min": 0.006,
+        "breakout_tolerance": 0.004,
+        "min_pullback_pct": 0.025,
+        "max_pullback_pct": 0.12,
+        "leader_only_long": true,
+        "enable_countertrend_short": false
+      }
+    },
+    {
+      "bot_id": "bot_langlang_01_exit",
+      "strategy_version": "rules_langlang_native_final",
+      "selection_profile": "langlang_01_exit",
+      "variant": {
+        "variant_id": "langlang_01_exit",
+        "allowed_side": "both",
+        "partial_take_profit_r": 2.8,
+        "runner_take_profit_r": 6.0,
+        "time_stop_days": 21,
+        "trend_break_buffer_pct": 0.015,
+        "leader_only_long": true,
+        "enable_countertrend_short": false
+      }
+    },
+    {
+      "bot_id": "bot_langlang_01_risk",
+      "strategy_version": "rules_langlang_native_final",
+      "selection_profile": "langlang_01_risk",
+      "variant": {
+        "variant_id": "langlang_01_risk",
+        "allowed_side": "both",
+        "structure_stop_pct": 0.055,
+        "high_position_reduce_pos": 0.82,
+        "high_position_size_multiplier": 0.45,
+        "max_small_divergence_count": 1,
+        "time_stop_days": 10,
+        "leader_only_long": true,
+        "enable_countertrend_short": false
+      }
+    },
+    {
+      "bot_id": "bot_langlang_plus_01_select",
+      "strategy_version": "rules_langlang_enhanced_final",
+      "selection_profile": "langlang_plus_01_select",
+      "variant": {
+        "variant_id": "langlang_plus_01_select",
+        "allowed_side": "long",
+        "exploratory": true,
+        "max_turnover_rank_24h": 120,
+        "min_vol_ratio_20d": 0.35,
+        "min_oi_expansion_3d": -0.15,
+        "max_big_loss_overlap_count": 0,
+        "max_funding_rate_last": 0.015,
+        "leader_only_long": true,
+        "enable_countertrend_short": false
+      }
+    },
+    {
+      "bot_id": "bot_langlang_plus_01_entry",
+      "strategy_version": "rules_langlang_enhanced_final",
+      "selection_profile": "langlang_plus_01_entry",
+      "variant": {
+        "variant_id": "langlang_plus_01_entry",
+        "allowed_side": "both",
+        "min_historical_match_score": 0.5,
+        "historical_match_score": 0.6,
+        "max_big_loss_overlap_count": 0,
+        "intraday_confirm_ret_min": 0.006,
+        "max_funding_rate_last": 0.015,
+        "max_turnover_rank_24h": 200,
+        "min_oi_expansion_3d": -0.35,
+        "leader_only_long": true,
+        "enable_countertrend_short": false
+      }
+    },
+    {
+      "bot_id": "bot_langlang_plus_01_exit",
+      "strategy_version": "rules_langlang_enhanced_final",
+      "selection_profile": "langlang_plus_01_exit",
+      "variant": {
+        "variant_id": "langlang_plus_01_exit",
+        "allowed_side": "both",
+        "exploratory": true,
+        "partial_take_profit_r": 2.8,
+        "runner_take_profit_r": 6.5,
+        "catch_up_runner_allowed": false,
+        "trend_break_buffer_pct": 0.018,
+        "time_stop_days": 21,
+        "max_big_loss_overlap_count": 0,
+        "max_funding_rate_last": 0.015,
+        "max_turnover_rank_24h": 200,
+        "min_oi_expansion_3d": -0.35,
+        "leader_only_long": true,
+        "enable_countertrend_short": false
+      }
+    },
+    {
+      "bot_id": "bot_langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_enhanced_final",
+      "selection_profile": "langlang_plus_01_loss",
+      "variant": {
+        "variant_id": "langlang_plus_01_loss",
+        "allowed_side": "both",
+        "max_funding_rate_last": 0.01,
+        "max_stop_loss_cluster_24h": 1,
+        "min_oi_expansion_3d": -0.1,
+        "structure_stop_pct": 0.055,
+        "max_turnover_rank_24h": 150,
+        "max_big_loss_overlap_count": 0,
+        "leader_only_long": true,
+        "enable_countertrend_short": false
+      }
+    }
+  ]
+}
