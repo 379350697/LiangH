@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from langlang_trader.config import ExecutionConfig, MarketDataConfig, PaperConfig, RiskConfig, SymbolSelectionConfig, UniverseConfig
 from langlang_trader.features import FeatureSnapshot
-from langlang_trader.fleet import BotConfig, FleetConfig, FleetRunner, _market_data_by_symbol, _selection_states_for_profiles, _with_selection_features, load_fleet_config
+from langlang_trader.fleet import BotConfig, FleetConfig, FleetRunner, _bot_allowed_side, _market_data_by_symbol, _selection_states_for_profiles, _with_selection_features, load_fleet_config
 from langlang_trader.ledger import Ledger
 from langlang_trader.market_data import FallbackMarketData, StaticMarketData
 from langlang_trader.models import Candle
@@ -75,6 +75,16 @@ def feature_snapshot(symbol: str, **features):
 
 
 class FleetRunnerTest(unittest.TestCase):
+    def test_bot_allowed_side_infers_v1_3_variant_prefixes(self):
+        self.assertEqual(
+            _bot_allowed_side(SimpleNamespace(variant_id="llv1_3_long_r20_0.24_space_0.10_hm_0.30")),
+            "long",
+        )
+        self.assertEqual(
+            _bot_allowed_side(SimpleNamespace(variant_id="llv1_3_short_r20_0.20_hm_0.25")),
+            "short",
+        )
+
     def test_with_selection_features_writes_requested_side_from_selection_bias(self):
         enriched = _with_selection_features(
             feature_snapshot("SHORT-USDT-SWAP"),

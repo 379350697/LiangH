@@ -1132,9 +1132,9 @@ def _bot_allowed_side(variant: Any) -> str:
     variant_id = str(getattr(variant, "variant_id", "")).lower()
     if allowed in {"long", "short"}:
         return allowed
-    if variant_id.startswith(("llv1_1_long_", "llv1_2_long_")):
+    if variant_id.startswith(("llv1_1_long_", "llv1_2_long_", "llv1_3_long_")):
         return "long"
-    if variant_id.startswith(("llv1_1_short_", "llv1_2_short_")):
+    if variant_id.startswith(("llv1_1_short_", "llv1_2_short_", "llv1_3_short_")):
         return "short"
     return "both"
 

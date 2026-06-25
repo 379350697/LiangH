@@ -1062,6 +1062,7 @@ def _write_payoff_distillation_artifacts(
                         "entry_position_id": entry_position_id,
                         "selection_reason_codes": selection_reason_codes,
                         "selection_filter_codes": selection_filter_codes,
+                        **_replay_side_features(str(trade.get("side", ""))),
                     },
                 )
             )
@@ -1314,6 +1315,22 @@ def _selection_filter_codes(features: dict[str, Any], wave_stage: str) -> list[s
     if _float(features.get("pullback_from_20d_high")) < -0.18:
         filters.append("structure_deep_pullback")
     return filters
+
+
+def _replay_side_features(side: str) -> dict[str, str]:
+    normalized = str(side or "").lower()
+    if normalized == "short":
+        return {
+            "requested_side": "short",
+            "selection_bias": "short",
+            "selection_mode": "short_waterfall",
+            "symbol_selection_tag": "short_waterfall",
+        }
+    return {
+        "requested_side": "long",
+        "selection_bias": "long",
+        "selection_mode": "long_main_wave",
+    }
 
 
 def _why_exit_or_hold(entry_position_id: str, outcome_label: str, return_rate: float) -> str:

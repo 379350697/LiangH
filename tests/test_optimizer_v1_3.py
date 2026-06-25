@@ -4,7 +4,7 @@ import os
 import tempfile
 import unittest
 
-from langlang_trader.optimize import HistoricalReplayOptimizer, OptimizerConfig, _rank_rows
+from langlang_trader.optimize import HistoricalReplayOptimizer, OptimizerConfig, _rank_rows, _replay_side_features
 from langlang_trader.strategy import LangLangV1_3Variant
 
 
@@ -41,6 +41,13 @@ def write_cache(cache_dir, symbol):
 
 
 class OptimizerV13Test(unittest.TestCase):
+    def test_replay_side_features_preserve_strategy_intent_for_short_trades(self):
+        features = _replay_side_features("short")
+
+        self.assertEqual(features["requested_side"], "short")
+        self.assertEqual(features["selection_bias"], "short")
+        self.assertEqual(features["selection_mode"], "short_waterfall")
+
     def test_v1_3_optimizer_prefers_nonzero_signal_variants_for_selection(self):
         rows = _rank_rows(
             [
