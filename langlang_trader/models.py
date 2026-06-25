@@ -84,6 +84,7 @@ class FailureFilter(str, Enum):
     BTC_DIVERGENCE_ALT_BREAKOUT = "btc_divergence_alt_breakout"
     COUNTER_TREND_SHORT_DISABLED = "counter_trend_short_disabled"
     FALSE_BREAKOUT_AFTER_CONTRACTION = "false_breakout_after_contraction"
+    FIVE_WAVE_LATE_RISK = "five_wave_late_risk"
     AUTUMN_WINTER_REDUCED_FREQUENCY = "autumn_winter_reduced_frequency"
     CATCH_UP_NO_RUNNER = "catch_up_no_runner"
     BOX_REBOUND_LOW_QUALITY = "box_rebound_low_quality"

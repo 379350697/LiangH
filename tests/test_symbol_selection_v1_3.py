@@ -299,6 +299,175 @@ class SelectionEngineV13Test(unittest.TestCase):
         self.assertGreater(select_leader.features["selection_profile_delta_long"], 0)
         self.assertLess(loss_crowded.features["selection_profile_delta_long"], 0)
 
+    def test_strong_positive_pattern_boosts_long_selection_and_structure(self):
+        engine = SelectionEngine(
+            SymbolSelectionConfig(enabled=True, style="dual_board", long_top_n=2, short_top_n=0)
+        )
+        snapshots = {
+            "BTC-USDT-SWAP": snapshot("BTC-USDT-SWAP", ret_20d=0.06, ret_60d=0.18, ret_7d=0.02),
+            "ETH-USDT-SWAP": snapshot("ETH-USDT-SWAP", ret_20d=0.04, ret_60d=0.12, ret_7d=0.01),
+            "PATTERN-USDT-SWAP": snapshot(
+                "PATTERN-USDT-SWAP",
+                ret_3d=0.02,
+                ret_7d=0.05,
+                ret_20d=0.16,
+                ret_60d=0.50,
+                pos_20d=0.62,
+                pullback_from_20d_high=-0.03,
+                vol_ratio_20d=1.0,
+                leader_platform_start_score=0.76,
+                strong_pattern_tag="leader_platform_start",
+                strong_pattern_score=0.76,
+                risk_pattern_score=0.0,
+                pattern_reason_codes=["leader_platform_start"],
+            ),
+            "PLAIN-USDT-SWAP": snapshot(
+                "PLAIN-USDT-SWAP",
+                ret_3d=0.01,
+                ret_7d=0.035,
+                ret_20d=0.13,
+                ret_60d=0.42,
+                pos_20d=0.58,
+                pullback_from_20d_high=-0.03,
+                vol_ratio_20d=1.0,
+            ),
+        }
+
+        boards = engine.rank_all_market(snapshots)
+        rows = {row.symbol: row for row in boards["long_main_wave"]}
+
+        self.assertTrue(rows["PATTERN-USDT-SWAP"].selected)
+        self.assertIn("leader_platform_start", rows["PATTERN-USDT-SWAP"].reason_codes)
+        self.assertGreater(rows["PATTERN-USDT-SWAP"].selection_score, rows["PLAIN-USDT-SWAP"].selection_score)
+        self.assertNotIn("incomplete_long_main_wave_structure", rows["PATTERN-USDT-SWAP"].filter_codes)
+
+    def test_risk_pattern_filters_and_penalizes_long_selection(self):
+        engine = SelectionEngine(
+            SymbolSelectionConfig(enabled=True, style="dual_board", long_top_n=2, short_top_n=0)
+        )
+        snapshots = {
+            "BTC-USDT-SWAP": snapshot("BTC-USDT-SWAP", ret_20d=0.08, ret_60d=0.20, ret_7d=0.02),
+            "ETH-USDT-SWAP": snapshot("ETH-USDT-SWAP", ret_20d=0.05, ret_60d=0.14, ret_7d=0.01),
+            "SAFE-USDT-SWAP": snapshot(
+                "SAFE-USDT-SWAP",
+                ret_3d=0.08,
+                ret_7d=0.18,
+                ret_20d=0.38,
+                ret_60d=0.80,
+                pos_20d=0.74,
+                pullback_from_20d_high=-0.04,
+                vol_ratio_20d=1.5,
+            ),
+            "RISK-USDT-SWAP": snapshot(
+                "RISK-USDT-SWAP",
+                ret_3d=0.08,
+                ret_7d=0.18,
+                ret_20d=0.38,
+                ret_60d=0.80,
+                pos_20d=0.74,
+                pullback_from_20d_high=-0.04,
+                vol_ratio_20d=1.5,
+                five_wave_late_risk_score=0.74,
+                risk_pattern_tag="five_wave_late_risk",
+                risk_pattern_score=0.74,
+                pattern_reason_codes=["five_wave_late_risk"],
+            ),
+        }
+
+        boards = engine.rank_all_market(snapshots)
+        rows = {row.symbol: row for row in boards["long_main_wave"]}
+
+        self.assertIn("five_wave_late_risk", rows["RISK-USDT-SWAP"].filter_codes)
+        self.assertLess(rows["RISK-USDT-SWAP"].selection_score, rows["SAFE-USDT-SWAP"].selection_score)
+
+    def test_strong_pattern_trend_substitute_candidate_is_labeled_in_selection(self):
+        engine = SelectionEngine(
+            SymbolSelectionConfig(enabled=True, style="dual_board", long_top_n=2, short_top_n=0)
+        )
+        snapshots = {
+            "BTC-USDT-SWAP": snapshot("BTC-USDT-SWAP", ret_20d=0.06, ret_60d=0.18, ret_7d=0.02),
+            "ETH-USDT-SWAP": snapshot("ETH-USDT-SWAP", ret_20d=0.04, ret_60d=0.12, ret_7d=0.01),
+            "PIT-USDT-SWAP": snapshot(
+                "PIT-USDT-SWAP",
+                ret_3d=0.03,
+                ret_7d=0.06,
+                ret_20d=0.10,
+                ret_60d=0.36,
+                pos_20d=0.48,
+                pullback_from_20d_high=-0.06,
+                vol_ratio_20d=1.2,
+                latest_close=109.0,
+                ma_5=104.0,
+                ma_20=110.0,
+                golden_pit_reclaim_score=0.78,
+                strong_pattern_tag="golden_pit_reclaim",
+                strong_pattern_score=0.78,
+                h1_golden_pit_reclaim_score=0.50,
+                pattern_reason_codes=["golden_pit_fast_reclaim"],
+            ),
+            "PLAIN-USDT-SWAP": snapshot(
+                "PLAIN-USDT-SWAP",
+                ret_3d=0.02,
+                ret_7d=0.04,
+                ret_20d=0.09,
+                ret_60d=0.30,
+                pos_20d=0.46,
+                pullback_from_20d_high=-0.04,
+                vol_ratio_20d=1.2,
+            ),
+        }
+
+        boards = engine.rank_all_market(snapshots)
+        rows = {row.symbol: row for row in boards["long_main_wave"]}
+
+        self.assertTrue(rows["PIT-USDT-SWAP"].selected)
+        self.assertIn("golden_pit_reclaim", rows["PIT-USDT-SWAP"].reason_codes)
+        self.assertIn("strong_pattern_trend_substitute_candidate", rows["PIT-USDT-SWAP"].reason_codes)
+        self.assertNotIn("incomplete_long_main_wave_structure", rows["PIT-USDT-SWAP"].filter_codes)
+
+    def test_spoon_bottom_stays_catch_up_even_when_numeric_leader_conditions_match(self):
+        engine = SelectionEngine(
+            SymbolSelectionConfig(enabled=True, style="dual_board", long_top_n=2, short_top_n=0)
+        )
+        snapshots = {
+            "BTC-USDT-SWAP": snapshot("BTC-USDT-SWAP", ret_20d=0.08, ret_60d=0.20, ret_7d=0.02),
+            "ETH-USDT-SWAP": snapshot("ETH-USDT-SWAP", ret_20d=0.05, ret_60d=0.14, ret_7d=0.01),
+            "SPOON-USDT-SWAP": snapshot(
+                "SPOON-USDT-SWAP",
+                ret_3d=0.06,
+                ret_7d=0.14,
+                ret_20d=0.32,
+                ret_60d=0.52,
+                pos_20d=0.68,
+                pullback_from_20d_high=-0.04,
+                vol_ratio_20d=1.4,
+                upside_space_pct=0.30,
+                rel_btc=0.08,
+                spoon_bottom_confirmed_score=0.72,
+                strong_pattern_tag="spoon_bottom_confirmed",
+                strong_pattern_score=0.72,
+                pattern_reason_codes=["spoon_bottom_confirmed"],
+            ),
+            "PLAIN-USDT-SWAP": snapshot(
+                "PLAIN-USDT-SWAP",
+                ret_3d=0.02,
+                ret_7d=0.05,
+                ret_20d=0.12,
+                ret_60d=0.24,
+                pos_20d=0.52,
+                pullback_from_20d_high=-0.04,
+                vol_ratio_20d=1.0,
+            ),
+        }
+
+        boards = engine.rank_all_market(snapshots)
+        rows = {row.symbol: row for row in boards["long_main_wave"]}
+
+        self.assertIn("spoon_bottom_confirmed", rows["SPOON-USDT-SWAP"].reason_codes)
+        self.assertIn("catch_up_short_hold", rows["SPOON-USDT-SWAP"].reason_codes)
+        self.assertEqual(rows["SPOON-USDT-SWAP"].features["symbol_selection_tag"], "catch_up_short_hold")
+        self.assertNotIn("leader_altcoin", rows["SPOON-USDT-SWAP"].reason_codes)
+
 
 if __name__ == "__main__":
     unittest.main()

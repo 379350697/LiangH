@@ -5,6 +5,7 @@ from statistics import fmean
 from typing import Any
 
 from langlang_trader.models import Candle, utc_now_iso
+from langlang_trader.pattern_recognition import PatternConsensusScorer, StrongPatternDetector
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,8 @@ class DailyFeatureBuilder:
         avg_vol_20d = fmean(volumes[-20:]) if volumes[-20:] else 0.0
         vol_ratio_20d = latest.volume / avg_vol_20d if avg_vol_20d > 0 else 0.0
 
+        pattern_features = StrongPatternDetector().detect(rows)
+
         return FeatureSnapshot(
             symbol=symbol,
             bar=latest.bar,
@@ -76,6 +79,7 @@ class DailyFeatureBuilder:
                 "latest_close": latest.close,
                 "latest_volume": latest.volume,
                 "vol_ratio_20d": vol_ratio_20d,
+                **pattern_features,
             },
         )
 
@@ -94,6 +98,7 @@ class MultiTimeframeFeatureBuilder:
             ("m1", "1m", (15, 60, 120)),
         ):
             features.update(_bar_features(prefix, candles_by_bar.get(bar, []), windows))
+        features.update(PatternConsensusScorer().score(candles_by_bar))
 
         return FeatureSnapshot(
             symbol=symbol,

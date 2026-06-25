@@ -225,6 +225,7 @@ class SelectionEngine:
             )
             if not native_profile:
                 filter_codes.extend(_auxiliary_filter_codes(features))
+            filter_codes.extend(_pattern_filter_codes(features))
             penalty = _long_filter_penalty(filter_codes)
             if native_profile:
                 long_score = _clamp(
@@ -300,6 +301,20 @@ class SelectionEngine:
                 "oi_change_3d_pctile": oi_change_pctiles[symbol],
                 "long_selection_score": long_score,
                 "short_selection_score": short_score,
+                "leader_platform_start_score": _float(features.get("leader_platform_start_score")),
+                "golden_pit_reclaim_score": _float(features.get("golden_pit_reclaim_score")),
+                "small_divergence_absorb_score": _float(features.get("small_divergence_absorb_score")),
+                "second_wave_start_score": _float(features.get("second_wave_start_score")),
+                "spoon_bottom_confirmed_score": _float(features.get("spoon_bottom_confirmed_score")),
+                "five_wave_late_risk_score": _float(features.get("five_wave_late_risk_score")),
+                "false_breakout_risk_score": _float(features.get("false_breakout_risk_score")),
+                "strong_pattern_tag": features.get("strong_pattern_tag", ""),
+                "strong_pattern_score": _float(features.get("strong_pattern_score")),
+                "risk_pattern_tag": features.get("risk_pattern_tag", ""),
+                "risk_pattern_score": _float(features.get("risk_pattern_score")),
+                "pattern_reason_codes": features.get("pattern_reason_codes", []),
+                "strong_pattern_reason_codes": features.get("strong_pattern_reason_codes", []),
+                "risk_pattern_reason_codes": features.get("risk_pattern_reason_codes", []),
             }
             upside_space = _float(features.get("upside_space_pct"), 0.0)
             long_reasons = _long_reason_codes(
@@ -339,6 +354,7 @@ class SelectionEngine:
                 long_score = _clamp(long_score + 0.04)
             elif long_tag == "catch_up_short_hold":
                 long_score = _clamp(long_score - 0.04)
+            long_score = _clamp(long_score + _pattern_score_delta(features))
             short_reasons = _short_reason_codes(
                 ret_3d=ret_3d,
                 ret_7d=ret_7d,
@@ -747,6 +763,8 @@ def _has_required_structure(result: SymbolSelectionResult, required_structure: s
         return True
     reasons = set(result.reason_codes)
     if required_structure == "long_main_wave":
+        if reasons & {"leader_platform_start", "golden_pit_reclaim", "small_divergence_absorb", "second_wave_start"}:
+            return True
         if "main_wave_acceleration" in reasons:
             return True
         if "short_term_reclaim" in reasons and "breakout_retest_quality" in reasons:
@@ -795,6 +813,59 @@ def _long_filter_codes(
     return filters
 
 
+def _pattern_filter_codes(features: dict[str, Any]) -> list[str]:
+    filters: list[str] = []
+    if _float(features.get("five_wave_late_risk_score")) >= 0.70 or str(features.get("risk_pattern_tag", "")) == "five_wave_late_risk":
+        filters.append("five_wave_late_risk")
+    if _float(features.get("false_breakout_risk_score")) >= 0.65 or str(features.get("risk_pattern_tag", "")) == "false_breakout_risk":
+        filters.append("false_breakout_risk")
+    return filters
+
+
+def _pattern_score_delta(features: dict[str, Any]) -> float:
+    positive = max(
+        _float(features.get("leader_platform_start_score")),
+        _float(features.get("golden_pit_reclaim_score")),
+        _float(features.get("small_divergence_absorb_score")),
+        _float(features.get("second_wave_start_score")),
+        _float(features.get("spoon_bottom_confirmed_score")) * 0.55,
+    )
+    risk = max(
+        _float(features.get("five_wave_late_risk_score")),
+        _float(features.get("false_breakout_risk_score")),
+        _float(features.get("risk_pattern_score")),
+    )
+    return _clamp(0.12 * positive - 0.20 * risk, -0.30, 0.16)
+
+
+def _is_strong_pattern_trend_substitute_candidate(features: dict[str, Any]) -> bool:
+    tag = str(features.get("strong_pattern_tag", ""))
+    if tag not in {"leader_platform_start", "golden_pit_reclaim", "small_divergence_absorb", "second_wave_start"}:
+        return False
+    if _float(features.get("risk_pattern_score")) >= 0.65 or str(features.get("risk_pattern_tag", "")):
+        return False
+    latest_close = _float(features.get("latest_close"))
+    ma_20 = _float(features.get("ma_20"))
+    if ma_20 <= 0 or latest_close < ma_20 * 0.985:
+        return False
+    ret_20d = _float(features.get("ret_20d"))
+    ret_60d = _float(features.get("ret_60d"))
+    pos_20d = _float(features.get("pos_20d"), 0.5)
+    ma_5 = _float(features.get("ma_5"))
+    if ret_60d < 0.18 or pos_20d < 0.38:
+        return False
+    if tag == "leader_platform_start" and _float(features.get("leader_platform_start_score")) < 0.70:
+        return False
+    if tag == "golden_pit_reclaim" and _float(features.get("golden_pit_reclaim_score")) < 0.70:
+        return False
+    if tag == "small_divergence_absorb" and _float(features.get("small_divergence_absorb_score")) < 0.65:
+        return False
+    if tag == "second_wave_start" and _float(features.get("second_wave_start_score")) < 0.65:
+        return False
+    trend_lagging = ret_20d < 0.18 or pos_20d < 0.55 or latest_close < ma_20 or ma_5 < ma_20
+    return trend_lagging
+
+
 def _long_filter_penalty(filter_codes: list[str]) -> float:
     penalty = 0.0
     if "low_liquidity" in filter_codes:
@@ -809,6 +880,10 @@ def _long_filter_penalty(filter_codes: list[str]) -> float:
         penalty += 0.28
     if "first_10x_too_high" in filter_codes:
         penalty += 0.22
+    if "five_wave_late_risk" in filter_codes:
+        penalty += 0.24
+    if "false_breakout_risk" in filter_codes:
+        penalty += 0.28
     return penalty
 
 
@@ -937,6 +1012,23 @@ def _with_v1_3_long_selection_codes(
         result.append("btc_contraction_resilient")
     if upside_space >= 0.18:
         result.append("upside_space_large")
+    pattern_tag = str(features.get("strong_pattern_tag", ""))
+    strong_pattern_score = _float(features.get("strong_pattern_score"))
+    if _float(features.get("leader_platform_start_score")) >= 0.70 or pattern_tag == "leader_platform_start":
+        result.append("leader_platform_start")
+    if _float(features.get("golden_pit_reclaim_score")) >= 0.70 or pattern_tag == "golden_pit_reclaim":
+        result.append("golden_pit_reclaim")
+    if _float(features.get("small_divergence_absorb_score")) >= 0.65 or pattern_tag == "small_divergence_absorb":
+        result.append("small_divergence_absorb")
+    if _float(features.get("second_wave_start_score")) >= 0.65 or pattern_tag == "second_wave_start":
+        result.append("second_wave_start")
+    if _float(features.get("spoon_bottom_confirmed_score")) >= 0.65 or pattern_tag == "spoon_bottom_confirmed":
+        result.append("spoon_bottom_confirmed")
+    if strong_pattern_score >= 0.65:
+        result.extend(str(code) for code in features.get("pattern_reason_codes", []))
+    spoon_bottom = "spoon_bottom_confirmed" in result
+    if _is_strong_pattern_trend_substitute_candidate(features):
+        result.append("strong_pattern_trend_substitute_candidate")
     if (
         ret_20d >= 0.25
         and ret_60d >= 0.45
@@ -945,17 +1037,23 @@ def _with_v1_3_long_selection_codes(
         and pos_20d >= 0.65
         and -0.16 <= pullback <= -0.01
         and vol_ratio >= 1.15
+        and not spoon_bottom
     ):
+        result.append("leader_altcoin")
+    if ("leader_platform_start" in result or "golden_pit_reclaim" in result or "second_wave_start" in result) and not spoon_bottom:
         result.append("leader_altcoin")
     if (
         bool(features.get("btc_divergence_alt_rotation"))
         or (ret_20d > 0.18 and ret_60d < 0.20 and pullback > -0.02)
+        or spoon_bottom
     ):
         result.append("catch_up_short_hold")
     return _dedupe(result)
 
 
 def _long_selection_tag(reason_codes: list[str]) -> str:
+    if "spoon_bottom_confirmed" in reason_codes:
+        return "catch_up_short_hold"
     if "leader_altcoin" in reason_codes:
         return "leader_altcoin"
     if "catch_up_short_hold" in reason_codes:

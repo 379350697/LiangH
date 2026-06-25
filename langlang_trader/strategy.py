@@ -823,6 +823,14 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
         selection_reason_codes = _string_list_feature(features, "selection_reason_codes")
         selection_filter_codes = _string_list_feature(features, "selection_filter_codes")
         selection_tag = _str_feature(features, "symbol_selection_tag", "")
+        strong_pattern_tag = _str_feature(features, "strong_pattern_tag", "")
+        risk_pattern_tag = _str_feature(features, "risk_pattern_tag", "")
+        leader_platform_start_score = _float_feature(features, "leader_platform_start_score")
+        golden_pit_reclaim_score = _float_feature(features, "golden_pit_reclaim_score")
+        small_divergence_absorb_score = _float_feature(features, "small_divergence_absorb_score")
+        second_wave_start_score = _float_feature(features, "second_wave_start_score")
+        five_wave_late_risk_score = _float_feature(features, "five_wave_late_risk_score")
+        false_breakout_risk_score = _float_feature(features, "false_breakout_risk_score")
         market_season = _infer_market_season(features)
         symbol_cycle = _infer_symbol_cycle(features)
         requested_side = _str_feature(features, "requested_side", "").lower()
@@ -850,6 +858,10 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             return _skip("skip:upside_space_insufficient", [FailureFilter.INSUFFICIENT_UPSIDE_SPACE])
         if first_10x_done and pos_20d >= variant.first_10x_high_pos and pullback >= -variant.min_pullback_pct:
             return _skip("skip:first_10x_entry_already_high", [FailureFilter.FIRST_10X_TOO_HIGH])
+        if false_breakout_risk_score >= 0.65 or risk_pattern_tag == "false_breakout_risk":
+            return _skip("skip:false_breakout_risk_pattern", [FailureFilter.FALSE_BREAKOUT_AFTER_CONTRACTION])
+        if five_wave_late_risk_score >= 0.70 or risk_pattern_tag == "five_wave_late_risk":
+            return _skip("skip:five_wave_late_risk", [FailureFilter.FIVE_WAVE_LATE_RISK])
         if _truthy_feature(features, "btc_divergence_alt_breakout") and requested_side != "short":
             return _skip("skip:btc_divergence_alt_breakout", [FailureFilter.BTC_DIVERGENCE_ALT_BREAKOUT])
         if _truthy_feature(features, "false_breakout_after_contraction"):
@@ -875,6 +887,20 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             and latest_close >= ma_20
             and ma_5 >= ma_20
         )
+        strong_pattern_long_trend_ok = _strong_pattern_long_trend_ok(
+            features=features,
+            variant=variant,
+            ret_20d=ret_20d,
+            ret_60d=ret_60d,
+            pos_20d=pos_20d,
+            latest_close=latest_close,
+            ma_5=ma_5,
+            ma_20=ma_20,
+            vol_ratio=vol_ratio,
+            m15_ret_8=m15_ret_8,
+            m5_ret_6=m5_ret_6,
+            bottom_lift_confirmed=bottom_lift_confirmed,
+        )
         short_trend = (
             (ret_20d <= variant.short_ret_20d_max or ret_60d <= variant.short_ret_60d_max)
             and pos_20d <= variant.short_pos_20d_max
@@ -882,7 +908,7 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             and ma_5 <= ma_20
         )
         allowed_side = _variant_allowed_side(variant)
-        if long_trend and allowed_side == "short" and requested_side != "short":
+        if (long_trend or strong_pattern_long_trend_ok) and allowed_side == "short" and requested_side != "short":
             return _skip("skip:variant_side_not_allowed_long", [FailureFilter.VARIANT_SIDE_NOT_ALLOWED])
         if short_trend and allowed_side == "long":
             return _skip("skip:variant_side_not_allowed_short", [FailureFilter.VARIANT_SIDE_NOT_ALLOWED])
@@ -945,7 +971,7 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
                 force_no_runner=True,
             )
 
-        if not long_trend:
+        if not (long_trend or strong_pattern_long_trend_ok):
             return StrategyDecision(
                 action=StrategyAction.SKIP,
                 explanation="skip:regime=choppy_invalid filters=structure_break",
@@ -958,7 +984,26 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
         regime = MarketRegime.PRE_MAIN_UPTREND
         setup = EntrySetup.STARTER_BUY
         reason_codes = ["leader_main_wave_candidate", "starter_buy", f"variant:{variant.variant_id}"]
-        if symbol_cycle == "platform_start":
+        if strong_pattern_tag in {"leader_platform_start", "golden_pit_reclaim"} or leader_platform_start_score >= 0.70 or golden_pit_reclaim_score >= 0.70:
+            entry_position_id = "1_startup_long"
+            regime = MarketRegime.PRE_MAIN_UPTREND
+            setup = EntrySetup.STARTER_BUY
+            reason_codes = [
+                "strong_pattern_startup",
+                strong_pattern_tag or "leader_platform_or_golden_pit",
+                f"variant:{variant.variant_id}",
+            ]
+        elif strong_pattern_tag == "second_wave_start" or second_wave_start_score >= 0.65:
+            entry_position_id = "4_second_wave_long"
+            regime = MarketRegime.POST_LARGE_DIVERGENCE
+            setup = EntrySetup.POST_DIVERGENCE_REBOUND
+            reason_codes = ["second_wave_start_pattern", f"variant:{variant.variant_id}"]
+        elif strong_pattern_tag == "small_divergence_absorb" or small_divergence_absorb_score >= 0.65:
+            entry_position_id = "2_small_divergence_long"
+            regime = MarketRegime.FIRST_DIVERGENCE
+            setup = EntrySetup.SMALL_DIVERGENCE_ENTRY
+            reason_codes = ["daily_main_uptrend", "small_divergence_absorbed", f"variant:{variant.variant_id}"]
+        elif symbol_cycle == "platform_start":
             entry_position_id = "1_startup_long"
             regime = MarketRegime.PRE_MAIN_UPTREND
             setup = EntrySetup.STARTER_BUY
@@ -991,6 +1036,8 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
 
         if setup is EntrySetup.BOX_REBOUND_LONG:
             return _skip("skip:box_rebound_low_quality", [FailureFilter.BOX_REBOUND_LOW_QUALITY])
+        if strong_pattern_long_trend_ok and not long_trend:
+            reason_codes.append("strong_pattern_trend_substitute")
         if m15_ret_8 >= variant.intraday_confirm_ret_min or m5_ret_6 >= variant.intraday_confirm_ret_min:
             reason_codes.append("intraday_reclaim_confirmed")
         if selection_tag == "leader_altcoin":
@@ -1320,6 +1367,99 @@ def _truthy_feature(features: dict, key: str) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "y"}
     return bool(value)
+
+
+def _strong_pattern_long_trend_ok(
+    *,
+    features: dict,
+    variant: LangLangV1_3Variant,
+    ret_20d: float,
+    ret_60d: float,
+    pos_20d: float,
+    latest_close: float,
+    ma_5: float,
+    ma_20: float,
+    vol_ratio: float,
+    m15_ret_8: float,
+    m5_ret_6: float,
+    bottom_lift_confirmed: bool,
+) -> bool:
+    strong_tag = _str_feature(features, "strong_pattern_tag", "")
+    if strong_tag == "spoon_bottom_confirmed":
+        return False
+    if strong_tag not in {"leader_platform_start", "golden_pit_reclaim", "small_divergence_absorb", "second_wave_start"}:
+        return False
+    if _float_feature(features, "risk_pattern_score") >= 0.65 or _str_feature(features, "risk_pattern_tag", ""):
+        return False
+    if ma_20 <= 0 or latest_close < ma_20 * 0.985:
+        return False
+    if pos_20d < 0.38 or ret_60d < 0.18 or vol_ratio < variant.min_vol_ratio_20d:
+        return False
+    missed_trend_conditions = sum(
+        (
+            ret_20d < variant.ret_20d_min,
+            ret_60d < variant.ret_60d_min,
+            pos_20d < variant.pos_20d_min,
+            latest_close < ma_20,
+            ma_5 < ma_20,
+        )
+    )
+    if missed_trend_conditions > 2:
+        return False
+
+    if strong_tag == "leader_platform_start":
+        return _float_feature(features, "leader_platform_start_score") >= 0.70
+    if strong_tag == "golden_pit_reclaim":
+        return _float_feature(features, "golden_pit_reclaim_score") >= 0.70 and _has_intraday_pattern_confirmation(
+            features,
+            "golden_pit_reclaim",
+            variant,
+            m15_ret_8,
+            m5_ret_6,
+            bottom_lift_confirmed,
+        )
+    if strong_tag == "small_divergence_absorb":
+        return _float_feature(features, "small_divergence_absorb_score") >= 0.65 and _has_intraday_pattern_confirmation(
+            features,
+            "small_divergence_absorb",
+            variant,
+            m15_ret_8,
+            m5_ret_6,
+            bottom_lift_confirmed,
+        )
+    if strong_tag == "second_wave_start":
+        return _float_feature(features, "second_wave_start_score") >= 0.65 and _has_intraday_pattern_confirmation(
+            features,
+            "second_wave_start",
+            variant,
+            m15_ret_8,
+            m5_ret_6,
+            bottom_lift_confirmed,
+        )
+    return False
+
+
+def _has_intraday_pattern_confirmation(
+    features: dict,
+    tag: str,
+    variant: LangLangV1_3Variant,
+    m15_ret_8: float,
+    m5_ret_6: float,
+    bottom_lift_confirmed: bool,
+) -> bool:
+    if tag == "second_wave_start" and bottom_lift_confirmed:
+        return True
+    score_key = f"{tag}_score"
+    if max(
+        _float_feature(features, f"h1_{score_key}"),
+        _float_feature(features, f"m15_{score_key}"),
+        _float_feature(features, f"m5_{score_key}"),
+    ) >= 0.45:
+        return True
+    reason_codes = _string_list_feature(features, "pattern_reason_codes")
+    if f"{tag}_intraday_reclaim_confirmed" in reason_codes or f"{tag}_intraday_absorb_confirmed" in reason_codes:
+        return True
+    return m15_ret_8 >= variant.intraday_confirm_ret_min or m5_ret_6 >= variant.intraday_confirm_ret_min
 
 
 def _infer_market_season(features: dict) -> str:

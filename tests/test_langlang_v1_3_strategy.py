@@ -174,6 +174,154 @@ class LangLangV13StrategyTest(unittest.TestCase):
         self.assertTrue(any(variant.allowed_side == "short" for variant in variants))
         self.assertIsInstance(strategy_from_version("rules_langlang_v1_3", variants[0]), RulesLangLangV1_3Strategy)
 
+    def test_strong_pattern_tags_map_to_langlang_entry_positions(self):
+        strategy = RulesLangLangV1_3Strategy(LangLangV1_3Variant(variant_id="v1.3-test"))
+
+        golden_pit = strategy.decide(
+            snapshot(
+                symbol_cycle="box_chop",
+                strong_pattern_tag="golden_pit_reclaim",
+                golden_pit_reclaim_score=0.78,
+                strong_pattern_score=0.78,
+                pattern_reason_codes=["golden_pit_fast_reclaim"],
+            )
+        )
+        small_divergence = strategy.decide(
+            snapshot(
+                symbol_cycle="main_wave",
+                strong_pattern_tag="small_divergence_absorb",
+                small_divergence_absorb_score=0.70,
+                strong_pattern_score=0.70,
+                pattern_reason_codes=["small_divergence_absorbed"],
+            )
+        )
+        second_wave = strategy.decide(
+            snapshot(
+                symbol_cycle="main_wave",
+                strong_pattern_tag="second_wave_start",
+                second_wave_start_score=0.72,
+                strong_pattern_score=0.72,
+                pattern_reason_codes=["large_divergence_bottom_lift"],
+            )
+        )
+
+        self.assertEqual(golden_pit.action, StrategyAction.ENTER)
+        self.assertEqual(golden_pit.signal.decision_trace["entry_position_id"], "1_startup_long")
+        self.assertEqual(small_divergence.signal.decision_trace["entry_position_id"], "2_small_divergence_long")
+        self.assertEqual(second_wave.signal.decision_trace["entry_position_id"], "4_second_wave_long")
+
+    def test_risk_pattern_overrides_positive_pattern_and_skips(self):
+        strategy = RulesLangLangV1_3Strategy(LangLangV1_3Variant(variant_id="v1.3-test"))
+
+        decision = strategy.decide(
+            snapshot(
+                symbol_cycle="platform_start",
+                strong_pattern_tag="leader_platform_start",
+                leader_platform_start_score=0.78,
+                strong_pattern_score=0.78,
+                risk_pattern_tag="false_breakout_risk",
+                false_breakout_risk_score=0.70,
+                risk_pattern_score=0.70,
+                pattern_reason_codes=["leader_platform_start", "false_breakout_fell_back_into_box"],
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.SKIP)
+        self.assertIn(FailureFilter.FALSE_BREAKOUT_AFTER_CONTRACTION, decision.filter_codes)
+
+    def test_five_wave_late_risk_skips_longs(self):
+        strategy = RulesLangLangV1_3Strategy(LangLangV1_3Variant(variant_id="v1.3-test"))
+
+        decision = strategy.decide(
+            snapshot(
+                symbol_cycle="main_wave",
+                five_wave_late_risk_score=0.74,
+                risk_pattern_tag="five_wave_late_risk",
+                risk_pattern_score=0.74,
+                wave_push_count=5,
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.SKIP)
+        self.assertIn(FailureFilter.FIVE_WAVE_LATE_RISK, decision.filter_codes)
+
+    def test_golden_pit_can_safely_substitute_lagging_ma_trend(self):
+        strategy = RulesLangLangV1_3Strategy(LangLangV1_3Variant(variant_id="v1.3-test"))
+
+        decision = strategy.decide(
+            snapshot(
+                symbol_cycle="box_chop",
+                latest_close=109.0,
+                ma_5=104.0,
+                ma_20=110.0,
+                strong_pattern_tag="golden_pit_reclaim",
+                golden_pit_reclaim_score=0.78,
+                strong_pattern_score=0.78,
+                h1_golden_pit_reclaim_score=0.50,
+                pattern_reason_codes=["golden_pit_fast_reclaim", "golden_pit_intraday_reclaim_confirmed"],
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.ENTER)
+        self.assertEqual(decision.signal.decision_trace["entry_position_id"], "1_startup_long")
+        self.assertIn("strong_pattern_trend_substitute", decision.signal.reason_codes)
+
+    def test_second_wave_can_safely_substitute_lagging_ret_20d(self):
+        strategy = RulesLangLangV1_3Strategy(LangLangV1_3Variant(variant_id="v1.3-test"))
+
+        decision = strategy.decide(
+            snapshot(
+                symbol_cycle="main_wave",
+                ret_20d=0.08,
+                ret_60d=0.52,
+                pos_20d=0.58,
+                strong_pattern_tag="second_wave_start",
+                second_wave_start_score=0.72,
+                strong_pattern_score=0.72,
+                m15_ret_8=0.012,
+                m15_second_wave_start_score=0.48,
+                pattern_reason_codes=["large_divergence_bottom_lift", "second_wave_reclaim"],
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.ENTER)
+        self.assertEqual(decision.signal.decision_trace["entry_position_id"], "4_second_wave_long")
+        self.assertIn("strong_pattern_trend_substitute", decision.signal.reason_codes)
+
+    def test_missing_trend_without_strong_pattern_still_skips(self):
+        strategy = RulesLangLangV1_3Strategy(LangLangV1_3Variant(variant_id="v1.3-test"))
+
+        decision = strategy.decide(
+            snapshot(
+                symbol_cycle="main_wave",
+                ma_5=104.0,
+                ma_20=110.0,
+                latest_close=109.0,
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.SKIP)
+        self.assertIn(FailureFilter.STRUCTURE_BREAK, decision.filter_codes)
+
+    def test_spoon_bottom_does_not_substitute_missing_trend(self):
+        strategy = RulesLangLangV1_3Strategy(LangLangV1_3Variant(variant_id="v1.3-test"))
+
+        decision = strategy.decide(
+            snapshot(
+                symbol_cycle="box_chop",
+                latest_close=109.0,
+                ma_5=104.0,
+                ma_20=110.0,
+                strong_pattern_tag="spoon_bottom_confirmed",
+                spoon_bottom_confirmed_score=0.72,
+                strong_pattern_score=0.72,
+                pattern_reason_codes=["spoon_bottom_confirmed"],
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.SKIP)
+        self.assertIn(FailureFilter.STRUCTURE_BREAK, decision.filter_codes)
+
 
 if __name__ == "__main__":
     unittest.main()
