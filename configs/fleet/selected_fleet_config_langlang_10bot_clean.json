@@ -32,7 +32,9 @@
     "symbols": [],
     "bars": ["1m", "5m", "15m", "1H", "1D"],
     "candle_limit": 120,
-    "max_fetch_workers": 4
+    "max_fetch_workers": 4,
+    "market_snapshot_cache_enabled": true,
+    "market_snapshot_cache_dir": "output/fleet/langlang_strategy_forest/clean/market_snapshots"
   },
   "universe": {
     "mode": "okx_binance_usdt_swap_observe",
