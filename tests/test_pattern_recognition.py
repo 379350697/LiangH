@@ -112,6 +112,31 @@ class StrongPatternDetectorTest(unittest.TestCase):
         self.assertEqual(features["strong_pattern_tag"], "small_divergence_absorb")
         self.assertGreaterEqual(features["small_divergence_count"], 1)
 
+    def test_ordinary_overlapping_volatility_does_not_count_as_third_small_divergence(self):
+        closes = []
+        price = 100.0
+        for _ in range(18):
+            closes.extend([price, price * 0.962, price * 0.988, price * 0.965, price * 0.992])
+            price *= 1.002
+
+        features = StrongPatternDetector().detect(series_from_closes(closes))
+
+        self.assertLessEqual(features["small_divergence_count"], 2)
+
+    def test_counts_non_overlapping_high_position_small_divergences(self):
+        closes = [
+            *[100 + idx * 2.0 for idx in range(30)],
+            160, 169, 160, 173,
+            176, 166, 181,
+            184, 174, 188,
+            190,
+        ]
+
+        features = StrongPatternDetector().detect(series_from_closes(closes))
+
+        self.assertGreaterEqual(features["small_divergence_count"], 3)
+        self.assertGreaterEqual(features["five_wave_late_risk_score"], 0.70)
+
     def test_detects_second_wave_start_after_large_divergence(self):
         closes = [
             *[100 + idx * 2.0 for idx in range(35)],

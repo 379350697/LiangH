@@ -844,7 +844,17 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
         market_season = _infer_market_season(features)
         symbol_cycle = _infer_symbol_cycle(features)
         requested_side = _str_feature(features, "requested_side", "").lower()
+        selection_mode = _str_feature(features, "selection_mode", "").lower()
         current_position_side = _str_feature(features, "current_position_side", "").lower()
+        allowed_side = _variant_allowed_side(variant)
+        intent_side = _intent_side(
+            requested_side=requested_side,
+            allowed_side=allowed_side,
+            selection_mode=selection_mode,
+            selection_tag=selection_tag,
+        )
+        long_intent = intent_side == "long"
+        short_intent = intent_side == "short"
 
         if latest_close <= 0:
             return _skip("skip:missing_latest_close", [FailureFilter.STRUCTURE_BREAK])
@@ -865,14 +875,14 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             return _skip("skip:low_liquidity", [FailureFilter.LOW_LIQUIDITY])
         if self._uses_enhanced_loss_filters() and stop_loss_cluster >= variant.max_stop_loss_cluster_24h:
             return _skip("skip:stop_loss_cluster", [FailureFilter.STOP_LOSS_CLUSTER, FailureFilter.EMOTIONAL_REVENGE_PROXY])
-        if int(_float_feature(features, "small_divergence_count", 0.0)) > variant.max_small_divergence_count:
+        if long_intent and int(_float_feature(features, "small_divergence_count", 0.0)) > variant.max_small_divergence_count:
             return _skip("skip:third_small_divergence_five_wave_high", [FailureFilter.THIRD_SMALL_DIVERGENCE])
         wyckoff_short_candidate = (
             wyckoff_short_score >= 0.70
             and wyckoff_short_setup_tag in {"upthrust_reversal", "utad_risk", "sow_breakdown", "lpsy_retest"}
         )
         if (
-            requested_side == "short"
+            short_intent
             and symbol_cycle in {"main_wave", "small_divergence", "platform_start"}
             and not variant.enable_countertrend_short
             and not wyckoff_short_candidate
@@ -887,16 +897,16 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             if symbol_cycle == "box_chop":
                 filters.append(FailureFilter.BOX_REBOUND_LOW_QUALITY)
             return _skip("skip:autumn_winter_reduce_frequency", filters)
-        if upside_space < variant.min_upside_space_pct:
+        if long_intent and upside_space < variant.min_upside_space_pct:
             return _skip("skip:upside_space_insufficient", [FailureFilter.INSUFFICIENT_UPSIDE_SPACE])
-        if first_10x_done and pos_20d >= variant.first_10x_high_pos and pullback >= -variant.min_pullback_pct:
+        if long_intent and first_10x_done and pos_20d >= variant.first_10x_high_pos and pullback >= -variant.min_pullback_pct:
             return _skip("skip:first_10x_entry_already_high", [FailureFilter.FIRST_10X_TOO_HIGH])
-        if false_breakout_risk_score >= 0.65 or risk_pattern_tag == "false_breakout_risk":
+        if long_intent and (false_breakout_risk_score >= 0.65 or risk_pattern_tag == "false_breakout_risk"):
             return _skip("skip:false_breakout_risk_pattern", [FailureFilter.FALSE_BREAKOUT_AFTER_CONTRACTION])
-        if five_wave_late_risk_score >= 0.70 or risk_pattern_tag == "five_wave_late_risk":
+        if long_intent and (five_wave_late_risk_score >= 0.70 or risk_pattern_tag == "five_wave_late_risk"):
             return _skip("skip:five_wave_late_risk", [FailureFilter.FIVE_WAVE_LATE_RISK])
         if (
-            requested_side != "short"
+            long_intent
             and (
                 wyckoff_phase_tag == "distribution"
                 or wyckoff_risk_score >= 0.70
@@ -904,11 +914,11 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             )
         ):
             return _skip(f"skip:wyckoff_risk:{wyckoff_exit_tag or wyckoff_short_setup_tag or wyckoff_phase_tag}", [FailureFilter.WYCKOFF_RISK])
-        if _truthy_feature(features, "btc_divergence_alt_breakout") and requested_side != "short":
+        if _truthy_feature(features, "btc_divergence_alt_breakout") and long_intent:
             return _skip("skip:btc_divergence_alt_breakout", [FailureFilter.BTC_DIVERGENCE_ALT_BREAKOUT])
-        if _truthy_feature(features, "false_breakout_after_contraction"):
+        if long_intent and _truthy_feature(features, "false_breakout_after_contraction"):
             return _skip("skip:false_breakout_after_contraction", [FailureFilter.FALSE_BREAKOUT_AFTER_CONTRACTION])
-        if large_divergence_recent and not bottom_lift_confirmed and symbol_cycle != "first_large_divergence":
+        if long_intent and large_divergence_recent and not bottom_lift_confirmed and symbol_cycle != "first_large_divergence":
             return _skip("skip:large_divergence_without_bottom_lift", [FailureFilter.NO_BOTTOM_LIFT])
         enhanced_failure = self._enhanced_failure_filters(features, variant, historical_match_score, matched_trade_examples)
         if enhanced_failure is not None:
@@ -963,8 +973,11 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             and ma_5 <= ma_20
         )
         wyckoff_short_ok = _wyckoff_short_trend_ok(features=features, variant=variant, m15_ret_8=m15_ret_8, m5_ret_6=m5_ret_6)
-        allowed_side = _variant_allowed_side(variant)
-        if (long_trend or strong_pattern_long_trend_ok or wyckoff_long_trend_ok) and allowed_side == "short" and requested_side != "short":
+        if (
+            (long_trend or strong_pattern_long_trend_ok or wyckoff_long_trend_ok)
+            and allowed_side == "short"
+            and not (short_trend or wyckoff_short_ok or (short_intent and variant.enable_countertrend_short))
+        ):
             return _skip("skip:variant_side_not_allowed_long", [FailureFilter.VARIANT_SIDE_NOT_ALLOWED])
         if (short_trend or wyckoff_short_ok) and allowed_side == "long":
             return _skip("skip:variant_side_not_allowed_short", [FailureFilter.VARIANT_SIDE_NOT_ALLOWED])
@@ -1011,7 +1024,7 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
                 selection_filter_codes=selection_filter_codes,
             )
 
-        if requested_side == "short" and variant.enable_countertrend_short and long_trend:
+        if short_intent and variant.enable_countertrend_short and long_trend:
             if symbol_cycle == "first_large_divergence":
                 setup = EntrySetup.TOP_SHORT
                 entry_position_id = "3_first_large_divergence_top_short"
@@ -1687,3 +1700,13 @@ def _variant_allowed_side(variant: LangLangV1_1Variant) -> str:
     if variant_id.startswith(("llv1_1_short_", "llv1_3_short_")):
         return "short"
     return "both"
+
+
+def _intent_side(*, requested_side: str, allowed_side: str, selection_mode: str, selection_tag: str) -> str:
+    if requested_side in {"long", "short"}:
+        return requested_side
+    if allowed_side in {"long", "short"}:
+        return allowed_side
+    if selection_mode == "short_waterfall" or selection_tag == "short_waterfall":
+        return "short"
+    return "long"

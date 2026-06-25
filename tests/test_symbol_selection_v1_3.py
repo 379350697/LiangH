@@ -582,6 +582,89 @@ class SelectionEngineV13Test(unittest.TestCase):
         self.assertIn("wyckoff_distribution_risk", rows["DISTRIBUTION-USDT-SWAP"].filter_codes)
         self.assertLess(rows["DISTRIBUTION-USDT-SWAP"].selection_score, rows["HEALTHY-USDT-SWAP"].selection_score)
 
+    def test_long_risk_profile_uses_long_only_filters(self):
+        engine = SelectionEngine(
+            SymbolSelectionConfig(
+                enabled=True,
+                style="dual_board",
+                long_top_n=2,
+                short_top_n=0,
+                scoring_profile="langlang_01_risk",
+            )
+        )
+        common = dict(
+            ret_3d=0.06,
+            ret_7d=0.15,
+            ret_20d=0.42,
+            ret_60d=0.86,
+            vol_ratio_20d=1.4,
+            upside_space_pct=0.30,
+        )
+        snapshots = {
+            "BTC-USDT-SWAP": snapshot("BTC-USDT-SWAP", ret_20d=0.08, ret_60d=0.20, ret_7d=0.02),
+            "ETH-USDT-SWAP": snapshot("ETH-USDT-SWAP", ret_20d=0.05, ret_60d=0.14, ret_7d=0.01),
+            "RETEST-USDT-SWAP": snapshot(
+                "RETEST-USDT-SWAP",
+                **common,
+                pos_20d=0.74,
+                pullback_from_20d_high=-0.04,
+            ),
+            "CHASE-USDT-SWAP": snapshot(
+                "CHASE-USDT-SWAP",
+                **common,
+                pos_20d=0.96,
+                pullback_from_20d_high=-0.004,
+            ),
+        }
+
+        boards = engine.rank_all_market(snapshots)
+        rows = {row.symbol: row for row in boards["long_main_wave"]}
+
+        self.assertIn("high_position_no_structure", rows["CHASE-USDT-SWAP"].filter_codes)
+        self.assertIn("profile_risk_high_position_cut", rows["CHASE-USDT-SWAP"].filter_codes)
+        self.assertLess(rows["CHASE-USDT-SWAP"].selection_score, rows["RETEST-USDT-SWAP"].selection_score)
+
+    def test_short_board_does_not_inherit_long_only_risk_filters(self):
+        engine = SelectionEngine(
+            SymbolSelectionConfig(enabled=True, style="dual_board", long_top_n=0, short_top_n=2)
+        )
+        snapshots = {
+            "BTC-USDT-SWAP": snapshot("BTC-USDT-SWAP", ret_20d=0.08, ret_60d=0.20, ret_7d=0.02),
+            "ETH-USDT-SWAP": snapshot("ETH-USDT-SWAP", ret_20d=0.05, ret_60d=0.14, ret_7d=0.01),
+            "SHORT-RISK-USDT-SWAP": snapshot(
+                "SHORT-RISK-USDT-SWAP",
+                ret_3d=-0.06,
+                ret_7d=-0.14,
+                ret_20d=-0.34,
+                ret_60d=-0.44,
+                pos_20d=0.12,
+                pullback_from_20d_high=-0.42,
+                vol_ratio_20d=1.7,
+                latest_close=78.0,
+                ma_5=82.0,
+                ma_20=96.0,
+                high_20d=118.0,
+                failed_rebound_below_platform=True,
+                five_wave_late_risk_score=0.74,
+                false_breakout_risk_score=0.70,
+                risk_pattern_tag="five_wave_late_risk",
+                risk_pattern_score=0.74,
+                wyckoff_phase_tag="distribution",
+                wyckoff_risk_score=0.72,
+                wyckoff_exit_score=0.71,
+            ),
+        }
+
+        boards = engine.rank_all_market(snapshots)
+        rows = {row.symbol: row for row in boards["short_waterfall"]}
+        result = rows["SHORT-RISK-USDT-SWAP"]
+
+        self.assertTrue(result.selected)
+        self.assertIn("failed_rebound_below_platform", result.reason_codes)
+        self.assertNotIn("five_wave_late_risk", result.filter_codes)
+        self.assertNotIn("false_breakout_risk", result.filter_codes)
+        self.assertNotIn("wyckoff_distribution_risk", result.filter_codes)
+
 
 if __name__ == "__main__":
     unittest.main()

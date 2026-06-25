@@ -82,7 +82,7 @@ class StrongPatternDetector:
         features.update(scores)
         for key, reasons in reason_buckets.items():
             features[_reason_field_for_score(key)] = _dedupe(reasons)
-        features["small_divergence_count"] = _small_divergence_count(closes)
+        features["small_divergence_count"] = _small_divergence_count(closes, structure)
 
         positive_key, positive_score = max(
             ((key, scores[key]) for key in POSITIVE_PATTERN_KEYS),
@@ -369,6 +369,7 @@ def _five_wave_late_risk_score(closes: list[float], structure: PivotStructure, r
     high_pos = closes[-1] >= max(closes) * 0.96
     push_returns = _push_returns(structure.pivots)
     weakening = len(push_returns) >= 3 and push_returns[-1] <= fmean(push_returns[:-1]) * 0.75
+    small_divergence_count = _small_divergence_count(closes, structure)
     score = 0.0
     if push_count >= 5:
         score += 0.38
@@ -379,9 +380,12 @@ def _five_wave_late_risk_score(closes: list[float], structure: PivotStructure, r
     if high_pos:
         score += 0.14
         reasons.append("five_wave_high_position")
-    if weakening or _small_divergence_count(closes) >= 2:
+    if weakening or small_divergence_count >= 2:
         score += 0.18
         reasons.append("five_wave_momentum_decay")
+    if small_divergence_count >= 3:
+        score += 0.14
+        reasons.append("third_small_divergence_high_position")
     if structure.pivot_quality_score >= 0.45:
         score += 0.08
     return _clamp(score)
@@ -421,16 +425,49 @@ def _false_breakout_risk_score(closes: list[float], volumes: list[float], reason
     return _clamp(score)
 
 
-def _small_divergence_count(closes: list[float]) -> int:
+def _small_divergence_count(closes: list[float], structure: PivotStructure | None = None) -> int:
     if len(closes) < 8:
         return 0
+    context = closes[-min(60, len(closes)):]
+    if not context or context[0] <= 0:
+        return 0
+    main_wave_context = context[-1] / context[0] - 1 >= 0.18
+    high_position_context = context[-1] >= max(context) * 0.86
+    if not (main_wave_context and high_position_context):
+        return 0
+    pivots = list(structure.pivots) if structure is not None and structure.pivots else _filter_small_legs(_turning_points(closes, 1), 0.03)
+    pivots = _with_terminal_high_pivot(closes, pivots)
     count = 0
-    for idx in range(3, len(closes) - 2):
-        left_high = max(closes[max(0, idx - 3):idx])
-        local_low = min(closes[idx:idx + 3])
-        if left_high > 0 and 0.035 <= (left_high - local_low) / left_high <= 0.16 and closes[min(len(closes) - 1, idx + 2)] >= local_low * 1.02:
+    last_counted_low_idx = -1
+    for idx in range(len(pivots) - 2):
+        left_high, local_low, reclaim_high = pivots[idx], pivots[idx + 1], pivots[idx + 2]
+        if left_high.kind != "high" or local_low.kind != "low" or reclaim_high.kind != "high":
+            continue
+        if local_low.idx <= last_counted_low_idx or left_high.price <= 0 or local_low.price <= 0:
+            continue
+        depth = (left_high.price - local_low.price) / left_high.price
+        reclaim = reclaim_high.price / local_low.price - 1
+        high_zone = left_high.price >= max(closes[max(0, left_high.idx - 30):reclaim_high.idx + 1]) * 0.86
+        structure_held = reclaim_high.price >= left_high.price * 0.96
+        if 0.035 <= depth <= 0.16 and reclaim >= 0.02 and high_zone and structure_held:
             count += 1
+            last_counted_low_idx = local_low.idx
     return min(count, 5)
+
+
+def _with_terminal_high_pivot(closes: list[float], pivots: list[Pivot]) -> list[Pivot]:
+    if len(closes) < 3 or closes[-1] < max(closes[-3:]):
+        return pivots
+    terminal = Pivot(idx=len(closes) - 1, kind="high", price=closes[-1])
+    if not pivots:
+        return [terminal]
+    if pivots[-1].kind == "high":
+        if terminal.price > pivots[-1].price:
+            return [*pivots[:-1], terminal]
+        return pivots
+    if terminal.price / pivots[-1].price - 1 >= 0.03:
+        return [*pivots, terminal]
+    return pivots
 
 
 def _sorted_rows(candles: list[Candle]) -> list[Candle]:

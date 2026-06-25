@@ -1024,6 +1024,10 @@ def _with_selection_features(snapshot: FeatureSnapshot, selection_result: Any | 
     features["selection_reason_codes"] = selection_result.reason_codes
     features["selection_filter_codes"] = getattr(selection_result, "filter_codes", [])
     features["selection_mode"] = getattr(selection_result, "selection_mode", "mixed")
+    selection_bias = str(getattr(selection_result, "selection_bias", "") or "").lower()
+    if selection_bias in {"long", "short"}:
+        features["selection_bias"] = selection_bias
+        features["requested_side"] = selection_bias
     features["selection_market_env"] = getattr(selection_result, "market_env", {})
     features["selection_selected"] = selection_result.selected
     return FeatureSnapshot(
