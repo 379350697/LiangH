@@ -265,6 +265,91 @@ class LangLangV13StrategyTest(unittest.TestCase):
         self.assertEqual(decision.action, StrategyAction.SKIP)
         self.assertIn(FailureFilter.FIVE_WAVE_LATE_RISK, decision.filter_codes)
 
+    def test_short_waterfall_ignores_long_only_late_wave_risk_gates(self):
+        strategy = RulesLangLangV1_3Strategy(
+            LangLangV1_3Variant(variant_id="v1.3-short-test", allowed_side="short")
+        )
+
+        decision = strategy.decide(
+            snapshot(
+                requested_side="short",
+                symbol_cycle="weak_waterfall",
+                ret_20d=-0.34,
+                ret_60d=-0.42,
+                pos_20d=0.12,
+                latest_close=78.0,
+                ma_5=82.0,
+                ma_20=96.0,
+                high_20d=118.0,
+                low_20d=76.0,
+                h1_ret_24=-0.055,
+                m15_ret_8=-0.024,
+                m5_ret_6=-0.010,
+                upside_space_pct=0.0,
+                small_divergence_count=5,
+                five_wave_late_risk_score=0.78,
+                false_breakout_risk_score=0.72,
+                risk_pattern_tag="five_wave_late_risk",
+                risk_pattern_score=0.78,
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.ENTER)
+        self.assertEqual(decision.signal.side, Side.SHORT)
+        self.assertEqual(decision.signal.decision_trace["entry_position_id"], "short_waterfall_continuation")
+
+    def test_short_intent_does_not_require_long_upside_space(self):
+        strategy = RulesLangLangV1_3Strategy(
+            LangLangV1_3Variant(variant_id="v1.3-short-test", allowed_side="short")
+        )
+
+        decision = strategy.decide(
+            snapshot(
+                requested_side="short",
+                symbol_cycle="weak_waterfall",
+                ret_20d=-0.22,
+                ret_60d=-0.20,
+                pos_20d=0.18,
+                latest_close=82.0,
+                ma_5=86.0,
+                ma_20=96.0,
+                high_20d=114.0,
+                low_20d=80.0,
+                h1_ret_24=-0.035,
+                m15_ret_8=-0.018,
+                m5_ret_6=-0.008,
+                upside_space_pct=0.0,
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.ENTER)
+        self.assertEqual(decision.signal.side, Side.SHORT)
+
+    def test_short_variant_does_not_fall_through_to_long_entry(self):
+        strategy = RulesLangLangV1_3Strategy(
+            LangLangV1_3Variant(variant_id="v1.3-short-test", allowed_side="short")
+        )
+
+        decision = strategy.decide(
+            snapshot(
+                requested_side="short",
+                selection_mode="short_waterfall",
+                symbol_cycle="second_wave",
+                ret_20d=0.34,
+                ret_60d=0.72,
+                pos_20d=0.76,
+                latest_close=122.0,
+                ma_5=124.0,
+                ma_20=110.0,
+                h1_ret_24=0.020,
+                m15_ret_8=0.010,
+                m5_ret_6=0.006,
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.SKIP)
+        self.assertIn(FailureFilter.VARIANT_SIDE_NOT_ALLOWED, decision.filter_codes)
+
     def test_golden_pit_can_safely_substitute_lagging_ma_trend(self):
         strategy = RulesLangLangV1_3Strategy(LangLangV1_3Variant(variant_id="v1.3-test"))
 

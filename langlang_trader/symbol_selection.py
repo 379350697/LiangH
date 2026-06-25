@@ -216,7 +216,7 @@ class SelectionEngine:
             pullback_quality = _pullback_quality(pullback, pos_20d)
             breakout_quality = 1.0 if pos_20d >= 0.82 else (0.65 if pos_20d >= 0.65 else 0.35)
             breakdown_quality = 1.0 if pos_20d <= 0.18 else (0.65 if pos_20d <= 0.35 else 0.35)
-            filter_codes = _long_filter_codes(
+            long_base_filter_codes = _long_filter_codes(
                 ret_20d=ret_20d,
                 ret_60d=ret_60d,
                 pos_20d=pos_20d,
@@ -224,10 +224,10 @@ class SelectionEngine:
                 vol_ratio=vol_ratio,
             )
             if not native_profile:
-                filter_codes.extend(_auxiliary_filter_codes(features))
-            filter_codes.extend(_pattern_filter_codes(features))
-            filter_codes.extend(_wyckoff_filter_codes(features))
-            penalty = _long_filter_penalty(filter_codes)
+                long_base_filter_codes.extend(_auxiliary_filter_codes(features))
+            long_base_filter_codes.extend(_pattern_filter_codes(features))
+            long_base_filter_codes.extend(_wyckoff_filter_codes(features))
+            penalty = _long_filter_penalty(long_base_filter_codes)
             if native_profile:
                 long_score = _clamp(
                     0.16 * ret_3_pctiles[symbol]
@@ -362,7 +362,7 @@ class SelectionEngine:
                 )
             long_reasons = _with_wyckoff_long_selection_codes(long_reasons, features=features)
             long_tag = _long_selection_tag(long_reasons)
-            long_filter_codes = list(filter_codes)
+            long_filter_codes = list(long_base_filter_codes)
             if long_tag == "catch_up_short_hold":
                 long_filter_codes.append("not_leader_catch_up")
             if long_tag == "leader_altcoin":
@@ -426,7 +426,7 @@ class SelectionEngine:
                 pullback=pullback,
                 funding_rate_last=funding_rate_last,
                 long_tag=long_tag,
-                filter_codes=long_filter_codes,
+                filter_codes=[],
             )
             long_score = _clamp(long_score + profile_long["delta"])
             short_score = _clamp(short_score + profile_short["delta"])

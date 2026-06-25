@@ -4,10 +4,11 @@ import tempfile
 import threading
 import time
 import unittest
+from types import SimpleNamespace
 
 from langlang_trader.config import ExecutionConfig, MarketDataConfig, PaperConfig, RiskConfig, SymbolSelectionConfig, UniverseConfig
 from langlang_trader.features import FeatureSnapshot
-from langlang_trader.fleet import BotConfig, FleetConfig, FleetRunner, _market_data_by_symbol, _selection_states_for_profiles, load_fleet_config
+from langlang_trader.fleet import BotConfig, FleetConfig, FleetRunner, _market_data_by_symbol, _selection_states_for_profiles, _with_selection_features, load_fleet_config
 from langlang_trader.ledger import Ledger
 from langlang_trader.market_data import FallbackMarketData, StaticMarketData
 from langlang_trader.models import Candle
@@ -74,6 +75,23 @@ def feature_snapshot(symbol: str, **features):
 
 
 class FleetRunnerTest(unittest.TestCase):
+    def test_with_selection_features_writes_requested_side_from_selection_bias(self):
+        enriched = _with_selection_features(
+            feature_snapshot("SHORT-USDT-SWAP"),
+            SimpleNamespace(
+                features={"selection_score": 0.81},
+                reason_codes=["waterfall_breakdown"],
+                filter_codes=[],
+                selection_mode="short_waterfall",
+                market_env={},
+                selected=True,
+                selection_bias="short",
+            ),
+        )
+
+        self.assertEqual(enriched.features["selection_bias"], "short")
+        self.assertEqual(enriched.features["requested_side"], "short")
+
     def test_layered_cache_mode_fetches_warm_bars_for_observation_and_fine_bars_only_for_selected_symbols(self):
         from langlang_trader.models import utc_now_iso
         from langlang_trader.universe import UniverseSnapshot, UniverseSymbol
