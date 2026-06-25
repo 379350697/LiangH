@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime
 import json
 import sqlite3
 from pathlib import Path
@@ -254,6 +255,85 @@ class Ledger:
                     setup text,
                     historical_match_score real
                 );
+
+                create table if not exists trade_lifecycle (
+                    trade_id text primary key,
+                    run_id text not null default 'default',
+                    bot_id text not null default 'default',
+                    variant_id text not null default 'rules_v01_default',
+                    exchange text not null default 'okx',
+                    symbol text not null,
+                    side text not null,
+                    status text not null,
+                    opened_at text not null,
+                    closed_at text,
+                    entry_signal_id integer,
+                    entry_intent_id integer,
+                    entry_order_id integer,
+                    entry_fill_id integer,
+                    exit_order_id integer,
+                    exit_fill_id integer,
+                    entry_price real not null,
+                    exit_price real,
+                    qty real not null,
+                    open_qty real not null default 0.0,
+                    leverage integer not null,
+                    initial_stop_loss real,
+                    initial_risk_usdt real,
+                    entry_fee real not null default 0.0,
+                    exit_fee real not null default 0.0,
+                    total_fees real not null default 0.0,
+                    gross_pnl_usdt real,
+                    realized_pnl_usdt real,
+                    hold_duration_seconds real,
+                    mae_usdt real not null default 0.0,
+                    mfe_usdt real not null default 0.0,
+                    max_open_drawdown_usdt real not null default 0.0,
+                    time_to_mae_seconds real,
+                    time_to_mfe_seconds real,
+                    r_multiple real,
+                    mfe_capture_ratio real,
+                    entry_reason_codes_json text not null default '[]',
+                    entry_reason_summary text not null default '',
+                    entry_decision_trace_json text not null default '{}',
+                    entry_feature_snapshot_json text not null default '{}',
+                    exit_reason_codes_json text not null default '[]',
+                    exit_reason_summary text,
+                    exit_decision_trace_json text not null default '{}',
+                    exit_feature_snapshot_json text not null default '{}',
+                    data_quality_flags_json text not null default '[]',
+                    strategy_version text,
+                    regime text,
+                    setup text,
+                    historical_match_score real
+                );
+
+                create index if not exists idx_trade_lifecycle_context_symbol
+                    on trade_lifecycle (run_id, bot_id, exchange, symbol, status);
+
+                create table if not exists trade_events (
+                    id integer primary key autoincrement,
+                    trade_id text,
+                    run_id text not null default 'default',
+                    bot_id text not null default 'default',
+                    variant_id text not null default 'rules_v01_default',
+                    exchange text not null default 'okx',
+                    created_at text not null,
+                    event_type text not null,
+                    symbol text not null,
+                    side text,
+                    order_id integer,
+                    fill_id integer,
+                    price real,
+                    qty real,
+                    fee real,
+                    reason_codes_json text not null default '[]',
+                    reason_summary text,
+                    decision_trace_json text not null default '{}',
+                    feature_snapshot_json text not null default '{}',
+                    data_quality_flags_json text not null default '[]',
+                    raw_payload_json text not null default '{}'
+                );
                 """
             )
             self._migrate_context_columns(conn)
@@ -272,6 +352,8 @@ class Ledger:
             "equity_snapshots",
             "risk_events",
             "position_sizing_decisions",
+            "trade_lifecycle",
+            "trade_events",
         ):
             existing = self._columns(conn, table)
             for column, definition in context_columns.items():
@@ -344,6 +426,17 @@ class Ledger:
                 "regime": "text",
                 "setup": "text",
                 "historical_match_score": "real",
+            },
+            "trade_lifecycle": {
+                "exchange": "text not null default 'okx'",
+                "open_qty": "real not null default 0.0",
+                "strategy_version": "text",
+                "regime": "text",
+                "setup": "text",
+                "historical_match_score": "real",
+            },
+            "trade_events": {
+                "exchange": "text not null default 'okx'",
             },
         }
         for table, columns in extra_columns.items():
@@ -618,6 +711,494 @@ class Ledger:
             )
             return int(cur.lastrowid)
 
+    def latest_order_intent_for(self, intent: OrderIntent) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = self._latest_order_intent_row(conn, intent)
+        return None if row is None else dict(row)
+
+    def record_trade_fill(
+        self,
+        *,
+        intent: OrderIntent,
+        order_id: int,
+        fill_id: int,
+        price: float,
+        fee: float,
+        raw_payload: dict[str, Any] | None = None,
+    ) -> str | None:
+        now = utc_now_iso()
+        if intent.reduce_only:
+            return self._record_exit_trade_fill(
+                intent=intent,
+                order_id=order_id,
+                fill_id=fill_id,
+                price=price,
+                fee=fee,
+                raw_payload=raw_payload or {},
+                now=now,
+            )
+        return self._record_entry_trade_fill(
+            intent=intent,
+            order_id=order_id,
+            fill_id=fill_id,
+            price=price,
+            fee=fee,
+            raw_payload=raw_payload or {},
+            now=now,
+        )
+
+    def record_trade_mark(
+        self,
+        *,
+        symbol: str,
+        mark_price: float,
+        data_quality_flags: list[str] | None = None,
+    ) -> None:
+        flags = data_quality_flags or []
+        with self.connect() as conn:
+            trade = self._open_trade_row(conn, symbol)
+            if trade is None:
+                return
+            self._append_trade_event(
+                conn,
+                trade_id=trade["trade_id"],
+                event_type="path_mark",
+                symbol=symbol,
+                side=trade["side"],
+                price=mark_price,
+                qty=trade["qty"],
+                reason_codes=[],
+                reason_summary="mark_price",
+                decision_trace={},
+                feature_snapshot={},
+                data_quality_flags=flags,
+                raw_payload={"mark_price": mark_price},
+            )
+            if flags:
+                self._merge_trade_quality_flags(conn, trade["trade_id"], flags)
+                return
+            self._update_trade_excursion(conn, trade, mark_price=mark_price, at=utc_now_iso())
+
+    def _record_entry_trade_fill(
+        self,
+        *,
+        intent: OrderIntent,
+        order_id: int,
+        fill_id: int,
+        price: float,
+        fee: float,
+        raw_payload: dict[str, Any],
+        now: str,
+    ) -> str:
+        with self.connect() as conn:
+            existing = self._open_trade_row(conn, intent.symbol)
+            if existing is not None:
+                trade_id = existing["trade_id"]
+                new_qty = float(existing["qty"]) + intent.qty
+                new_open_qty = float(existing["open_qty"]) + intent.qty
+                new_entry_price = (
+                    float(existing["entry_price"]) * float(existing["qty"]) + price * intent.qty
+                ) / max(new_qty, 1e-12)
+                conn.execute(
+                    """
+                    update trade_lifecycle
+                    set qty = ?, open_qty = ?, entry_price = ?, entry_fee = entry_fee + ?, total_fees = total_fees + ?
+                    where trade_id = ?
+                    """,
+                    (new_qty, new_open_qty, new_entry_price, fee, fee, trade_id),
+                )
+                self._append_trade_event(
+                    conn,
+                    trade_id=trade_id,
+                    event_type="add_fill",
+                    symbol=intent.symbol,
+                    side=intent.side.value,
+                    order_id=order_id,
+                    fill_id=fill_id,
+                    price=price,
+                    qty=intent.qty,
+                    fee=fee,
+                    reason_codes=self._entry_reason_codes(intent, None),
+                    reason_summary=intent.entry_reason,
+                    decision_trace=intent.decision_trace,
+                    feature_snapshot={},
+                    raw_payload=raw_payload,
+                )
+                return str(trade_id)
+
+            latest_intent = self._latest_order_intent_row(conn, intent)
+            intent_row = None if latest_intent is None else dict(latest_intent)
+            signal_row = self._signal_for_intent(conn, intent_row)
+            reason_codes = self._entry_reason_codes(intent, signal_row)
+            feature_snapshot = self._json_from_row(signal_row, "features_json", {})
+            decision_trace = self._json_from_row(signal_row, "decision_trace_json", intent.decision_trace)
+            signal_id = None if intent_row is None else intent_row.get("signal_id")
+            intent_id = None if intent_row is None else intent_row.get("id")
+            trade_id = f"{self.run_id}:{self.bot_id}:{self.exchange}:{intent.symbol}:{fill_id}"
+            initial_risk = None
+            if intent.stop_loss is not None:
+                initial_risk = abs(price - intent.stop_loss) * intent.qty
+            conn.execute(
+                """
+                insert into trade_lifecycle (
+                    trade_id, run_id, bot_id, variant_id, exchange, symbol, side, status, opened_at,
+                    entry_signal_id, entry_intent_id, entry_order_id, entry_fill_id, entry_price, qty, open_qty,
+                    leverage, initial_stop_loss, initial_risk_usdt, entry_fee, total_fees,
+                    entry_reason_codes_json, entry_reason_summary, entry_decision_trace_json,
+                    entry_feature_snapshot_json, strategy_version, regime, setup, historical_match_score
+                ) values (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    trade_id,
+                    *self._context_tuple(),
+                    self.exchange,
+                    intent.symbol,
+                    intent.side.value,
+                    now,
+                    signal_id,
+                    intent_id,
+                    order_id,
+                    fill_id,
+                    price,
+                    intent.qty,
+                    intent.qty,
+                    intent.leverage,
+                    intent.stop_loss,
+                    initial_risk,
+                    fee,
+                    fee,
+                    json.dumps(to_jsonable(reason_codes), ensure_ascii=False, sort_keys=True),
+                    intent.entry_reason,
+                    json.dumps(to_jsonable(decision_trace), ensure_ascii=False, sort_keys=True),
+                    json.dumps(to_jsonable(feature_snapshot), ensure_ascii=False, sort_keys=True),
+                    intent.strategy_version,
+                    _enum_value(intent.regime),
+                    _enum_value(intent.setup),
+                    intent.historical_match_score,
+                ),
+            )
+            self._append_trade_event(
+                conn,
+                trade_id=trade_id,
+                event_type="entry_fill",
+                symbol=intent.symbol,
+                side=intent.side.value,
+                order_id=order_id,
+                fill_id=fill_id,
+                price=price,
+                qty=intent.qty,
+                fee=fee,
+                reason_codes=reason_codes,
+                reason_summary=intent.entry_reason,
+                decision_trace=decision_trace,
+                feature_snapshot=feature_snapshot,
+                raw_payload=raw_payload,
+            )
+            return trade_id
+
+    def _record_exit_trade_fill(
+        self,
+        *,
+        intent: OrderIntent,
+        order_id: int,
+        fill_id: int,
+        price: float,
+        fee: float,
+        raw_payload: dict[str, Any],
+        now: str,
+    ) -> str | None:
+        with self.connect() as conn:
+            trade = self._open_trade_row(conn, intent.symbol)
+            if trade is None:
+                self._append_trade_event(
+                    conn,
+                    trade_id=None,
+                    event_type="orphan_close_fill",
+                    symbol=intent.symbol,
+                    side=intent.side.value,
+                    order_id=order_id,
+                    fill_id=fill_id,
+                    price=price,
+                    qty=intent.qty,
+                    fee=fee,
+                    reason_codes=self._exit_reason_codes(intent.exit_reason),
+                    reason_summary=intent.exit_reason,
+                    decision_trace=intent.decision_trace,
+                    feature_snapshot={},
+                    data_quality_flags=["missing_open_trade"],
+                    raw_payload=raw_payload,
+                )
+                return None
+
+            self._update_trade_excursion(conn, trade, mark_price=price, at=now)
+            refreshed = self._trade_row(conn, str(trade["trade_id"])) or trade
+            open_qty = float(refreshed["open_qty"])
+            if open_qty <= 0:
+                open_qty = float(refreshed["qty"])
+            closed_qty = min(open_qty, intent.qty)
+            gross_pnl = (price - float(refreshed["entry_price"])) * closed_qty * Side.from_value(refreshed["side"]).sign
+            total_fees = float(refreshed["total_fees"]) + fee
+            previous_gross = float(refreshed["gross_pnl_usdt"] or 0.0)
+            total_gross = previous_gross + gross_pnl
+            realized = total_gross - total_fees
+            hold_seconds = _seconds_between(str(refreshed["opened_at"]), now)
+            initial_risk = refreshed["initial_risk_usdt"]
+            r_multiple = None
+            if initial_risk is not None and float(initial_risk) > 0:
+                r_multiple = realized / float(initial_risk)
+            mfe = float(refreshed["mfe_usdt"])
+            mfe_capture = None
+            if mfe > 0:
+                mfe_capture = max(0.0, realized) / mfe
+            event_type = "close_fill" if intent.qty >= open_qty - 1e-12 else "partial_take_profit"
+            if event_type == "close_fill":
+                conn.execute(
+                    """
+                    update trade_lifecycle
+                    set status = 'closed',
+                        closed_at = ?,
+                        exit_order_id = ?,
+                        exit_fill_id = ?,
+                        exit_price = ?,
+                        open_qty = 0.0,
+                        exit_fee = exit_fee + ?,
+                        total_fees = ?,
+                        gross_pnl_usdt = ?,
+                        realized_pnl_usdt = ?,
+                        hold_duration_seconds = ?,
+                        r_multiple = ?,
+                        mfe_capture_ratio = ?,
+                        exit_reason_codes_json = ?,
+                        exit_reason_summary = ?,
+                        exit_decision_trace_json = ?,
+                        exit_feature_snapshot_json = ?
+                    where trade_id = ?
+                    """,
+                    (
+                        now,
+                        order_id,
+                        fill_id,
+                        price,
+                        fee,
+                        total_fees,
+                        total_gross,
+                        realized,
+                        hold_seconds,
+                        r_multiple,
+                        mfe_capture,
+                        json.dumps(to_jsonable(self._exit_reason_codes(intent.exit_reason)), ensure_ascii=False, sort_keys=True),
+                        intent.exit_reason,
+                        json.dumps(to_jsonable(intent.decision_trace), ensure_ascii=False, sort_keys=True),
+                        json.dumps(to_jsonable(intent.decision_trace.get("features", {})), ensure_ascii=False, sort_keys=True),
+                        refreshed["trade_id"],
+                    ),
+                )
+            else:
+                remaining_qty = max(0.0, open_qty - closed_qty)
+                conn.execute(
+                    """
+                    update trade_lifecycle
+                    set open_qty = ?,
+                        exit_fee = exit_fee + ?,
+                        total_fees = ?,
+                        gross_pnl_usdt = ?,
+                        realized_pnl_usdt = ?
+                    where trade_id = ?
+                    """,
+                    (remaining_qty, fee, total_fees, total_gross, realized, refreshed["trade_id"]),
+                )
+            self._append_trade_event(
+                conn,
+                trade_id=refreshed["trade_id"],
+                event_type=event_type,
+                symbol=intent.symbol,
+                side=intent.side.value,
+                order_id=order_id,
+                fill_id=fill_id,
+                price=price,
+                qty=intent.qty,
+                fee=fee,
+                reason_codes=self._exit_reason_codes(intent.exit_reason),
+                reason_summary=intent.exit_reason,
+                decision_trace=intent.decision_trace,
+                feature_snapshot=intent.decision_trace.get("features", {}),
+                raw_payload=raw_payload,
+            )
+            return str(refreshed["trade_id"])
+
+    def _latest_order_intent_row(self, conn: sqlite3.Connection, intent: OrderIntent) -> sqlite3.Row | None:
+        return conn.execute(
+            """
+            select *
+            from order_intents
+            where run_id = ?
+              and bot_id = ?
+              and variant_id = ?
+              and exchange = ?
+              and symbol = ?
+              and side = ?
+              and reduce_only = ?
+            order by id desc
+            limit 1
+            """,
+            (
+                self.run_id,
+                self.bot_id,
+                self.variant_id,
+                self.exchange,
+                intent.symbol,
+                intent.side.value,
+                int(intent.reduce_only),
+            ),
+        ).fetchone()
+
+    def _open_trade_row(self, conn: sqlite3.Connection, symbol: str) -> sqlite3.Row | None:
+        return conn.execute(
+            """
+            select *
+            from trade_lifecycle
+            where run_id = ? and bot_id = ? and exchange = ? and symbol = ? and status = 'open'
+            order by opened_at desc
+            limit 1
+            """,
+            (self.run_id, self.bot_id, self.exchange, symbol),
+        ).fetchone()
+
+    def _trade_row(self, conn: sqlite3.Connection, trade_id: str) -> sqlite3.Row | None:
+        return conn.execute("select * from trade_lifecycle where trade_id = ?", (trade_id,)).fetchone()
+
+    def _signal_for_intent(self, conn: sqlite3.Connection, intent_row: dict[str, Any] | None) -> sqlite3.Row | None:
+        if intent_row is None or intent_row.get("signal_id") is None:
+            return None
+        return conn.execute("select * from signals where id = ?", (intent_row["signal_id"],)).fetchone()
+
+    @staticmethod
+    def _json_from_row(row: sqlite3.Row | None, column: str, default: Any) -> Any:
+        if row is None:
+            return default
+        try:
+            return json.loads(row[column])
+        except (IndexError, KeyError, TypeError, json.JSONDecodeError):
+            return default
+
+    def _entry_reason_codes(self, intent: OrderIntent, signal_row: sqlite3.Row | None) -> list[str]:
+        signal_codes = self._json_from_row(signal_row, "reason_codes_json", [])
+        if signal_codes:
+            return [str(code) for code in signal_codes]
+        trace_codes = intent.decision_trace.get("reason_codes")
+        if isinstance(trace_codes, list) and trace_codes:
+            return [str(code) for code in trace_codes]
+        return [intent.entry_reason] if intent.entry_reason else []
+
+    @staticmethod
+    def _exit_reason_codes(exit_reason: str | None) -> list[str]:
+        if not exit_reason:
+            return []
+        if exit_reason.startswith("stop_loss"):
+            return ["stop_loss_hit"]
+        return [exit_reason]
+
+    def _append_trade_event(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        trade_id: str | None,
+        event_type: str,
+        symbol: str,
+        side: str | None = None,
+        order_id: int | None = None,
+        fill_id: int | None = None,
+        price: float | None = None,
+        qty: float | None = None,
+        fee: float | None = None,
+        reason_codes: list[str] | None = None,
+        reason_summary: str | None = None,
+        decision_trace: dict[str, Any] | None = None,
+        feature_snapshot: dict[str, Any] | None = None,
+        data_quality_flags: list[str] | None = None,
+        raw_payload: dict[str, Any] | None = None,
+    ) -> None:
+        conn.execute(
+            """
+            insert into trade_events (
+                trade_id, run_id, bot_id, variant_id, exchange, created_at, event_type, symbol, side,
+                order_id, fill_id, price, qty, fee, reason_codes_json, reason_summary,
+                decision_trace_json, feature_snapshot_json, data_quality_flags_json, raw_payload_json
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                trade_id,
+                *self._context_tuple(),
+                self.exchange,
+                utc_now_iso(),
+                event_type,
+                symbol,
+                side,
+                order_id,
+                fill_id,
+                price,
+                qty,
+                fee,
+                json.dumps(to_jsonable(reason_codes or []), ensure_ascii=False, sort_keys=True),
+                reason_summary,
+                json.dumps(to_jsonable(decision_trace or {}), ensure_ascii=False, sort_keys=True),
+                json.dumps(to_jsonable(feature_snapshot or {}), ensure_ascii=False, sort_keys=True),
+                json.dumps(to_jsonable(data_quality_flags or []), ensure_ascii=False, sort_keys=True),
+                json.dumps(to_jsonable(raw_payload or {}), ensure_ascii=False, sort_keys=True),
+            ),
+        )
+
+    def _merge_trade_quality_flags(
+        self,
+        conn: sqlite3.Connection,
+        trade_id: str,
+        flags: list[str],
+    ) -> None:
+        row = self._trade_row(conn, trade_id)
+        if row is None:
+            return
+        existing = set(self._json_from_row(row, "data_quality_flags_json", []))
+        merged = sorted(existing | {str(flag) for flag in flags})
+        conn.execute(
+            "update trade_lifecycle set data_quality_flags_json = ? where trade_id = ?",
+            (json.dumps(merged, ensure_ascii=False, sort_keys=True), trade_id),
+        )
+
+    def _update_trade_excursion(
+        self,
+        conn: sqlite3.Connection,
+        trade: sqlite3.Row,
+        *,
+        mark_price: float,
+        at: str,
+    ) -> None:
+        side = Side.from_value(trade["side"])
+        open_qty = float(trade["open_qty"])
+        if open_qty <= 0:
+            open_qty = float(trade["qty"])
+        pnl = (mark_price - float(trade["entry_price"])) * open_qty * side.sign
+        mae = min(float(trade["mae_usdt"]), pnl)
+        mfe = max(float(trade["mfe_usdt"]), pnl)
+        time_to_mae = trade["time_to_mae_seconds"]
+        time_to_mfe = trade["time_to_mfe_seconds"]
+        elapsed = _seconds_between(str(trade["opened_at"]), at)
+        if mae < float(trade["mae_usdt"]):
+            time_to_mae = elapsed
+        if mfe > float(trade["mfe_usdt"]):
+            time_to_mfe = elapsed
+        conn.execute(
+            """
+            update trade_lifecycle
+            set mae_usdt = ?,
+                mfe_usdt = ?,
+                max_open_drawdown_usdt = ?,
+                time_to_mae_seconds = ?,
+                time_to_mfe_seconds = ?
+            where trade_id = ?
+            """,
+            (mae, mfe, mae, time_to_mae, time_to_mfe, trade["trade_id"]),
+        )
+
     def upsert_position(self, position: Position) -> None:
         with self.connect() as conn:
             conn.execute(
@@ -804,6 +1385,8 @@ class Ledger:
             "risk_events",
             "raw_exchange_payloads",
             "position_sizing_decisions",
+            "trade_lifecycle",
+            "trade_events",
         }
         if table not in allowed:
             raise ValueError(f"unsupported ledger table: {table}")
@@ -843,3 +1426,12 @@ def _intent_context_tuple_without_trace(intent: OrderIntent) -> tuple[Any, Any, 
         _enum_value(getattr(intent, "setup", None)),
         getattr(intent, "historical_match_score", None),
     )
+
+
+def _seconds_between(start: str, end: str) -> float | None:
+    try:
+        start_dt = datetime.fromisoformat(start)
+        end_dt = datetime.fromisoformat(end)
+    except ValueError:
+        return None
+    return (end_dt - start_dt).total_seconds()

@@ -70,18 +70,21 @@ def summarize_fleet_ledger(
             "generated_at": generated_at,
             "bots": [],
             "risk_rejections": {},
+            "trade_journal": _empty_trade_journal(),
             "totals": _totals([]),
         }
     with sqlite3.connect(path) as conn:
         conn.row_factory = sqlite3.Row
         bots = _bot_rows(conn, run_id, initial_equity_usdt)
         risk_rejections = _risk_rejections(conn, run_id)
+        trade_journal = _trade_journal(conn, run_id)
     return {
         "run_id": run_id,
         "ledger_path": str(path),
         "generated_at": generated_at,
         "bots": bots,
         "risk_rejections": dict(risk_rejections),
+        "trade_journal": trade_journal,
         "totals": _totals(bots),
     }
 
@@ -267,6 +270,198 @@ def _risk_rejections(conn: sqlite3.Connection, run_id: str) -> Counter[str]:
     return counts
 
 
+def _trade_journal(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
+    legacy_gap = _legacy_journal_gap(conn, run_id)
+    if not _table_exists(conn, "trade_lifecycle"):
+        return _empty_trade_journal(**legacy_gap)
+    rows = conn.execute(
+        """
+        select *
+        from trade_lifecycle
+        where run_id = ?
+        order by opened_at, trade_id
+        """,
+        (run_id,),
+    ).fetchall()
+    if not rows:
+        return _empty_trade_journal(**legacy_gap)
+
+    entry_reasons: Counter[str] = Counter()
+    exit_reasons: Counter[str] = Counter()
+    strong_patterns: Counter[str] = Counter()
+    risk_patterns: Counter[str] = Counter()
+    wyckoff_setups: Counter[str] = Counter()
+    quality_flags: Counter[str] = Counter()
+    realized_values: list[float] = []
+    r_values: list[float] = []
+    mfe_capture_values: list[float] = []
+    closed = 0
+    winners = 0
+    for row in rows:
+        for code in _json_list(row["entry_reason_codes_json"]):
+            entry_reasons[code] += 1
+        for code in _json_list(row["exit_reason_codes_json"]):
+            exit_reasons[code] += 1
+        features = _json_dict(row["entry_feature_snapshot_json"])
+        strong_tag = str(features.get("strong_pattern_tag") or "")
+        risk_tag = str(features.get("risk_pattern_tag") or "")
+        wyckoff_tag = str(
+            features.get("wyckoff_long_setup_tag")
+            or features.get("wyckoff_short_setup_tag")
+            or features.get("wyckoff_exit_tag")
+            or ""
+        )
+        if strong_tag and strong_tag != "none":
+            strong_patterns[strong_tag] += 1
+        if risk_tag and risk_tag != "none":
+            risk_patterns[risk_tag] += 1
+        if wyckoff_tag and wyckoff_tag != "none":
+            wyckoff_setups[wyckoff_tag] += 1
+        for flag in _json_list(row["data_quality_flags_json"]):
+            quality_flags[flag] += 1
+        if row["status"] == "closed":
+            closed += 1
+            realized = _maybe_float(row["realized_pnl_usdt"])
+            if realized is not None:
+                realized_values.append(realized)
+                if realized > 0:
+                    winners += 1
+            r_multiple = _maybe_float(row["r_multiple"])
+            if r_multiple is not None:
+                r_values.append(r_multiple)
+            capture = _maybe_float(row["mfe_capture_ratio"])
+            if capture is not None:
+                mfe_capture_values.append(capture)
+
+    return {
+        "total_trades": len(rows),
+        "closed_trades": closed,
+        "open_trades": len(rows) - closed,
+        "win_rate": round(winners / closed, 6) if closed else None,
+        "realized_pnl_usdt": round(sum(realized_values), 6),
+        "avg_realized_pnl_usdt": round(sum(realized_values) / len(realized_values), 6) if realized_values else None,
+        "avg_r_multiple": round(sum(r_values) / len(r_values), 6) if r_values else None,
+        "avg_mfe_capture_ratio": round(sum(mfe_capture_values) / len(mfe_capture_values), 6)
+        if mfe_capture_values
+        else None,
+        "entry_reason_buckets": dict(entry_reasons),
+        "exit_reason_buckets": dict(exit_reasons),
+        "strong_pattern_buckets": dict(strong_patterns),
+        "risk_pattern_buckets": dict(risk_patterns),
+        "wyckoff_setup_buckets": dict(wyckoff_setups),
+        "data_quality_flags": dict(quality_flags),
+        **legacy_gap,
+    }
+
+
+def _empty_trade_journal(
+    *,
+    legacy_unjournaled_fills: int = 0,
+    legacy_unjournaled_closed_orders: int = 0,
+    journal_data_quality: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "total_trades": 0,
+        "closed_trades": 0,
+        "open_trades": 0,
+        "win_rate": None,
+        "realized_pnl_usdt": 0.0,
+        "avg_realized_pnl_usdt": None,
+        "avg_r_multiple": None,
+        "avg_mfe_capture_ratio": None,
+        "entry_reason_buckets": {},
+        "exit_reason_buckets": {},
+        "strong_pattern_buckets": {},
+        "risk_pattern_buckets": {},
+        "wyckoff_setup_buckets": {},
+        "data_quality_flags": {},
+        "legacy_unjournaled_fills": legacy_unjournaled_fills,
+        "legacy_unjournaled_closed_orders": legacy_unjournaled_closed_orders,
+        "journal_data_quality": journal_data_quality or [],
+    }
+
+
+def _legacy_journal_gap(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
+    if _table_exists(conn, "trade_events"):
+        fills = conn.execute(
+            """
+            select count(*)
+            from fills f
+            left join trade_events e
+              on e.run_id = f.run_id
+             and e.bot_id = f.bot_id
+             and e.exchange = f.exchange
+             and e.fill_id = f.id
+            where f.run_id = ? and e.id is null
+            """,
+            (run_id,),
+        ).fetchone()[0]
+    else:
+        fills = conn.execute("select count(*) from fills where run_id = ?", (run_id,)).fetchone()[0]
+    if _table_exists(conn, "trade_lifecycle"):
+        closed_orders = conn.execute(
+            """
+            select count(*)
+            from orders o
+            left join trade_lifecycle t
+              on t.run_id = o.run_id
+             and t.bot_id = o.bot_id
+             and t.exchange = o.exchange
+             and t.exit_order_id = o.id
+            where o.run_id = ? and o.reduce_only = 1 and t.trade_id is null
+            """,
+            (run_id,),
+        ).fetchone()[0]
+    else:
+        closed_orders = conn.execute(
+            "select count(*) from orders where run_id = ? and reduce_only = 1",
+            (run_id,),
+        ).fetchone()[0]
+    quality = []
+    if fills:
+        quality.append("legacy_fills_without_trade_lifecycle")
+    if closed_orders:
+        quality.append("legacy_closes_without_structured_exit_journal")
+    return {
+        "legacy_unjournaled_fills": int(fills),
+        "legacy_unjournaled_closed_orders": int(closed_orders),
+        "journal_data_quality": quality,
+    }
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute("select name from sqlite_master where type = 'table' and name = ?", (table,)).fetchone()
+    return row is not None
+
+
+def _json_list(payload: str | None) -> list[str]:
+    if not payload:
+        return []
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError:
+        return ["invalid_json"]
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value]
+
+
+def _json_dict(payload: str | None) -> dict[str, Any]:
+    if not payload:
+        return {}
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _maybe_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
 def _totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "bot_count": len(rows),
@@ -294,6 +489,49 @@ def _render_markdown(summary: dict[str, Any]) -> str:
     totals = summary["totals"]
     for key in ("bot_count", "opened_orders", "closed_orders", "fills", "positions", "symbols", "equity_pnl_net", "fees_paid"):
         lines.append(f"- {key}: {totals[key]}")
+    journal = summary.get("trade_journal", _empty_trade_journal())
+    lines.extend(
+        [
+            "",
+            "## Trade Journal",
+            "",
+            f"- total_trades: {journal['total_trades']}",
+            f"- closed_trades: {journal['closed_trades']}",
+            f"- open_trades: {journal['open_trades']}",
+            f"- win_rate: {journal['win_rate']}",
+            f"- realized_pnl_usdt: {journal['realized_pnl_usdt']}",
+            f"- avg_r_multiple: {journal['avg_r_multiple']}",
+            f"- avg_mfe_capture_ratio: {journal['avg_mfe_capture_ratio']}",
+            f"- legacy_unjournaled_fills: {journal.get('legacy_unjournaled_fills', 0)}",
+            f"- legacy_unjournaled_closed_orders: {journal.get('legacy_unjournaled_closed_orders', 0)}",
+            "",
+            "### Entry Reasons",
+            "",
+        ]
+    )
+    if journal["entry_reason_buckets"]:
+        for reason, count in sorted(journal["entry_reason_buckets"].items(), key=lambda item: (-item[1], item[0])):
+            lines.append(f"- {reason}: {count}")
+    else:
+        lines.append("- none")
+    lines.extend(["", "### Exit Reasons", ""])
+    if journal["exit_reason_buckets"]:
+        for reason, count in sorted(journal["exit_reason_buckets"].items(), key=lambda item: (-item[1], item[0])):
+            lines.append(f"- {reason}: {count}")
+    else:
+        lines.append("- none")
+    lines.extend(["", "### Strong Pattern Buckets", ""])
+    if journal["strong_pattern_buckets"]:
+        for tag, count in sorted(journal["strong_pattern_buckets"].items(), key=lambda item: (-item[1], item[0])):
+            lines.append(f"- {tag}: {count}")
+    else:
+        lines.append("- none")
+    lines.extend(["", "### Wyckoff Buckets", ""])
+    if journal["wyckoff_setup_buckets"]:
+        for tag, count in sorted(journal["wyckoff_setup_buckets"].items(), key=lambda item: (-item[1], item[0])):
+            lines.append(f"- {tag}: {count}")
+    else:
+        lines.append("- none")
     lines.extend(
         [
             "",

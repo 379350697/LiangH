@@ -41,10 +41,17 @@ class PaperExecutor:
         margin_used = 0.0
         unrealized = 0.0
         for position in self.get_positions():
+            mark_fallback = False
             try:
                 mark = self.price_provider(position.symbol)
             except Exception as exc:
                 mark = self._recover_mark_price(position, exc)
+                mark_fallback = True
+            self.ledger.record_trade_mark(
+                symbol=position.symbol,
+                mark_price=mark,
+                data_quality_flags=["mark_price_fallback"] if mark_fallback else [],
+            )
             notional = position.qty * mark
             margin_used += notional / max(position.leverage, 1)
             unrealized += (mark - position.avg_price) * position.qty * position.side.sign
@@ -114,13 +121,16 @@ class PaperExecutor:
         notional = abs(fill_price * filled_qty)
         fee = notional * self.paper_config.fee_bps / 10_000
         exchange_order_id = f"{self.order_id_prefix}-{uuid.uuid4().hex[:12]}"
+        intent_row = self.ledger.latest_order_intent_for(intent)
+        intent_id = None if intent_row is None else int(intent_row["id"])
         order_id = self.ledger.record_order(
             intent,
             status="filled",
             exchange_order_id=exchange_order_id,
+            intent_id=intent_id,
             raw_payload={**route_payload, "base_price": base_price, "slippage_bps": self.paper_config.slippage_bps},
         )
-        self.ledger.record_fill(
+        fill_id = self.ledger.record_fill(
             order_id=order_id,
             exchange_order_id=exchange_order_id,
             symbol=intent.symbol,
@@ -135,6 +145,14 @@ class PaperExecutor:
             exit_reason=intent.exit_reason,
             decision_trace=intent.decision_trace,
             historical_match_score=intent.historical_match_score,
+        )
+        self.ledger.record_trade_fill(
+            intent=intent,
+            order_id=order_id,
+            fill_id=fill_id,
+            price=fill_price,
+            fee=fee,
+            raw_payload={**route_payload, "reduce_only": intent.reduce_only},
         )
         realized_before = self.realized_pnl_usdt
         self.cash_usdt -= fee
