@@ -770,7 +770,12 @@ class FleetRunner:
                     try:
                         _, rows = future.result()
                         candles_by_symbol.setdefault(symbol, {}).update(rows)
-                        latest_prices[symbol] = _latest_close_from_candles(rows)
+                        self._refresh_trade_price(
+                            symbol=symbol,
+                            latest_prices=latest_prices,
+                            market_data=market_data_by_symbol.get(symbol, default_market_data),
+                            fallback_rows=rows,
+                        )
                     except Exception as exc:
                         self.fleet_ledger.record_risk_event(
                             "market_data_error",
@@ -783,7 +788,12 @@ class FleetRunner:
             try:
                 _, rows = fetch_intraday(symbol)
                 candles_by_symbol.setdefault(symbol, {}).update(rows)
-                latest_prices[symbol] = _latest_close_from_candles(rows)
+                self._refresh_trade_price(
+                    symbol=symbol,
+                    latest_prices=latest_prices,
+                    market_data=market_data_by_symbol.get(symbol, default_market_data),
+                    fallback_rows=rows,
+                )
             except Exception as exc:
                 self.fleet_ledger.record_risk_event(
                     "market_data_error",
@@ -791,6 +801,33 @@ class FleetRunner:
                     symbol=symbol,
                 )
                 cycle["market_data_errors"] += 1
+
+    def _refresh_trade_price(
+        self,
+        *,
+        symbol: str,
+        latest_prices: dict[str, float],
+        market_data: MarketData,
+        fallback_rows: dict[str, list[Any]],
+    ) -> None:
+        try:
+            latest_prices[symbol] = market_data.latest_price(symbol)
+            return
+        except Exception as exc:
+            if symbol in latest_prices and latest_prices[symbol] > 0:
+                self.fleet_ledger.record_risk_event(
+                    "latest_price_refresh_failed_keep_existing",
+                    {"error": repr(exc), "phase": "selected_intraday_enrichment"},
+                    symbol=symbol,
+                )
+                return
+            latest_price = _latest_close_from_candles(fallback_rows)
+            latest_prices[symbol] = latest_price
+            self.fleet_ledger.record_risk_event(
+                "latest_price_fallback_to_candle_close",
+                {"error": repr(exc), "latest_price": latest_price, "phase": "selected_intraday_enrichment"},
+                symbol=symbol,
+            )
 
     def _close_if_stop_loss_hit(
         self,

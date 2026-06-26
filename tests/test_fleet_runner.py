@@ -204,6 +204,92 @@ class FleetRunnerTest(unittest.TestCase):
             self.assertEqual(calls_by_symbol["SLOW-USDT-SWAP"], ["1D", "4H", "1H"])
             self.assertEqual(calls_by_symbol["STRONG-USDT-SWAP"], ["1D", "4H", "1H", "15m", "5m", "1m"])
 
+    def test_selected_intraday_enrichment_refreshes_trade_price_from_ticker(self):
+        class IntradayMarketData(StaticMarketData):
+            def __init__(self):
+                super().__init__({"HOT-USDT-SWAP": layered_cache_candles("HOT-USDT-SWAP")})
+                self.latest_price_calls = 0
+
+            def latest_price(self, symbol: str) -> float:
+                self.latest_price_calls += 1
+                return 123.45
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = FleetConfig(
+                run_id="unit-selected-price-refresh",
+                strategy_version="rules_langlang_v1_2",
+                execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_okx"),
+                market_data=MarketDataConfig(
+                    symbols=["HOT-USDT-SWAP"],
+                    bars=["1m", "5m", "15m", "1H", "4H", "1D"],
+                    cache_enabled=True,
+                    cache_dir=os.path.join(tmp, "kline_cache"),
+                    cache_selected_bars=["1m"],
+                    cache_hot_bars=[],
+                ),
+                selection=SymbolSelectionConfig(enabled=True, style="dual_board"),
+                universe=UniverseConfig(mode="static"),
+                ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                bots=[],
+            )
+            market_data = IntradayMarketData()
+            runner = FleetRunner(config=config, market_data=market_data, ledger=Ledger(config.ledger_path))
+            latest_prices = {"HOT-USDT-SWAP": 999.0}
+            candles_by_symbol = {}
+
+            runner._enrich_selected_multi_timeframe_data(
+                symbols=["HOT-USDT-SWAP"],
+                candles_by_symbol=candles_by_symbol,
+                latest_prices=latest_prices,
+                market_data_by_symbol={},
+                default_market_data=market_data,
+                cycle={"market_data_errors": 0},
+            )
+
+            self.assertEqual(market_data.latest_price_calls, 1)
+            self.assertEqual(latest_prices["HOT-USDT-SWAP"], 123.45)
+            self.assertIn("1m", candles_by_symbol["HOT-USDT-SWAP"])
+
+    def test_selected_intraday_enrichment_keeps_existing_trade_price_when_ticker_refresh_fails(self):
+        class FailingTickerMarketData(StaticMarketData):
+            def latest_price(self, symbol: str) -> float:
+                raise RuntimeError("ticker temporarily unavailable")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = FleetConfig(
+                run_id="unit-selected-price-refresh-fail",
+                strategy_version="rules_langlang_v1_2",
+                execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_okx"),
+                market_data=MarketDataConfig(
+                    symbols=["HOT-USDT-SWAP"],
+                    bars=["1m", "5m", "15m", "1H", "4H", "1D"],
+                    cache_enabled=True,
+                    cache_dir=os.path.join(tmp, "kline_cache"),
+                    cache_selected_bars=["1m"],
+                    cache_hot_bars=[],
+                ),
+                selection=SymbolSelectionConfig(enabled=True, style="dual_board"),
+                universe=UniverseConfig(mode="static"),
+                ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                bots=[],
+            )
+            market_data = FailingTickerMarketData({"HOT-USDT-SWAP": layered_cache_candles("HOT-USDT-SWAP")})
+            runner = FleetRunner(config=config, market_data=market_data, ledger=Ledger(config.ledger_path))
+            latest_prices = {"HOT-USDT-SWAP": 111.0}
+
+            runner._enrich_selected_multi_timeframe_data(
+                symbols=["HOT-USDT-SWAP"],
+                candles_by_symbol={},
+                latest_prices=latest_prices,
+                market_data_by_symbol={},
+                default_market_data=market_data,
+                cycle={"market_data_errors": 0},
+            )
+
+            self.assertEqual(latest_prices["HOT-USDT-SWAP"], 111.0)
+            events = Ledger(config.ledger_path).list_rows("risk_events")
+            self.assertTrue(any(row["reason"] == "latest_price_refresh_failed_keep_existing" for row in events))
+
     def test_market_snapshot_cache_persists_selection_shape_and_wyckoff_outputs_from_fleet_tick(self):
         from langlang_trader.models import utc_now_iso
         from langlang_trader.universe import UniverseSnapshot, UniverseSymbol
