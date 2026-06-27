@@ -455,7 +455,20 @@ class FleetRunner:
             strategy = strategy_from_version(bot_strategy_version, bot.variant)
             risk_engine = RiskEngine(self.config.risk, initial_equity_usdt=self.config.paper.initial_equity_usdt)
             bot_selection_state = selection_states_by_profile.get(_bot_selection_profile(self.config, bot))
-            for symbol in candles_by_symbol:
+            open_positions = executor.get_positions()
+            open_position_symbols = {position.symbol for position in open_positions}
+            for symbol in open_position_symbols:
+                if latest_price_sources.get(symbol) == "realtime_ticker":
+                    continue
+                self._refresh_realtime_trade_price(
+                    symbol=symbol,
+                    latest_prices=latest_prices,
+                    latest_price_sources=latest_price_sources,
+                    market_data=market_data_by_symbol.get(symbol, default_market_data),
+                    phase="open_position_exit_management",
+                )
+            managed_symbols = list(dict.fromkeys([*candles_by_symbol.keys(), *sorted(open_position_symbols)]))
+            for symbol in managed_symbols:
                 try:
                     if (
                         universe_snapshot is not None
@@ -879,6 +892,31 @@ class FleetRunner:
                 {"error": repr(exc), "latest_price": latest_price, "phase": "selected_intraday_enrichment"},
                 symbol=symbol,
             )
+
+    def _refresh_realtime_trade_price(
+        self,
+        *,
+        symbol: str,
+        latest_prices: dict[str, float],
+        latest_price_sources: dict[str, str],
+        market_data: MarketData,
+        phase: str,
+    ) -> bool:
+        try:
+            latest_prices[symbol] = market_data.latest_price(symbol)
+            latest_price_sources[symbol] = "realtime_ticker"
+            return True
+        except Exception as exc:
+            self.fleet_ledger.record_risk_event(
+                "latest_price_realtime_refresh_failed",
+                {
+                    "error": repr(exc),
+                    "phase": phase,
+                    "existing_source": latest_price_sources.get(symbol),
+                },
+                symbol=symbol,
+            )
+            return False
 
     def _manage_open_position_exit(
         self,

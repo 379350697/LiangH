@@ -677,6 +677,63 @@ class FleetRunnerTest(unittest.TestCase):
             events = ledger.list_rows("trade_events")
             self.assertTrue(any(row["event_type"] == "legacy_position_adopted" for row in events))
 
+    def test_run_once_manages_open_position_not_in_market_universe(self):
+        from langlang_trader.models import Position
+
+        class PositionTickerMarketData(StaticMarketData):
+            def latest_price(self, symbol: str) -> float:
+                if symbol == "HELD-USDT-SWAP":
+                    return 110.1
+                return super().latest_price(symbol)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            variant = StrategyVariant("fleet-open-position-watch", 0.12, 0.32, 0.45, 0.18, 0.005)
+            config = FleetConfig(
+                run_id="unit-open-position-watch-run",
+                execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_okx"),
+                paper=PaperConfig(initial_equity_usdt=50_000, fee_bps=0, slippage_bps=0),
+                risk=RiskConfig(max_position_usdt=1_000, max_daily_loss_usdt=500, default_leverage=5),
+                market_data=MarketDataConfig(symbols=[]),
+                ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                bots=[BotConfig(bot_id="bot-1", variant=variant)],
+            )
+            ledger = Ledger(config.ledger_path)
+            bot_ledger = ledger.scoped(
+                run_id=config.run_id,
+                bot_id="bot-1",
+                variant_id=variant.variant_id,
+            )
+            bot_ledger.upsert_position(
+                Position(
+                    symbol="HELD-USDT-SWAP",
+                    side=Side.LONG,
+                    qty=2.0,
+                    avg_price=100.0,
+                    leverage=3,
+                    exchange="okx",
+                    strategy_version="rules_v01",
+                    regime="existing",
+                    setup="legacy",
+                )
+            )
+            runner = FleetRunner(
+                config=config,
+                market_data=PositionTickerMarketData({}),
+                ledger=ledger,
+            )
+
+            cycle = runner.run_once()
+
+            self.assertEqual(cycle["errors"], 0)
+            trade = bot_ledger.open_trade_exit_state("HELD-USDT-SWAP")
+            self.assertIsNotNone(trade)
+            events = ledger.list_rows(
+                "trade_events",
+                run_id=config.run_id,
+                bot_id="bot-1",
+            )
+            self.assertTrue(any(row["event_type"] == "legacy_position_adopted" for row in events))
+
     def test_market_snapshot_cache_persists_selection_shape_and_wyckoff_outputs_from_fleet_tick(self):
         from langlang_trader.models import utc_now_iso
         from langlang_trader.universe import UniverseSnapshot, UniverseSymbol
