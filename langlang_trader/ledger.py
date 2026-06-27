@@ -6,6 +6,7 @@ import json
 import sqlite3
 from pathlib import Path
 from typing import Any, Iterator
+import uuid
 
 from langlang_trader.models import (
     AccountSnapshot,
@@ -1411,6 +1412,88 @@ class Ledger:
                 "partial_taken": bool(int(trade["partial_take_profit_taken"] or 0)),
                 "take_profit_plan": take_profit_plan,
             }
+
+    def adopt_legacy_open_position(
+        self,
+        *,
+        position: Position,
+        latest_price: float,
+        current_stop_loss: float | None = None,
+        data_quality_flags: list[str] | None = None,
+    ) -> str | None:
+        selected_exchange = position.exchange or self.exchange
+        flags = list(dict.fromkeys(data_quality_flags or []))
+        now = utc_now_iso()
+        with self.connect() as conn:
+            existing = self._open_trade_row(conn, position.symbol, exchange=selected_exchange)
+            if existing is not None:
+                return existing["trade_id"]
+            initial_risk = None
+            if current_stop_loss is not None:
+                initial_risk = abs(position.avg_price - current_stop_loss) * position.qty
+            trade_id = f"{self.run_id}:{self.bot_id}:{selected_exchange}:{position.symbol}:legacy:{uuid.uuid4().hex[:12]}"
+            conn.execute(
+                """
+                insert into trade_lifecycle (
+                    trade_id, run_id, bot_id, variant_id, exchange, symbol, side, status, opened_at,
+                    entry_price, qty, open_qty, leverage, initial_stop_loss, current_stop_loss,
+                    initial_risk_usdt, entry_reason_codes_json, entry_reason_summary,
+                    entry_decision_trace_json, entry_feature_snapshot_json, data_quality_flags_json,
+                    strategy_version, regime, setup
+                ) values (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    trade_id,
+                    *self._context_tuple(),
+                    selected_exchange,
+                    position.symbol,
+                    position.side.value,
+                    now,
+                    position.avg_price,
+                    position.qty,
+                    position.qty,
+                    position.leverage,
+                    current_stop_loss,
+                    current_stop_loss,
+                    initial_risk,
+                    json.dumps(["legacy_position_adopted"], ensure_ascii=False, sort_keys=True),
+                    "legacy_position_adopted",
+                    json.dumps(
+                        {
+                            "latest_price": latest_price,
+                            "adoption_source": "current_realtime_price",
+                            "historical_path_available": False,
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                    "{}",
+                    json.dumps(flags, ensure_ascii=False, sort_keys=True),
+                    position.strategy_version,
+                    _enum_value(position.regime),
+                    _enum_value(position.setup),
+                ),
+            )
+            self._append_trade_event(
+                conn,
+                trade_id=trade_id,
+                event_type="legacy_position_adopted",
+                symbol=position.symbol,
+                side=position.side.value,
+                price=latest_price,
+                qty=position.qty,
+                reason_codes=["legacy_position_adopted"],
+                reason_summary="legacy position adopted from current realtime price",
+                decision_trace={
+                    "latest_price": latest_price,
+                    "entry_price": position.avg_price,
+                    "initial_stop_loss": current_stop_loss,
+                    "initial_risk_usdt": initial_risk,
+                },
+                data_quality_flags=flags,
+                raw_payload={"historical_path_available": False},
+            )
+            return trade_id
 
     def record_stop_moved(
         self,

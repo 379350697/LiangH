@@ -82,12 +82,31 @@ class ExitManagementEngine:
         partial_fraction = min(1.0, max(0.0, partial_fraction))
         if not context.partial_taken and current_r >= partial_r and partial_fraction > 0:
             reduce_qty = min(context.position.qty, context.position.qty * partial_fraction)
+            target_stop = None
+            reason_codes = ["partial_take_profit"]
+            if current_r >= self.breakeven_at_r:
+                breakeven_stop = self._fee_buffered_breakeven(context)
+                current_stop = context.current_stop_loss
+                improves_stop = (
+                    current_stop is None
+                    or (side is Side.LONG and breakeven_stop > current_stop)
+                    or (side is Side.SHORT and breakeven_stop < current_stop)
+                )
+                if improves_stop:
+                    target_stop = breakeven_stop
+                    reason_codes.append("breakeven_stop_moved")
             return ExitManagementDecision(
                 action=ExitActionType.PARTIAL_TAKE_PROFIT,
-                reason_codes=["partial_take_profit"],
+                reason_codes=reason_codes,
                 reason_summary="partial take profit reached",
+                new_stop_loss=target_stop,
                 reduce_qty=reduce_qty,
-                decision_trace={**trace, "partial_r": partial_r, "partial_exit_fraction": partial_fraction},
+                decision_trace={
+                    **trace,
+                    "partial_r": partial_r,
+                    "partial_exit_fraction": partial_fraction,
+                    "breakeven_stop_loss": target_stop,
+                },
             )
 
         trail_decision = self._mfe_trailing_decision(context, current_pnl=current_pnl, trace=trace)

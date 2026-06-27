@@ -55,7 +55,10 @@ class ExitManagementEngineTest(unittest.TestCase):
 
         self.assertEqual(decision.action, ExitActionType.PARTIAL_TAKE_PROFIT)
         self.assertAlmostEqual(decision.reduce_qty, 5.0)
+        self.assertIsNotNone(decision.new_stop_loss)
+        self.assertGreater(decision.new_stop_loss, 100.0)
         self.assertIn("partial_take_profit", decision.reason_codes)
+        self.assertIn("breakeven_stop_moved", decision.reason_codes)
 
     def test_mfe_trailing_waits_until_giveback_exceeds_wide_threshold(self):
         engine = ExitManagementEngine()

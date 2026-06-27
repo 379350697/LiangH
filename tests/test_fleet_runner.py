@@ -235,12 +235,14 @@ class FleetRunnerTest(unittest.TestCase):
             market_data = IntradayMarketData()
             runner = FleetRunner(config=config, market_data=market_data, ledger=Ledger(config.ledger_path))
             latest_prices = {"HOT-USDT-SWAP": 999.0}
+            latest_price_sources = {"HOT-USDT-SWAP": "candle_close_fallback"}
             candles_by_symbol = {}
 
             runner._enrich_selected_multi_timeframe_data(
                 symbols=["HOT-USDT-SWAP"],
                 candles_by_symbol=candles_by_symbol,
                 latest_prices=latest_prices,
+                latest_price_sources=latest_price_sources,
                 market_data_by_symbol={},
                 default_market_data=market_data,
                 cycle={"market_data_errors": 0},
@@ -248,6 +250,7 @@ class FleetRunnerTest(unittest.TestCase):
 
             self.assertEqual(market_data.latest_price_calls, 1)
             self.assertEqual(latest_prices["HOT-USDT-SWAP"], 123.45)
+            self.assertEqual(latest_price_sources["HOT-USDT-SWAP"], "realtime_ticker")
             self.assertIn("1m", candles_by_symbol["HOT-USDT-SWAP"])
 
     def test_selected_intraday_enrichment_keeps_existing_trade_price_when_ticker_refresh_fails(self):
@@ -276,17 +279,20 @@ class FleetRunnerTest(unittest.TestCase):
             market_data = FailingTickerMarketData({"HOT-USDT-SWAP": layered_cache_candles("HOT-USDT-SWAP")})
             runner = FleetRunner(config=config, market_data=market_data, ledger=Ledger(config.ledger_path))
             latest_prices = {"HOT-USDT-SWAP": 111.0}
+            latest_price_sources = {"HOT-USDT-SWAP": "realtime_ticker"}
 
             runner._enrich_selected_multi_timeframe_data(
                 symbols=["HOT-USDT-SWAP"],
                 candles_by_symbol={},
                 latest_prices=latest_prices,
+                latest_price_sources=latest_price_sources,
                 market_data_by_symbol={},
                 default_market_data=market_data,
                 cycle={"market_data_errors": 0},
             )
 
             self.assertEqual(latest_prices["HOT-USDT-SWAP"], 111.0)
+            self.assertEqual(latest_price_sources["HOT-USDT-SWAP"], "realtime_ticker")
             events = Ledger(config.ledger_path).list_rows("risk_events")
             self.assertTrue(any(row["reason"] == "latest_price_refresh_failed_keep_existing" for row in events))
 
@@ -350,6 +356,7 @@ class FleetRunnerTest(unittest.TestCase):
             self.assertEqual(trade["status"], "open")
             self.assertAlmostEqual(trade["open_qty"], 1.0)
             self.assertEqual(trade["partial_take_profit_taken"], 1)
+            self.assertGreater(ledger.latest_stop_loss("TEST-USDT-SWAP"), 100.0)
 
     def test_exit_management_one_r_moves_stop_and_records_trade_event(self):
         from langlang_trader.execution.paper import PaperExecutor
@@ -556,6 +563,119 @@ class FleetRunnerTest(unittest.TestCase):
             self.assertEqual([row for row in ledger.list_rows("orders") if row["reduce_only"] == 1], [])
             trade = ledger.list_rows("trade_lifecycle")[0]
             self.assertIn("missing_realtime_exit_price", json.loads(trade["data_quality_flags_json"]))
+
+    def test_exit_management_ignores_candle_close_fallback_price(self):
+        from langlang_trader.execution.paper import PaperExecutor
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(os.path.join(tmp, "fleet.sqlite3")).scoped(
+                run_id="exit-fallback-price-run",
+                bot_id="bot-exit",
+                variant_id="variant-exit",
+            )
+            executor = PaperExecutor(
+                ledger=ledger,
+                paper_config=PaperConfig(initial_equity_usdt=20_000, fee_bps=0, slippage_bps=0),
+                price_provider=lambda symbol: 100.0,
+            )
+            executor.place_order(
+                OrderIntent(
+                    symbol="TEST-USDT-SWAP",
+                    side=Side.LONG,
+                    order_type="market",
+                    qty=2.0,
+                    leverage=3,
+                    reduce_only=False,
+                    entry_reason="leader_platform_start",
+                    stop_loss=90.0,
+                    max_slippage_bps=0.0,
+                )
+            )
+            runner = FleetRunner(
+                config=FleetConfig(
+                    run_id="exit-fallback-price-run",
+                    execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_okx"),
+                    ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                ),
+                market_data=StaticMarketData({}),
+                ledger=ledger,
+            )
+            cycle = {"orders": 0, "fills": 0, "stop_exits": 0, "risk_events": 0}
+
+            handled = runner._manage_open_position_exit(
+                ledger=ledger,
+                executor=executor,
+                symbol="TEST-USDT-SWAP",
+                latest_price=120.1,
+                latest_price_source="candle_close_fallback",
+                features={},
+                cycle=cycle,
+            )
+
+            self.assertFalse(handled)
+            self.assertEqual([row for row in ledger.list_rows("orders") if row["reduce_only"] == 1], [])
+            trade = ledger.list_rows("trade_lifecycle")[0]
+            self.assertIn("missing_realtime_exit_price", json.loads(trade["data_quality_flags_json"]))
+
+    def test_exit_management_adopts_legacy_position_from_current_realtime_price(self):
+        from langlang_trader.execution.paper import PaperExecutor
+        from langlang_trader.models import Position
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(os.path.join(tmp, "fleet.sqlite3")).scoped(
+                run_id="exit-legacy-run",
+                bot_id="bot-exit",
+                variant_id="variant-exit",
+            )
+            ledger.upsert_position(
+                Position(
+                    symbol="TEST-USDT-SWAP",
+                    side=Side.LONG,
+                    qty=2.0,
+                    avg_price=100.0,
+                    leverage=3,
+                    exchange="okx",
+                    strategy_version="rules_langlang_v1_3",
+                    regime="main_uptrend",
+                    setup="starter_buy",
+                )
+            )
+            executor = PaperExecutor(
+                ledger=ledger,
+                paper_config=PaperConfig(initial_equity_usdt=20_000, fee_bps=0, slippage_bps=0),
+                price_provider=lambda symbol: 110.1,
+            )
+            runner = FleetRunner(
+                config=FleetConfig(
+                    run_id="exit-legacy-run",
+                    execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_okx"),
+                    ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                ),
+                market_data=StaticMarketData({}),
+                ledger=ledger,
+            )
+            cycle = {"orders": 0, "fills": 0, "stop_exits": 0, "risk_events": 0}
+
+            handled = runner._manage_open_position_exit(
+                ledger=ledger,
+                executor=executor,
+                symbol="TEST-USDT-SWAP",
+                latest_price=110.1,
+                latest_price_source="realtime_ticker",
+                features={},
+                cycle=cycle,
+            )
+
+            self.assertFalse(handled)
+            trade = ledger.list_rows("trade_lifecycle")[0]
+            self.assertEqual(trade["status"], "open")
+            self.assertEqual(trade["entry_reason_summary"], "legacy_position_adopted")
+            flags = json.loads(trade["data_quality_flags_json"])
+            self.assertIn("legacy_position_adopted", flags)
+            self.assertIn("legacy_mfe_history_missing", flags)
+            self.assertIn("missing_initial_exit_risk", flags)
+            events = ledger.list_rows("trade_events")
+            self.assertTrue(any(row["event_type"] == "legacy_position_adopted" for row in events))
 
     def test_market_snapshot_cache_persists_selection_shape_and_wyckoff_outputs_from_fleet_tick(self):
         from langlang_trader.models import utc_now_iso
@@ -812,7 +932,7 @@ class FleetRunnerTest(unittest.TestCase):
                 ledger=ledger,
             )
 
-            rows, latest_price = runner._fetch_symbol_market_data(
+            rows, latest_price, latest_price_source = runner._fetch_symbol_market_data(
                 "BTC-USDT-SWAP",
                 runner.market_data,
                 ["1D", "4H", "1H"],
@@ -821,6 +941,7 @@ class FleetRunnerTest(unittest.TestCase):
 
             self.assertEqual(sorted(rows), ["1D", "1H"])
             self.assertGreater(latest_price, 0)
+            self.assertEqual(latest_price_source, "candle_close")
             events = [row for row in ledger.list_rows("risk_events") if row["reason"] == "market_data_partial_bar_error"]
             self.assertEqual(len(events), 1)
 
@@ -1026,7 +1147,7 @@ class FleetRunnerTest(unittest.TestCase):
             self.assertEqual(cycle["market_data_errors"], 0)
             self.assertGreaterEqual(market_data.max_active, 2)
 
-    def test_latest_price_failure_falls_back_to_latest_candle_close(self):
+    def test_latest_price_failure_keeps_features_but_skips_trade_execution(self):
         class CandleOnlyMarketData(StaticMarketData):
             def latest_price(self, symbol: str) -> float:
                 raise RuntimeError("ticker unavailable")
@@ -1052,13 +1173,19 @@ class FleetRunnerTest(unittest.TestCase):
             cycle = runner.run_once()
 
             self.assertEqual(cycle["market_data_errors"], 0)
-            self.assertEqual(cycle["fills"], 1)
-            events = [
+            self.assertEqual(cycle["fills"], 0)
+            fallback_events = [
                 row
                 for row in ledger.list_rows("risk_events", run_id="unit-latest-fallback-run")
                 if row["reason"] == "latest_price_fallback_to_candle_close"
             ]
-            self.assertEqual(len(events), 1)
+            skip_events = [
+                row
+                for row in ledger.list_rows("risk_events", run_id="unit-latest-fallback-run", bot_id="bot-1")
+                if row["reason"] == "trade_price_not_realtime_skip"
+            ]
+            self.assertEqual(len(fallback_events), 1)
+            self.assertGreaterEqual(len(skip_events), 1)
 
     def test_three_bots_share_market_data_but_record_independent_trades(self):
         with tempfile.TemporaryDirectory() as tmp:

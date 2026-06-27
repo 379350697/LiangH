@@ -259,6 +259,7 @@ class FleetRunner:
         market_cache_stats_before = self._market_cache_stats()
         candles_by_symbol: dict[str, dict[str, Any]] = {}
         latest_prices: dict[str, float] = {}
+        latest_price_sources: dict[str, str] = {}
         startup_bars = self._startup_bars()
         max_workers = max(1, int(getattr(self.config.market_data, "max_fetch_workers", 1) or 1))
         if max_workers > 1 and len(symbols) > 1:
@@ -276,16 +277,17 @@ class FleetRunner:
                 for future in as_completed(futures):
                     symbol = futures[future]
                     try:
-                        symbol_candles, latest_price = future.result()
+                        symbol_candles, latest_price, latest_price_source = future.result()
                         candles_by_symbol[symbol] = symbol_candles
                         latest_prices[symbol] = latest_price
+                        latest_price_sources[symbol] = latest_price_source
                     except Exception as exc:
                         self.fleet_ledger.record_risk_event("market_data_error", {"error": repr(exc)}, symbol=symbol)
                         cycle["market_data_errors"] += 1
         else:
             for symbol in symbols:
                 try:
-                    symbol_candles, latest_price = self._fetch_symbol_market_data(
+                    symbol_candles, latest_price, latest_price_source = self._fetch_symbol_market_data(
                         symbol,
                         market_data_by_symbol.get(symbol, default_market_data),
                         startup_bars,
@@ -293,6 +295,7 @@ class FleetRunner:
                     )
                     candles_by_symbol[symbol] = symbol_candles
                     latest_prices[symbol] = latest_price
+                    latest_price_sources[symbol] = latest_price_source
                 except Exception as exc:
                     self.fleet_ledger.record_risk_event("market_data_error", {"error": repr(exc)}, symbol=symbol)
                     cycle["market_data_errors"] += 1
@@ -385,6 +388,7 @@ class FleetRunner:
                 symbols=sorted(selected_symbols & set(candles_by_symbol)),
                 candles_by_symbol=candles_by_symbol,
                 latest_prices=latest_prices,
+                latest_price_sources=latest_price_sources,
                 market_data_by_symbol=market_data_by_symbol,
                 default_market_data=default_market_data,
                 cycle=cycle,
@@ -415,7 +419,9 @@ class FleetRunner:
                 bot_id=bot.bot_id,
                 variant_id=bot.variant.variant_id,
             )
-            def price_provider(symbol: str, prices=latest_prices) -> float:
+            def price_provider(symbol: str, prices=latest_prices, sources=latest_price_sources) -> float:
+                if sources.get(symbol) != "realtime_ticker":
+                    raise KeyError(f"missing realtime trade price for {symbol}")
                 return prices[symbol]
 
             def quote_fallback(symbol: str) -> float:
@@ -463,16 +469,21 @@ class FleetRunner:
                         executor=executor,
                         symbol=symbol,
                         latest_price=latest_prices.get(symbol),
+                        latest_price_source=latest_price_sources.get(symbol),
                         features={} if snapshot is None else snapshot.features,
                         cycle=cycle,
                     ):
                         continue
-                    if symbol in latest_prices and self._close_if_stop_loss_hit(
+                    if (
+                        symbol in latest_prices
+                        and latest_price_sources.get(symbol) == "realtime_ticker"
+                        and self._close_if_stop_loss_hit(
                         ledger=bot_ledger,
                         executor=executor,
                         symbol=symbol,
                         latest_price=latest_prices[symbol],
                         cycle=cycle,
+                        )
                     ):
                         continue
                     if snapshot is None:
@@ -528,6 +539,18 @@ class FleetRunner:
                         )
                     signal_id = bot_ledger.record_signal(signal, bot_strategy_version)
                     cycle["signals"] += 1
+                    if latest_price_sources.get(symbol) != "realtime_ticker":
+                        bot_ledger.record_risk_event(
+                            "trade_price_not_realtime_skip",
+                            {
+                                "signal_id": signal_id,
+                                "latest_price_source": latest_price_sources.get(symbol),
+                                "latest_price": latest_prices.get(symbol),
+                            },
+                            symbol=symbol,
+                        )
+                        cycle["risk_rejections"] += 1
+                        continue
                     intent = risk_engine.intent_from_signal(
                         signal=signal,
                         account=executor.get_account(),
@@ -644,7 +667,7 @@ class FleetRunner:
         market_data: MarketData | None = None,
         bars: list[str] | None = None,
         fetch_latest_ticker: bool = True,
-    ) -> tuple[dict[str, Any], float]:
+    ) -> tuple[dict[str, Any], float, str]:
         market_data = market_data or self.market_data
         bars_to_fetch = bars or self.config.market_data.bars
         if self.uses_multi_timeframe:
@@ -696,8 +719,10 @@ class FleetRunner:
         if fetch_latest_ticker:
             try:
                 latest_price = market_data.latest_price(symbol)
+                latest_price_source = "realtime_ticker"
             except Exception as exc:
                 latest_price = _latest_close_from_candles(candles_by_bar)
+                latest_price_source = "candle_close_fallback"
                 self.fleet_ledger.record_risk_event(
                     "latest_price_fallback_to_candle_close",
                     {"error": repr(exc), "latest_price": latest_price},
@@ -705,7 +730,8 @@ class FleetRunner:
                 )
         else:
             latest_price = _latest_close_from_candles(candles_by_bar)
-        return candles_by_bar, latest_price
+            latest_price_source = "candle_close"
+        return candles_by_bar, latest_price, latest_price_source
 
     def _should_stage_multi_timeframe_fetch(self) -> bool:
         return self.uses_multi_timeframe and self.config.selection.enabled and self.config.selection.style == "dual_board"
@@ -727,6 +753,7 @@ class FleetRunner:
         symbols: list[str],
         candles_by_symbol: dict[str, dict[str, Any]],
         latest_prices: dict[str, float],
+        latest_price_sources: dict[str, str],
         market_data_by_symbol: dict[str, MarketData],
         default_market_data: MarketData,
         cycle: dict[str, int],
@@ -788,6 +815,7 @@ class FleetRunner:
                         self._refresh_trade_price(
                             symbol=symbol,
                             latest_prices=latest_prices,
+                            latest_price_sources=latest_price_sources,
                             market_data=market_data_by_symbol.get(symbol, default_market_data),
                             fallback_rows=rows,
                         )
@@ -806,6 +834,7 @@ class FleetRunner:
                 self._refresh_trade_price(
                     symbol=symbol,
                     latest_prices=latest_prices,
+                    latest_price_sources=latest_price_sources,
                     market_data=market_data_by_symbol.get(symbol, default_market_data),
                     fallback_rows=rows,
                 )
@@ -822,22 +851,29 @@ class FleetRunner:
         *,
         symbol: str,
         latest_prices: dict[str, float],
+        latest_price_sources: dict[str, str],
         market_data: MarketData,
         fallback_rows: dict[str, list[Any]],
     ) -> None:
         try:
             latest_prices[symbol] = market_data.latest_price(symbol)
+            latest_price_sources[symbol] = "realtime_ticker"
             return
         except Exception as exc:
             if symbol in latest_prices and latest_prices[symbol] > 0:
                 self.fleet_ledger.record_risk_event(
                     "latest_price_refresh_failed_keep_existing",
-                    {"error": repr(exc), "phase": "selected_intraday_enrichment"},
+                    {
+                        "error": repr(exc),
+                        "phase": "selected_intraday_enrichment",
+                        "kept_source": latest_price_sources.get(symbol),
+                    },
                     symbol=symbol,
                 )
                 return
             latest_price = _latest_close_from_candles(fallback_rows)
             latest_prices[symbol] = latest_price
+            latest_price_sources[symbol] = "candle_close_fallback"
             self.fleet_ledger.record_risk_event(
                 "latest_price_fallback_to_candle_close",
                 {"error": repr(exc), "latest_price": latest_price, "phase": "selected_intraday_enrichment"},
@@ -853,6 +889,7 @@ class FleetRunner:
         latest_price: float | None,
         features: dict[str, Any],
         cycle: dict[str, int],
+        latest_price_source: str | None = "realtime_ticker",
     ) -> bool:
         position = _position_for_symbol(executor.get_positions(), symbol)
         if position is None:
@@ -863,16 +900,27 @@ class FleetRunner:
             variant_id=ledger.variant_id,
             exchange=position.exchange,
         )
-        if latest_price is not None and latest_price > 0:
-            event_ledger.record_trade_mark(symbol=symbol, mark_price=latest_price)
+        realtime_latest_price = latest_price if latest_price_source == "realtime_ticker" else None
         exit_state = event_ledger.open_trade_exit_state(symbol, exchange=position.exchange)
         if exit_state is None:
-            return False
+            if realtime_latest_price is None or realtime_latest_price <= 0:
+                return False
+            event_ledger.adopt_legacy_open_position(
+                position=position,
+                latest_price=realtime_latest_price,
+                current_stop_loss=event_ledger.latest_stop_loss(symbol, exchange=position.exchange),
+                data_quality_flags=["legacy_position_adopted", "legacy_mfe_history_missing"],
+            )
+            exit_state = event_ledger.open_trade_exit_state(symbol, exchange=position.exchange)
+            if exit_state is None:
+                return False
+        if realtime_latest_price is not None and realtime_latest_price > 0:
+            event_ledger.record_trade_mark(symbol=symbol, mark_price=realtime_latest_price)
 
         decision = ExitManagementEngine().evaluate(
             ExitManagementContext(
                 position=position,
-                latest_price=latest_price,
+                latest_price=realtime_latest_price,
                 entry_price=exit_state["entry_price"],
                 initial_stop_loss=exit_state["initial_stop_loss"],
                 current_stop_loss=exit_state["current_stop_loss"],
@@ -918,6 +966,16 @@ class FleetRunner:
                 cycle["risk_events"] = cycle.get("risk_events", 0) + 1
             return False
         if decision.action is ExitActionType.PARTIAL_TAKE_PROFIT:
+            if decision.new_stop_loss is not None:
+                event_ledger.record_stop_moved(
+                    symbol=symbol,
+                    new_stop_loss=decision.new_stop_loss,
+                    reason_codes=[code for code in decision.reason_codes if code == "breakeven_stop_moved"],
+                    reason_summary="move runner stop to fee buffered breakeven",
+                    decision_trace=decision.decision_trace,
+                    feature_snapshot=features,
+                    exchange=position.exchange,
+                )
             reduce_qty = min(position.qty, float(decision.reduce_qty or 0.0))
             if reduce_qty <= 0:
                 return False
