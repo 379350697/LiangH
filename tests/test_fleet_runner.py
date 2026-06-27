@@ -12,7 +12,7 @@ from langlang_trader.features import FeatureSnapshot
 from langlang_trader.fleet import BotConfig, FleetConfig, FleetRunner, _bot_allowed_side, _market_data_by_symbol, _selection_states_for_profiles, _with_selection_features, load_fleet_config
 from langlang_trader.ledger import Ledger
 from langlang_trader.market_data import FallbackMarketData, StaticMarketData
-from langlang_trader.models import Candle
+from langlang_trader.models import Candle, OrderIntent, Side
 from langlang_trader.strategy import LangLangEnhancedVariant, LangLangNativeVariant, StrategyVariant
 
 
@@ -289,6 +289,273 @@ class FleetRunnerTest(unittest.TestCase):
             self.assertEqual(latest_prices["HOT-USDT-SWAP"], 111.0)
             events = Ledger(config.ledger_path).list_rows("risk_events")
             self.assertTrue(any(row["reason"] == "latest_price_refresh_failed_keep_existing" for row in events))
+
+    def test_exit_management_partial_take_profit_is_reduce_only_without_full_close(self):
+        from langlang_trader.execution.paper import PaperExecutor
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(os.path.join(tmp, "fleet.sqlite3")).scoped(
+                run_id="exit-run",
+                bot_id="bot-exit",
+                variant_id="variant-exit",
+            )
+            mark = {"price": 100.0}
+            executor = PaperExecutor(
+                ledger=ledger,
+                paper_config=PaperConfig(initial_equity_usdt=20_000, fee_bps=0, slippage_bps=0),
+                price_provider=lambda symbol: mark["price"],
+            )
+            executor.place_order(
+                OrderIntent(
+                    symbol="TEST-USDT-SWAP",
+                    side=Side.LONG,
+                    order_type="market",
+                    qty=2.0,
+                    leverage=3,
+                    reduce_only=False,
+                    entry_reason="leader_platform_start",
+                    stop_loss=90.0,
+                    max_slippage_bps=0.0,
+                )
+            )
+            mark["price"] = 120.1
+            runner = FleetRunner(
+                config=FleetConfig(
+                    run_id="exit-run",
+                    execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_okx"),
+                    ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                ),
+                market_data=StaticMarketData({}),
+                ledger=ledger,
+            )
+            cycle = {"orders": 0, "fills": 0, "stop_exits": 0, "risk_events": 0}
+
+            handled = runner._manage_open_position_exit(
+                ledger=ledger,
+                executor=executor,
+                symbol="TEST-USDT-SWAP",
+                latest_price=120.1,
+                features={},
+                cycle=cycle,
+            )
+
+            self.assertTrue(handled)
+            current_position = ledger.get_position("TEST-USDT-SWAP")
+            self.assertIsNotNone(current_position)
+            self.assertAlmostEqual(current_position.qty, 1.0)
+            reduce_orders = [row for row in ledger.list_rows("orders") if row["reduce_only"] == 1]
+            self.assertEqual(len(reduce_orders), 1)
+            self.assertEqual(reduce_orders[0]["exit_reason"], "partial_take_profit")
+            trade = ledger.list_rows("trade_lifecycle")[0]
+            self.assertEqual(trade["status"], "open")
+            self.assertAlmostEqual(trade["open_qty"], 1.0)
+            self.assertEqual(trade["partial_take_profit_taken"], 1)
+
+    def test_exit_management_one_r_moves_stop_and_records_trade_event(self):
+        from langlang_trader.execution.paper import PaperExecutor
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(os.path.join(tmp, "fleet.sqlite3")).scoped(
+                run_id="exit-stop-run",
+                bot_id="bot-exit",
+                variant_id="variant-exit",
+            )
+            mark = {"price": 100.0}
+            executor = PaperExecutor(
+                ledger=ledger,
+                paper_config=PaperConfig(initial_equity_usdt=20_000, fee_bps=5, slippage_bps=5),
+                price_provider=lambda symbol: mark["price"],
+            )
+            executor.place_order(
+                OrderIntent(
+                    symbol="TEST-USDT-SWAP",
+                    side=Side.LONG,
+                    order_type="market",
+                    qty=2.0,
+                    leverage=3,
+                    reduce_only=False,
+                    entry_reason="leader_platform_start",
+                    stop_loss=90.0,
+                    max_slippage_bps=0.0,
+                )
+            )
+            runner = FleetRunner(
+                config=FleetConfig(
+                    run_id="exit-stop-run",
+                    execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_okx"),
+                    paper=PaperConfig(initial_equity_usdt=20_000, fee_bps=5, slippage_bps=5),
+                    ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                ),
+                market_data=StaticMarketData({}),
+                ledger=ledger,
+            )
+            cycle = {"orders": 0, "fills": 0, "stop_exits": 0, "risk_events": 0}
+
+            handled = runner._manage_open_position_exit(
+                ledger=ledger,
+                executor=executor,
+                symbol="TEST-USDT-SWAP",
+                latest_price=110.1,
+                features={},
+                cycle=cycle,
+            )
+
+            self.assertFalse(handled)
+            self.assertGreater(ledger.latest_stop_loss("TEST-USDT-SWAP"), 100.0)
+            self.assertEqual([row for row in ledger.list_rows("orders") if row["reduce_only"] == 1], [])
+            events = ledger.list_rows("trade_events")
+            self.assertTrue(any(row["event_type"] == "stop_moved" for row in events))
+
+    def test_exit_management_reduce_only_stays_on_existing_exchange_in_multi_executor(self):
+        from langlang_trader.execution.paper import MultiExchangePaperExecutor
+        from langlang_trader.execution.routing import ExecutionRouter
+        from langlang_trader.models import utc_now_iso
+        from langlang_trader.universe import UniverseSnapshot, UniverseSymbol
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(os.path.join(tmp, "fleet.sqlite3")).scoped(
+                run_id="exit-multi-run",
+                bot_id="bot-exit",
+                variant_id="variant-exit",
+            )
+            mark = {"price": 100.0}
+            snapshot = UniverseSnapshot(
+                mode="okx_binance_usdt_swap_observe",
+                generated_at=utc_now_iso(),
+                symbols=["TEST-USDT-SWAP"],
+                reference_symbols=[],
+                rows=[
+                    UniverseSymbol(
+                        symbol="TEST-USDT-SWAP",
+                        base_ccy="TEST",
+                        quote_ccy="USDT",
+                        inst_type="SWAP",
+                        state="live",
+                        is_reference=False,
+                        tradable=True,
+                        filter_reason="",
+                        raw_payload={},
+                        source_exchange="okx",
+                        exchange_symbol="TEST-USDT-SWAP",
+                        execution_symbol="TEST-USDT-SWAP",
+                    ),
+                    UniverseSymbol(
+                        symbol="TEST-USDT-SWAP",
+                        base_ccy="TEST",
+                        quote_ccy="USDT",
+                        inst_type="SWAP",
+                        state="live",
+                        is_reference=False,
+                        tradable=True,
+                        filter_reason="",
+                        raw_payload={},
+                        source_exchange="binance",
+                        exchange_symbol="TESTUSDT",
+                        execution_symbol="TESTUSDT",
+                    ),
+                ],
+                raw_payload={},
+                observed_symbols=["TEST-USDT-SWAP"],
+            )
+            executor = MultiExchangePaperExecutor(
+                ledger=ledger,
+                paper_config=PaperConfig(initial_equity_usdt=20_000, fee_bps=0, slippage_bps=0),
+                price_provider=lambda symbol: mark["price"],
+                router=ExecutionRouter(snapshot),
+            )
+            executor.executors["okx"].place_order(
+                OrderIntent(
+                    symbol="TEST-USDT-SWAP",
+                    side=Side.LONG,
+                    order_type="market",
+                    qty=2.0,
+                    leverage=3,
+                    reduce_only=False,
+                    entry_reason="leader_platform_start",
+                    stop_loss=90.0,
+                    max_slippage_bps=0.0,
+                )
+            )
+            mark["price"] = 120.1
+            runner = FleetRunner(
+                config=FleetConfig(
+                    run_id="exit-multi-run",
+                    execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_multi"),
+                    universe=UniverseConfig(mode="okx_binance_usdt_swap_observe"),
+                    ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                ),
+                market_data=StaticMarketData({}),
+                ledger=ledger,
+            )
+            cycle = {"orders": 0, "fills": 0, "stop_exits": 0, "risk_events": 0}
+
+            handled = runner._manage_open_position_exit(
+                ledger=ledger,
+                executor=executor,
+                symbol="TEST-USDT-SWAP",
+                latest_price=120.1,
+                features={},
+                cycle=cycle,
+            )
+
+            self.assertTrue(handled)
+            okx_position = ledger.get_position("TEST-USDT-SWAP", exchange="okx")
+            binance_position = ledger.get_position("TEST-USDT-SWAP", exchange="binance")
+            self.assertIsNotNone(okx_position)
+            self.assertAlmostEqual(okx_position.qty, 1.0)
+            self.assertIsNone(binance_position)
+
+    def test_exit_management_missing_realtime_price_does_not_trigger_profit_action(self):
+        from langlang_trader.execution.paper import PaperExecutor
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(os.path.join(tmp, "fleet.sqlite3")).scoped(
+                run_id="exit-missing-price-run",
+                bot_id="bot-exit",
+                variant_id="variant-exit",
+            )
+            executor = PaperExecutor(
+                ledger=ledger,
+                paper_config=PaperConfig(initial_equity_usdt=20_000, fee_bps=0, slippage_bps=0),
+                price_provider=lambda symbol: 100.0,
+            )
+            executor.place_order(
+                OrderIntent(
+                    symbol="TEST-USDT-SWAP",
+                    side=Side.LONG,
+                    order_type="market",
+                    qty=2.0,
+                    leverage=3,
+                    reduce_only=False,
+                    entry_reason="leader_platform_start",
+                    stop_loss=90.0,
+                    max_slippage_bps=0.0,
+                )
+            )
+            runner = FleetRunner(
+                config=FleetConfig(
+                    run_id="exit-missing-price-run",
+                    execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_okx"),
+                    ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                ),
+                market_data=StaticMarketData({}),
+                ledger=ledger,
+            )
+            cycle = {"orders": 0, "fills": 0, "stop_exits": 0, "risk_events": 0}
+
+            handled = runner._manage_open_position_exit(
+                ledger=ledger,
+                executor=executor,
+                symbol="TEST-USDT-SWAP",
+                latest_price=None,
+                features={},
+                cycle=cycle,
+            )
+
+            self.assertFalse(handled)
+            self.assertEqual([row for row in ledger.list_rows("orders") if row["reduce_only"] == 1], [])
+            trade = ledger.list_rows("trade_lifecycle")[0]
+            self.assertIn("missing_realtime_exit_price", json.loads(trade["data_quality_flags_json"]))
 
     def test_market_snapshot_cache_persists_selection_shape_and_wyckoff_outputs_from_fleet_tick(self):
         from langlang_trader.models import utc_now_iso

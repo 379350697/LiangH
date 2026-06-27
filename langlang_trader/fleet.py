@@ -15,14 +15,20 @@ from langlang_trader.config import (
     SymbolSelectionConfig,
     UniverseConfig,
 )
-from langlang_trader.execution.paper import MultiExchangePaperExecutor, PaperExecutor
-from langlang_trader.execution.routing import ExecutionRouter
+from langlang_trader.execution.paper import (
+    MultiExchangePaperExecutor,
+    PaperExecutor,
+    binance_exchange_symbol,
+    okx_exchange_symbol,
+)
+from langlang_trader.execution.routing import ExecutionRouter, RoutedOrderIntent
+from langlang_trader.exit_management import ExitActionType, ExitManagementContext, ExitManagementEngine
 from langlang_trader.features import DailyFeatureBuilder, FeatureSnapshot, MultiTimeframeFeatureBuilder
 from langlang_trader.historical_patterns import HistoricalPatternMatcher, read_historical_patterns
 from langlang_trader.ledger import Ledger
 from langlang_trader.market_cache import MarketMetricsCache, MarketSnapshotCache, RollingKlineCacheMarketData
 from langlang_trader.market_data import FallbackMarketData, MarketData, market_microstructure_metrics
-from langlang_trader.models import Position
+from langlang_trader.models import OrderIntent, Position, Side
 from langlang_trader.risk import RiskEngine
 from langlang_trader.strategy import (
     LangLangEnhancedVariant,
@@ -451,7 +457,17 @@ class FleetRunner:
                         and symbol not in okx_executable_symbols
                     ):
                         continue
-                    if self._close_if_stop_loss_hit(
+                    snapshot = snapshots_by_symbol.get(symbol)
+                    if self._manage_open_position_exit(
+                        ledger=bot_ledger,
+                        executor=executor,
+                        symbol=symbol,
+                        latest_price=latest_prices.get(symbol),
+                        features={} if snapshot is None else snapshot.features,
+                        cycle=cycle,
+                    ):
+                        continue
+                    if symbol in latest_prices and self._close_if_stop_loss_hit(
                         ledger=bot_ledger,
                         executor=executor,
                         symbol=symbol,
@@ -459,7 +475,6 @@ class FleetRunner:
                         cycle=cycle,
                     ):
                         continue
-                    snapshot = snapshots_by_symbol.get(symbol)
                     if snapshot is None:
                         continue
                     if symbol in reference_symbols and self.config.selection.style == "dual_board":
@@ -828,6 +843,179 @@ class FleetRunner:
                 {"error": repr(exc), "latest_price": latest_price, "phase": "selected_intraday_enrichment"},
                 symbol=symbol,
             )
+
+    def _manage_open_position_exit(
+        self,
+        *,
+        ledger: Ledger,
+        executor: PaperExecutor | MultiExchangePaperExecutor,
+        symbol: str,
+        latest_price: float | None,
+        features: dict[str, Any],
+        cycle: dict[str, int],
+    ) -> bool:
+        position = _position_for_symbol(executor.get_positions(), symbol)
+        if position is None:
+            return False
+        event_ledger = ledger.scoped(
+            run_id=ledger.run_id,
+            bot_id=ledger.bot_id,
+            variant_id=ledger.variant_id,
+            exchange=position.exchange,
+        )
+        if latest_price is not None and latest_price > 0:
+            event_ledger.record_trade_mark(symbol=symbol, mark_price=latest_price)
+        exit_state = event_ledger.open_trade_exit_state(symbol, exchange=position.exchange)
+        if exit_state is None:
+            return False
+
+        decision = ExitManagementEngine().evaluate(
+            ExitManagementContext(
+                position=position,
+                latest_price=latest_price,
+                entry_price=exit_state["entry_price"],
+                initial_stop_loss=exit_state["initial_stop_loss"],
+                current_stop_loss=exit_state["current_stop_loss"],
+                initial_risk_usdt=exit_state["initial_risk_usdt"],
+                mfe_usdt=exit_state["mfe_usdt"],
+                partial_taken=exit_state["partial_taken"],
+                take_profit_plan=exit_state["take_profit_plan"],
+                features=features,
+                fee_bps=self.config.paper.fee_bps,
+                slippage_bps=self.config.paper.slippage_bps,
+            )
+        )
+        if decision.data_quality_flags:
+            event_ledger.record_open_trade_quality_flags(
+                symbol=symbol,
+                flags=decision.data_quality_flags,
+                reason_summary=decision.reason_summary,
+                exchange=position.exchange,
+            )
+            cycle["risk_events"] = cycle.get("risk_events", 0) + 1
+        if decision.action is ExitActionType.HOLD:
+            return False
+        if decision.action is ExitActionType.MOVE_STOP:
+            if decision.new_stop_loss is not None:
+                event_ledger.record_stop_moved(
+                    symbol=symbol,
+                    new_stop_loss=decision.new_stop_loss,
+                    reason_codes=decision.reason_codes,
+                    reason_summary=decision.reason_summary,
+                    decision_trace=decision.decision_trace,
+                    feature_snapshot=features,
+                    exchange=position.exchange,
+                )
+                event_ledger.record_risk_event(
+                    "stop_moved",
+                    {
+                        "new_stop_loss": decision.new_stop_loss,
+                        "reason_codes": decision.reason_codes,
+                        "decision_trace": decision.decision_trace,
+                    },
+                    symbol=symbol,
+                )
+                cycle["risk_events"] = cycle.get("risk_events", 0) + 1
+            return False
+        if decision.action is ExitActionType.PARTIAL_TAKE_PROFIT:
+            reduce_qty = min(position.qty, float(decision.reduce_qty or 0.0))
+            if reduce_qty <= 0:
+                return False
+            result = self._place_reduce_only_exit(
+                executor=executor,
+                position=position,
+                qty=reduce_qty,
+                reason="partial_take_profit",
+                decision_trace=decision.decision_trace,
+                features=features,
+            )
+            event_ledger.record_risk_event(
+                "partial_take_profit_exit",
+                {
+                    "status": result.status,
+                    "exchange_order_id": result.exchange_order_id,
+                    "filled_qty": result.filled_qty,
+                    "reason_codes": decision.reason_codes,
+                },
+                symbol=symbol,
+            )
+            cycle["risk_events"] = cycle.get("risk_events", 0) + 1
+            if result.status in {"filled", "accepted", "submitted"}:
+                cycle["orders"] = cycle.get("orders", 0) + 1
+            if result.filled_qty > 0:
+                cycle["fills"] = cycle.get("fills", 0) + 1
+                return True
+            return False
+        if decision.action is ExitActionType.CLOSE_POSITION:
+            result = self._place_reduce_only_exit(
+                executor=executor,
+                position=position,
+                qty=position.qty,
+                reason="mfe_trailing_exit",
+                decision_trace=decision.decision_trace,
+                features=features,
+            )
+            event_ledger.record_risk_event(
+                "mfe_trailing_exit",
+                {
+                    "status": result.status,
+                    "exchange_order_id": result.exchange_order_id,
+                    "filled_qty": result.filled_qty,
+                    "reason_codes": decision.reason_codes,
+                },
+                symbol=symbol,
+            )
+            cycle["risk_events"] = cycle.get("risk_events", 0) + 1
+            if result.status in {"filled", "accepted", "submitted"}:
+                cycle["orders"] = cycle.get("orders", 0) + 1
+            if result.filled_qty > 0:
+                cycle["fills"] = cycle.get("fills", 0) + 1
+                return True
+        return False
+
+    def _place_reduce_only_exit(
+        self,
+        *,
+        executor: PaperExecutor | MultiExchangePaperExecutor,
+        position: Position,
+        qty: float,
+        reason: str,
+        decision_trace: dict[str, Any],
+        features: dict[str, Any],
+    ):
+        close_side = Side.SHORT if position.side is Side.LONG else Side.LONG
+        intent = OrderIntent(
+            symbol=position.symbol,
+            side=close_side,
+            order_type="market",
+            qty=qty,
+            leverage=position.leverage,
+            reduce_only=True,
+            entry_reason=f"close:{reason}",
+            stop_loss=None,
+            max_slippage_bps=self.config.paper.slippage_bps,
+            strategy_version=position.strategy_version,
+            regime=position.regime,
+            setup=position.setup,
+            exit_reason=reason,
+            decision_trace={"close_reason": reason, "features": features, **decision_trace},
+        )
+        if isinstance(executor, MultiExchangePaperExecutor):
+            exchange_symbol = (
+                binance_exchange_symbol(position.symbol)
+                if position.exchange == "binance"
+                else okx_exchange_symbol(position.symbol)
+            )
+            return executor.place_order(
+                intent,
+                route=RoutedOrderIntent(
+                    intent=intent,
+                    exchange=position.exchange,
+                    exchange_symbol=exchange_symbol,
+                    route_reason="reduce_only_existing_position_exchange",
+                ),
+            )
+        return executor.place_order(intent)
 
     def _close_if_stop_loss_hit(
         self,

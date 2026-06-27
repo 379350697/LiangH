@@ -279,7 +279,11 @@ class Ledger:
                     open_qty real not null default 0.0,
                     leverage integer not null,
                     initial_stop_loss real,
+                    current_stop_loss real,
                     initial_risk_usdt real,
+                    partial_take_profit_taken integer not null default 0,
+                    breakeven_stop_moved_at text,
+                    partial_take_profit_taken_at text,
                     entry_fee real not null default 0.0,
                     exit_fee real not null default 0.0,
                     total_fees real not null default 0.0,
@@ -430,6 +434,10 @@ class Ledger:
             "trade_lifecycle": {
                 "exchange": "text not null default 'okx'",
                 "open_qty": "real not null default 0.0",
+                "current_stop_loss": "real",
+                "partial_take_profit_taken": "integer not null default 0",
+                "breakeven_stop_moved_at": "text",
+                "partial_take_profit_taken_at": "text",
                 "strategy_version": "text",
                 "regime": "text",
                 "setup": "text",
@@ -843,10 +851,10 @@ class Ledger:
                 insert into trade_lifecycle (
                     trade_id, run_id, bot_id, variant_id, exchange, symbol, side, status, opened_at,
                     entry_signal_id, entry_intent_id, entry_order_id, entry_fill_id, entry_price, qty, open_qty,
-                    leverage, initial_stop_loss, initial_risk_usdt, entry_fee, total_fees,
+                    leverage, initial_stop_loss, current_stop_loss, initial_risk_usdt, entry_fee, total_fees,
                     entry_reason_codes_json, entry_reason_summary, entry_decision_trace_json,
                     entry_feature_snapshot_json, strategy_version, regime, setup, historical_match_score
-                ) values (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) values (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     trade_id,
@@ -863,6 +871,7 @@ class Ledger:
                     intent.qty,
                     intent.qty,
                     intent.leverage,
+                    intent.stop_loss,
                     intent.stop_loss,
                     initial_risk,
                     fee,
@@ -1002,10 +1011,12 @@ class Ledger:
                         exit_fee = exit_fee + ?,
                         total_fees = ?,
                         gross_pnl_usdt = ?,
-                        realized_pnl_usdt = ?
+                        realized_pnl_usdt = ?,
+                        partial_take_profit_taken = 1,
+                        partial_take_profit_taken_at = coalesce(partial_take_profit_taken_at, ?)
                     where trade_id = ?
                     """,
-                    (remaining_qty, fee, total_fees, total_gross, realized, refreshed["trade_id"]),
+                    (remaining_qty, fee, total_fees, total_gross, realized, now, refreshed["trade_id"]),
                 )
             self._append_trade_event(
                 conn,
@@ -1052,7 +1063,14 @@ class Ledger:
             ),
         ).fetchone()
 
-    def _open_trade_row(self, conn: sqlite3.Connection, symbol: str) -> sqlite3.Row | None:
+    def _open_trade_row(
+        self,
+        conn: sqlite3.Connection,
+        symbol: str,
+        *,
+        exchange: str | None = None,
+    ) -> sqlite3.Row | None:
+        selected_exchange = exchange or self.exchange
         return conn.execute(
             """
             select *
@@ -1061,7 +1079,7 @@ class Ledger:
             order by opened_at desc
             limit 1
             """,
-            (self.run_id, self.bot_id, self.exchange, symbol),
+            (self.run_id, self.bot_id, selected_exchange, symbol),
         ).fetchone()
 
     def _trade_row(self, conn: sqlite3.Connection, trade_id: str) -> sqlite3.Row | None:
@@ -1348,6 +1366,9 @@ class Ledger:
     def latest_stop_loss(self, symbol: str, exchange: str | None = None) -> float | None:
         selected_exchange = exchange or self.exchange
         with self.connect() as conn:
+            trade = self._open_trade_row(conn, symbol, exchange=selected_exchange)
+            if trade is not None and trade["exchange"] == selected_exchange and trade["current_stop_loss"] is not None:
+                return float(trade["current_stop_loss"])
             row = conn.execute(
                 """
                 select stop_loss from order_intents
@@ -1365,6 +1386,99 @@ class Ledger:
         if row is None:
             return None
         return float(row["stop_loss"])
+
+    def open_trade_exit_state(self, symbol: str, exchange: str | None = None) -> dict[str, Any] | None:
+        selected_exchange = exchange or self.exchange
+        with self.connect() as conn:
+            trade = self._open_trade_row(conn, symbol, exchange=selected_exchange)
+            if trade is None or trade["exchange"] != selected_exchange:
+                return None
+            take_profit_plan: dict[str, Any] = {}
+            entry_intent_id = trade["entry_intent_id"]
+            if entry_intent_id is not None:
+                intent = conn.execute("select * from order_intents where id = ?", (entry_intent_id,)).fetchone()
+                take_profit_plan = self._json_from_row(intent, "take_profit_plan_json", {}) if intent is not None else {}
+            current_stop = trade["current_stop_loss"]
+            if current_stop is None:
+                current_stop = trade["initial_stop_loss"]
+            return {
+                "trade_id": trade["trade_id"],
+                "entry_price": float(trade["entry_price"]),
+                "initial_stop_loss": None if trade["initial_stop_loss"] is None else float(trade["initial_stop_loss"]),
+                "current_stop_loss": None if current_stop is None else float(current_stop),
+                "initial_risk_usdt": None if trade["initial_risk_usdt"] is None else float(trade["initial_risk_usdt"]),
+                "mfe_usdt": float(trade["mfe_usdt"]),
+                "partial_taken": bool(int(trade["partial_take_profit_taken"] or 0)),
+                "take_profit_plan": take_profit_plan,
+            }
+
+    def record_stop_moved(
+        self,
+        *,
+        symbol: str,
+        new_stop_loss: float,
+        reason_codes: list[str],
+        reason_summary: str,
+        decision_trace: dict[str, Any] | None = None,
+        feature_snapshot: dict[str, Any] | None = None,
+        exchange: str | None = None,
+    ) -> None:
+        selected_exchange = exchange or self.exchange
+        with self.connect() as conn:
+            trade = self._open_trade_row(conn, symbol, exchange=selected_exchange)
+            if trade is None or trade["exchange"] != selected_exchange:
+                return
+            conn.execute(
+                """
+                update trade_lifecycle
+                set current_stop_loss = ?,
+                    breakeven_stop_moved_at = coalesce(breakeven_stop_moved_at, ?)
+                where trade_id = ?
+                """,
+                (new_stop_loss, utc_now_iso(), trade["trade_id"]),
+            )
+            self._append_trade_event(
+                conn,
+                trade_id=trade["trade_id"],
+                event_type="stop_moved",
+                symbol=symbol,
+                side=trade["side"],
+                price=new_stop_loss,
+                qty=trade["open_qty"],
+                reason_codes=reason_codes,
+                reason_summary=reason_summary,
+                decision_trace=decision_trace or {},
+                feature_snapshot=feature_snapshot or {},
+                raw_payload={"new_stop_loss": new_stop_loss},
+            )
+
+    def record_open_trade_quality_flags(
+        self,
+        *,
+        symbol: str,
+        flags: list[str],
+        reason_summary: str = "exit_management_data_quality",
+        exchange: str | None = None,
+    ) -> None:
+        if not flags:
+            return
+        selected_exchange = exchange or self.exchange
+        with self.connect() as conn:
+            trade = self._open_trade_row(conn, symbol, exchange=selected_exchange)
+            if trade is None or trade["exchange"] != selected_exchange:
+                return
+            self._merge_trade_quality_flags(conn, trade["trade_id"], flags)
+            self._append_trade_event(
+                conn,
+                trade_id=trade["trade_id"],
+                event_type="exit_management_data_quality",
+                symbol=symbol,
+                side=trade["side"],
+                reason_codes=[],
+                reason_summary=reason_summary,
+                data_quality_flags=flags,
+                raw_payload={"flags": flags},
+            )
 
     def list_rows(
         self,
