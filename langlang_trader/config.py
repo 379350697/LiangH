@@ -59,6 +59,9 @@ class MarketDataConfig:
     market_metrics_cache_enabled: bool = False
     market_metrics_cache_dir: str = ""
     market_metrics_ttl_seconds: int = 300
+    public_error_cooldown_enabled: bool = True
+    public_error_cooldown_base_seconds: int = 60
+    public_error_cooldown_max_seconds: int = 300
 
 
 @dataclass(frozen=True)

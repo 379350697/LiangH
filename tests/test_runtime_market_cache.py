@@ -6,7 +6,12 @@ import unittest
 from pathlib import Path
 
 from langlang_trader.kline_backfill import BAR_MS, CSV_COLUMNS
-from langlang_trader.market_cache import MarketSnapshotCache, RollingKlineCacheMarketData
+from langlang_trader.market_cache import (
+    MarketSnapshotCache,
+    PublicMarketDataCooldownError,
+    PublicMarketDataGuard,
+    RollingKlineCacheMarketData,
+)
 from langlang_trader.models import Candle, Ticker
 
 
@@ -69,6 +74,79 @@ class StubMarketData:
 
 
 class RuntimeMarketCacheTest(unittest.TestCase):
+    def test_shared_kline_cache_is_reused_by_independent_wrappers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "shared_public_market_cache" / "kline_cache"
+            now = 1_700_000_000_000
+            upstream_rows = [candle(ts=now - idx * BAR_MS["1H"], close=100 + idx) for idx in range(3, 0, -1)]
+            first_upstream = StubMarketData(candles=upstream_rows)
+            first = RollingKlineCacheMarketData(cache, first_upstream, now_ms=lambda: now)
+
+            first.get_candles("BTC-USDT-SWAP", bar="1H", limit=3)
+
+            second_upstream = StubMarketData(candles=[candle(ts=now, close=999)])
+            second = RollingKlineCacheMarketData(cache, second_upstream, now_ms=lambda: now)
+            result = second.get_candles("BTC-USDT-SWAP", bar="1H", limit=3)
+
+            self.assertEqual([row.close for row in result], [103.0, 102.0, 101.0])
+            self.assertEqual(second_upstream.calls, [])
+
+    def test_public_market_guard_cools_down_only_the_failed_endpoint(self):
+        now = [1_700_000_000_000]
+        upstream = StubMarketData(error=TimeoutError("ssl eof"))
+        guard = PublicMarketDataGuard(
+            upstream,
+            provider_name="binance",
+            now_ms=lambda: now[0],
+            cooldown_base_seconds=60,
+            cooldown_max_seconds=300,
+        )
+
+        with self.assertRaises(RuntimeError) as first_error:
+            guard.get_candles("BTC-USDT-SWAP", bar="1H", limit=3)
+        self.assertIn("public_market_cooldown_opened", str(first_error.exception))
+
+        with self.assertRaises(PublicMarketDataCooldownError) as cooldown_error:
+            guard.get_candles("BTC-USDT-SWAP", bar="1H", limit=3)
+        self.assertIn("public_market_cooldown_skipped", str(cooldown_error.exception))
+        self.assertEqual(upstream.calls, [("candles", "BTC-USDT-SWAP", "1H", 3)])
+
+        with self.assertRaises(RuntimeError):
+            guard.get_candles("ETH-USDT-SWAP", bar="1H", limit=3)
+        self.assertEqual(upstream.calls[-1], ("candles", "ETH-USDT-SWAP", "1H", 3))
+
+        now[0] += 61_000
+        upstream.error = None
+        upstream.candles = [candle(ts=now[0], close=123.0)]
+        result = guard.get_candles("BTC-USDT-SWAP", bar="1H", limit=1)
+
+        self.assertEqual(result[0].close, 123.0)
+        self.assertEqual(guard.stats["public_market_recovered"], 1)
+
+    def test_kline_cache_serves_stale_rows_when_guard_cools_down_tail_fetch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "kline_cache"
+            now = [1_700_000_000_000]
+            cached = [candle(ts=now[0] - 10 * BAR_MS["1H"] + idx * BAR_MS["1H"], close=100 + idx) for idx in range(3)]
+            write_cache_rows(cache, "BTC-USDT-SWAP", "1H", cached)
+            upstream = StubMarketData(error=TimeoutError("ssl eof"))
+            guard = PublicMarketDataGuard(
+                upstream,
+                provider_name="binance",
+                now_ms=lambda: now[0],
+                cooldown_base_seconds=60,
+            )
+            market = RollingKlineCacheMarketData(cache, guard, now_ms=lambda: now[0])
+
+            first = market.get_candles("BTC-USDT-SWAP", bar="1H", limit=3)
+            second = market.get_candles("BTC-USDT-SWAP", bar="1H", limit=3)
+
+            self.assertEqual([row.close for row in first], [100.0, 101.0, 102.0])
+            self.assertEqual([row.close for row in second], [100.0, 101.0, 102.0])
+            self.assertEqual(upstream.calls, [("candles", "BTC-USDT-SWAP", "1H", 3)])
+            self.assertEqual(market.stats["cache_stale_served"], 2)
+            self.assertEqual(guard.stats["public_market_cooldown_skipped"], 1)
+
     def test_fresh_cache_serves_candles_without_public_fetch(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache = Path(tmp) / "kline_cache"

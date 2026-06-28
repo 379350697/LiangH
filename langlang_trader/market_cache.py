@@ -15,6 +15,95 @@ from langlang_trader.market_data import MarketData
 from langlang_trader.models import Candle
 
 
+class PublicMarketDataCooldownError(RuntimeError):
+    pass
+
+
+class PublicMarketDataGuard:
+    def __init__(
+        self,
+        upstream: MarketData,
+        *,
+        provider_name: str = "public",
+        now_ms: Callable[[], int] | None = None,
+        cooldown_base_seconds: int = 60,
+        cooldown_max_seconds: int = 300,
+    ):
+        self.upstream = upstream
+        self.provider_name = provider_name
+        self.now_ms = now_ms or (lambda: int(time.time() * 1000))
+        self.cooldown_base_ms = max(1, int(cooldown_base_seconds)) * 1000
+        self.cooldown_max_ms = max(self.cooldown_base_ms, int(cooldown_max_seconds) * 1000)
+        self._states: dict[tuple[Any, ...], dict[str, Any]] = {}
+        self.stats = {
+            "public_market_cooldown_opened": 0,
+            "public_market_cooldown_skipped": 0,
+            "public_market_recovered": 0,
+        }
+
+    def get_candles(self, symbol: str, bar: str = "1D", limit: int = 120) -> list[Candle]:
+        key = self._key("candles", symbol, bar)
+
+        def call():
+            rows = self.upstream.get_candles(symbol, bar=bar, limit=limit)
+            if not rows:
+                raise RuntimeError(f"empty market data response for {symbol} {bar}")
+            return rows
+
+        return self._call(key, call)
+
+    def latest_price(self, symbol: str) -> float:
+        return self._call(self._key("latest_price", symbol), lambda: self.upstream.latest_price(symbol))
+
+    def get_ticker(self, symbol: str):
+        return self._call(self._key("ticker", symbol), lambda: self.upstream.get_ticker(symbol))
+
+    def get_order_book(self, symbol: str, depth: int = 20):
+        return self._call(self._key("order_book", symbol, depth), lambda: self.upstream.get_order_book(symbol, depth=depth))
+
+    def get_market_metrics(self, symbol: str) -> dict[str, Any]:
+        return self._call(self._key("market_metrics", symbol), lambda: self.upstream.get_market_metrics(symbol))
+
+    def _call(self, key: tuple[Any, ...], call: Callable[[], Any]) -> Any:
+        now = self.now_ms()
+        state = self._states.get(key)
+        if state and now < int(state.get("cooldown_until_ms") or 0):
+            self.stats["public_market_cooldown_skipped"] += 1
+            raise PublicMarketDataCooldownError(
+                "public_market_cooldown_skipped "
+                f"provider={self.provider_name} key={key} consecutive_failures={state.get('consecutive_failures')} "
+                f"cooldown_until_ms={state.get('cooldown_until_ms')} last_error={state.get('last_error')}"
+            )
+        try:
+            result = call()
+        except Exception as exc:
+            failures = int(state.get("consecutive_failures", 0) if state else 0) + 1
+            cooldown_ms = self._cooldown_ms(failures)
+            self._states[key] = {
+                "consecutive_failures": failures,
+                "cooldown_until_ms": now + cooldown_ms,
+                "last_error": repr(exc),
+            }
+            self.stats["public_market_cooldown_opened"] += 1
+            raise RuntimeError(
+                "public_market_cooldown_opened "
+                f"provider={self.provider_name} key={key} consecutive_failures={failures} "
+                f"cooldown_until_ms={now + cooldown_ms} last_error={exc!r}"
+            ) from exc
+        if state and int(state.get("consecutive_failures") or 0) > 0:
+            self.stats["public_market_recovered"] += 1
+        self._states.pop(key, None)
+        return result
+
+    def _cooldown_ms(self, failures: int) -> int:
+        if failures <= 1:
+            return min(self.cooldown_base_ms, self.cooldown_max_ms)
+        return min(self.cooldown_max_ms, self.cooldown_base_ms * 3)
+
+    def _key(self, method: str, symbol: str, *parts: Any) -> tuple[Any, ...]:
+        return (self.provider_name, method, symbol, *parts)
+
+
 class RollingKlineCacheMarketData:
     def __init__(
         self,

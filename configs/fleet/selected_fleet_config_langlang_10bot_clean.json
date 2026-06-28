@@ -33,8 +33,20 @@
     "bars": ["1m", "5m", "15m", "1H", "1D"],
     "candle_limit": 120,
     "max_fetch_workers": 4,
+    "cache_enabled": true,
+    "cache_dir": "output/fleet/shared_public_market_cache/kline_cache",
+    "cache_observation_bars": ["1D", "1H"],
+    "cache_selected_bars": ["15m", "5m"],
+    "cache_hot_bars": ["1m"],
+    "cache_freshness_multiplier": 2,
     "market_snapshot_cache_enabled": true,
-    "market_snapshot_cache_dir": "output/fleet/langlang_strategy_forest/clean/market_snapshots"
+    "market_snapshot_cache_dir": "output/fleet/langlang_strategy_forest/clean/market_snapshots",
+    "market_metrics_cache_enabled": true,
+    "market_metrics_cache_dir": "output/fleet/shared_public_market_cache/market_metrics",
+    "market_metrics_ttl_seconds": 300,
+    "public_error_cooldown_enabled": true,
+    "public_error_cooldown_base_seconds": 60,
+    "public_error_cooldown_max_seconds": 300
   },
   "universe": {
     "mode": "okx_binance_usdt_swap_observe",

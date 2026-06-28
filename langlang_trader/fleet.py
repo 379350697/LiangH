@@ -26,7 +26,7 @@ from langlang_trader.exit_management import ExitActionType, ExitManagementContex
 from langlang_trader.features import DailyFeatureBuilder, FeatureSnapshot, MultiTimeframeFeatureBuilder
 from langlang_trader.historical_patterns import HistoricalPatternMatcher, read_historical_patterns
 from langlang_trader.ledger import Ledger
-from langlang_trader.market_cache import MarketMetricsCache, MarketSnapshotCache, RollingKlineCacheMarketData
+from langlang_trader.market_cache import MarketMetricsCache, MarketSnapshotCache, PublicMarketDataGuard, RollingKlineCacheMarketData
 from langlang_trader.market_data import FallbackMarketData, MarketData, market_microstructure_metrics
 from langlang_trader.models import OrderIntent, Position, Side
 from langlang_trader.risk import RiskEngine
@@ -184,6 +184,7 @@ class FleetRunner:
         self.strategy_versions = _fleet_strategy_versions(config)
         self.uses_multi_timeframe = any(version in V1_MULTI_TIMEFRAME_STRATEGIES for version in self.strategy_versions)
         self._market_data_cache_wrappers: dict[int, RollingKlineCacheMarketData] = {}
+        self._public_market_guard_wrappers: dict[int, PublicMarketDataGuard] = {}
         snapshot_cache_dir = (
             config.market_data.market_snapshot_cache_dir
             or str(Path(config.market_data.cache_dir) / "market_snapshots")
@@ -257,6 +258,7 @@ class FleetRunner:
             "errors": 0,
         }
         market_cache_stats_before = self._market_cache_stats()
+        public_guard_stats_before = self._public_market_guard_stats()
         candles_by_symbol: dict[str, dict[str, Any]] = {}
         latest_prices: dict[str, float] = {}
         latest_price_sources: dict[str, str] = {}
@@ -616,6 +618,7 @@ class FleetRunner:
                     bot_ledger.record_risk_event("fleet_runner_error", {"error": repr(exc)}, symbol=symbol)
                     cycle["errors"] += 1
         self._record_market_cache_stats(cycle, before=market_cache_stats_before)
+        self._record_public_market_guard_stats(cycle, before=public_guard_stats_before)
         return cycle
 
     def _runtime_symbols(self) -> tuple[list[str], Any | None]:
@@ -1172,7 +1175,7 @@ class FleetRunner:
 
     def _cached_market_data(self, market_data: MarketData) -> MarketData:
         if not self.config.market_data.cache_enabled:
-            return market_data
+            return self._guarded_market_data(market_data)
         if isinstance(market_data, FallbackMarketData):
             return FallbackMarketData(
                 self._cached_market_data(market_data.primary),
@@ -1182,10 +1185,30 @@ class FleetRunner:
         if key not in self._market_data_cache_wrappers:
             self._market_data_cache_wrappers[key] = RollingKlineCacheMarketData(
                 self.config.market_data.cache_dir,
-                market_data,
+                self._guarded_market_data(market_data),
                 freshness_multiplier=self.config.market_data.cache_freshness_multiplier,
             )
         return self._market_data_cache_wrappers[key]
+
+    def _guarded_market_data(self, market_data: MarketData) -> MarketData:
+        if not self.config.market_data.public_error_cooldown_enabled:
+            return market_data
+        if isinstance(market_data, FallbackMarketData):
+            return FallbackMarketData(
+                self._guarded_market_data(market_data.primary),
+                self._guarded_market_data(market_data.fallback),
+            )
+        if isinstance(market_data, PublicMarketDataGuard):
+            return market_data
+        key = id(market_data)
+        if key not in self._public_market_guard_wrappers:
+            self._public_market_guard_wrappers[key] = PublicMarketDataGuard(
+                market_data,
+                provider_name=_market_data_provider_name(market_data),
+                cooldown_base_seconds=self.config.market_data.public_error_cooldown_base_seconds,
+                cooldown_max_seconds=self.config.market_data.public_error_cooldown_max_seconds,
+            )
+        return self._public_market_guard_wrappers[key]
 
     def _enrich_selected_market_metrics(
         self,
@@ -1253,6 +1276,13 @@ class FleetRunner:
                 totals[key] = totals.get(key, 0) + int(value)
         return totals
 
+    def _public_market_guard_stats(self) -> dict[str, int]:
+        totals: dict[str, int] = {}
+        for wrapper in self._public_market_guard_wrappers.values():
+            for key, value in wrapper.stats.items():
+                totals[key] = totals.get(key, 0) + int(value)
+        return totals
+
     def _persist_market_snapshots(
         self,
         *,
@@ -1292,9 +1322,22 @@ class FleetRunner:
         delta = {key: value - baseline.get(key, 0) for key, value in totals.items()}
         cycle["market_data_cache_hits"] = delta.get("cache_hit", 0)
         cycle["market_data_cache_stale"] = delta.get("cache_stale", 0)
+        cycle["shared_cache_hits"] = delta.get("cache_hit", 0)
+        cycle["shared_cache_stale_served"] = delta.get("cache_stale_served", 0)
         cycle["market_data_tail_fetch_empty"] = delta.get("tail_fetch_empty", 0)
         cycle["market_data_tail_fetch_errors"] = delta.get("tail_fetch_error", 0)
         self.fleet_ledger.record_risk_event("market_data_cache_stats", delta)
+
+    def _record_public_market_guard_stats(self, cycle: dict[str, int], *, before: dict[str, int] | None = None) -> None:
+        if not self._public_market_guard_wrappers:
+            return
+        totals = self._public_market_guard_stats()
+        baseline = before or {}
+        delta = {key: value - baseline.get(key, 0) for key, value in totals.items()}
+        cycle["public_market_cooldown_opened"] = delta.get("public_market_cooldown_opened", 0)
+        cycle["public_market_cooldown_skipped"] = delta.get("public_market_cooldown_skipped", 0)
+        cycle["public_market_recovered"] = delta.get("public_market_recovered", 0)
+        self.fleet_ledger.record_risk_event("public_market_guard_stats", delta)
 
 
 def _position_for_symbol(positions: list[Position], symbol: str) -> Position | None:
@@ -1740,6 +1783,15 @@ def _bot_config_from_dict(row: dict[str, Any], strategy_version: str) -> BotConf
         strategy_version=row.get("strategy_version"),
         selection_profile=row.get("selection_profile"),
     )
+
+
+def _market_data_provider_name(market_data: MarketData) -> str:
+    name = type(market_data).__name__.lower()
+    if "binance" in name:
+        return "binance"
+    if "okx" in name:
+        return "okx"
+    return name or "public"
 
 
 def _float(value: Any, default: float = 0.0) -> float:

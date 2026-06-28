@@ -11,6 +11,7 @@ from langlang_trader.config import ExecutionConfig, MarketDataConfig, PaperConfi
 from langlang_trader.features import FeatureSnapshot
 from langlang_trader.fleet import BotConfig, FleetConfig, FleetRunner, _bot_allowed_side, _market_data_by_symbol, _selection_states_for_profiles, _with_selection_features, load_fleet_config
 from langlang_trader.ledger import Ledger
+from langlang_trader.market_cache import PublicMarketDataGuard, RollingKlineCacheMarketData
 from langlang_trader.market_data import FallbackMarketData, StaticMarketData
 from langlang_trader.models import Candle, OrderIntent, Side
 from langlang_trader.strategy import LangLangEnhancedVariant, LangLangNativeVariant, StrategyVariant
@@ -1139,6 +1140,48 @@ class FleetRunnerTest(unittest.TestCase):
 
             self.assertEqual(len(runner._market_data_cache_wrappers), 2)
 
+    def test_market_cache_wrapper_places_public_guard_inside_rolling_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            upstream = StaticMarketData({"BTC-USDT-SWAP": layered_cache_candles("BTC-USDT-SWAP")})
+            config = FleetConfig(
+                run_id="unit-public-guard-cache-run",
+                market_data=MarketDataConfig(
+                    symbols=["BTC-USDT-SWAP"],
+                    bars=["1D"],
+                    cache_enabled=True,
+                    cache_dir=os.path.join(tmp, "shared_public_market_cache", "kline_cache"),
+                    public_error_cooldown_enabled=True,
+                ),
+                ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                bots=[BotConfig(bot_id="bot-1", variant=StrategyVariant("fleet-loose", 0.12, 0.32, 0.45, 0.18, 0.005))],
+            )
+            runner = FleetRunner(config=config, market_data=upstream, ledger=Ledger(config.ledger_path))
+
+            wrapped = runner._cached_market_data(upstream)
+
+            self.assertIsInstance(wrapped, RollingKlineCacheMarketData)
+            self.assertIsInstance(wrapped.upstream, PublicMarketDataGuard)
+
+    def test_public_guard_can_be_enabled_without_kline_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            upstream = StaticMarketData({"BTC-USDT-SWAP": layered_cache_candles("BTC-USDT-SWAP")})
+            config = FleetConfig(
+                run_id="unit-public-guard-only-run",
+                market_data=MarketDataConfig(
+                    symbols=["BTC-USDT-SWAP"],
+                    bars=["1D"],
+                    cache_enabled=False,
+                    public_error_cooldown_enabled=True,
+                ),
+                ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                bots=[BotConfig(bot_id="bot-1", variant=StrategyVariant("fleet-loose", 0.12, 0.32, 0.45, 0.18, 0.005))],
+            )
+            runner = FleetRunner(config=config, market_data=upstream, ledger=Ledger(config.ledger_path))
+
+            wrapped = runner._cached_market_data(upstream)
+
+            self.assertIsInstance(wrapped, PublicMarketDataGuard)
+
     def test_market_cache_stats_are_reported_per_cycle_not_cumulative(self):
         with tempfile.TemporaryDirectory() as tmp:
             upstream = StaticMarketData({"BTC-USDT-SWAP": layered_cache_candles("BTC-USDT-SWAP")})
@@ -1164,6 +1207,7 @@ class FleetRunnerTest(unittest.TestCase):
             runner._record_market_cache_stats(cycle, before=before)
 
             self.assertEqual(cycle["market_data_cache_stale"], 1)
+            self.assertEqual(cycle["shared_cache_hits"], 0)
             self.assertLess(cycle["market_data_cache_stale"], wrapped.stats["cache_stale"])
 
     def test_market_data_fetch_can_run_with_configured_workers(self):
