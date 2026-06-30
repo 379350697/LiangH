@@ -1,0 +1,258 @@
+{
+  "run_id": "langlang-paper-orthogonal-v1",
+  "strategy_version": "rules_langlang_v1_3",
+  "historical_patterns_path": "output/langlang_distill/historical_patterns.csv",
+  "ledger_path": "output/fleet/langlang_orthogonal_v1/fleet.sqlite3",
+  "execution": {
+    "mode": "paper",
+    "exchange": "multi",
+    "executor": "paper_multi",
+    "allow_live_orders": false
+  },
+  "paper": {
+    "initial_equity_usdt": 10000.0,
+    "fee_bps": 5.0,
+    "slippage_bps": 10.0
+  },
+  "risk": {
+    "position_sizing_mode": "fixed_notional",
+    "active_capital_fraction": 0.3,
+    "max_position_usdt": 1000.0,
+    "max_total_position_usdt": 12000.0,
+    "max_open_positions": 2,
+    "max_open_symbols": 2,
+    "max_daily_loss_usdt": null,
+    "default_leverage": 3,
+    "alt_leverage": 3,
+    "reference_leverage": 3,
+    "max_slippage_bps": 10.0,
+    "min_signal_strength": 0.35
+  },
+  "market_data": {
+    "symbols": [],
+    "bars": ["1m", "5m", "15m", "1H", "1D"],
+    "candle_limit": 120,
+    "max_fetch_workers": 4,
+    "cache_enabled": true,
+    "cache_dir": "output/fleet/shared_public_market_cache/kline_cache",
+    "cache_observation_bars": ["1D", "1H"],
+    "cache_selected_bars": ["15m", "5m"],
+    "cache_hot_bars": ["1m"],
+    "cache_freshness_multiplier": 2,
+    "market_snapshot_cache_enabled": true,
+    "market_snapshot_cache_dir": "output/fleet/langlang_orthogonal_v1/market_snapshots",
+    "market_metrics_cache_enabled": true,
+    "market_metrics_cache_dir": "output/fleet/shared_public_market_cache/market_metrics",
+    "market_metrics_ttl_seconds": 300,
+    "public_error_cooldown_enabled": true,
+    "public_error_cooldown_base_seconds": 60,
+    "public_error_cooldown_max_seconds": 300
+  },
+  "universe": {
+    "mode": "okx_binance_usdt_swap_observe",
+    "provider": "okx_binance",
+    "exclude_reference_symbols": true,
+    "reference_symbols": ["BTC-USDT-SWAP", "ETH-USDT-SWAP"],
+    "snapshot_path": "output/fleet/langlang_orthogonal_v1/universe_snapshot.json",
+    "liquidity_top_n": 200
+  },
+  "selection": {
+    "enabled": true,
+    "top_n": 0,
+    "min_score": 0.0,
+    "min_daily_bars": 61,
+    "style": "dual_board",
+    "scoring_profile": "enhanced",
+    "long_top_n": 100,
+    "short_top_n": 80,
+    "min_long_score": 0.0,
+    "min_short_score": 0.0
+  },
+  "routing": {
+    "shared_symbol_policy": "binance_first"
+  },
+  "bots": [
+    {
+      "bot_id": "bot_orthogonal_low_position_wyckoff_long_a",
+      "selection_profile": "enhanced",
+      "variant": {
+        "variant_id": "orthogonal_v1_low_position_wyckoff_long_a",
+        "allowed_side": "long",
+        "entry_family": "low_position_wyckoff_long",
+        "experiment_family": "orthogonal_v1",
+        "strategy_tree_parent_id": "langlang_plus_01_loss",
+        "strategy_tree_variant_id": "orthogonal_v1_low_position_wyckoff_long_a",
+        "exploratory": true,
+        "ret_20d_min": 0.30,
+        "ret_60d_min": 0.30,
+        "pos_20d_min": 0.70,
+        "min_upside_space_pct": 0.0,
+        "low_position_boost_pos": 0.55,
+        "structure_stop_pct": 0.07,
+        "partial_take_profit_r": 1.6,
+        "runner_take_profit_r": 3.2,
+        "time_stop_days": 7,
+        "default_alt_leverage": 3,
+        "default_anchor_leverage": 3
+      }
+    },
+    {
+      "bot_id": "bot_orthogonal_low_position_wyckoff_long_b",
+      "selection_profile": "enhanced",
+      "variant": {
+        "variant_id": "orthogonal_v1_low_position_wyckoff_long_b",
+        "allowed_side": "long",
+        "entry_family": "low_position_wyckoff_long",
+        "experiment_family": "orthogonal_v1",
+        "strategy_tree_parent_id": "langlang_plus_01_loss",
+        "strategy_tree_variant_id": "orthogonal_v1_low_position_wyckoff_long_b",
+        "exploratory": true,
+        "ret_20d_min": 0.24,
+        "ret_60d_min": 0.22,
+        "pos_20d_min": 0.62,
+        "min_upside_space_pct": 0.0,
+        "low_position_boost_pos": 0.50,
+        "structure_stop_pct": 0.055,
+        "partial_take_profit_r": 1.4,
+        "runner_take_profit_r": 2.8,
+        "time_stop_days": 5,
+        "default_alt_leverage": 3,
+        "default_anchor_leverage": 3
+      }
+    },
+    {
+      "bot_id": "bot_orthogonal_failed_breakdown_reclaim_long_a",
+      "selection_profile": "enhanced",
+      "variant": {
+        "variant_id": "orthogonal_v1_failed_breakdown_reclaim_long_a",
+        "allowed_side": "long",
+        "entry_family": "failed_breakdown_reclaim_long",
+        "experiment_family": "orthogonal_v1",
+        "strategy_tree_parent_id": "langlang_plus_01_loss",
+        "strategy_tree_variant_id": "orthogonal_v1_failed_breakdown_reclaim_long_a",
+        "exploratory": true,
+        "ret_20d_min": 0.28,
+        "ret_60d_min": 0.18,
+        "pos_20d_min": 0.68,
+        "min_upside_space_pct": 0.0,
+        "structure_stop_pct": 0.075,
+        "partial_take_profit_r": 1.35,
+        "partial_exit_fraction": 1.0,
+        "runner_take_profit_r": 2.2,
+        "time_stop_days": 4,
+        "default_alt_leverage": 3,
+        "default_anchor_leverage": 3
+      }
+    },
+    {
+      "bot_id": "bot_orthogonal_failed_breakdown_reclaim_long_b",
+      "selection_profile": "enhanced",
+      "variant": {
+        "variant_id": "orthogonal_v1_failed_breakdown_reclaim_long_b",
+        "allowed_side": "long",
+        "entry_family": "failed_breakdown_reclaim_long",
+        "experiment_family": "orthogonal_v1",
+        "strategy_tree_parent_id": "langlang_plus_01_loss",
+        "strategy_tree_variant_id": "orthogonal_v1_failed_breakdown_reclaim_long_b",
+        "exploratory": true,
+        "ret_20d_min": 0.20,
+        "ret_60d_min": 0.10,
+        "pos_20d_min": 0.58,
+        "min_upside_space_pct": 0.0,
+        "structure_stop_pct": 0.06,
+        "partial_take_profit_r": 1.25,
+        "partial_exit_fraction": 1.0,
+        "runner_take_profit_r": 2.0,
+        "time_stop_days": 3,
+        "default_alt_leverage": 3,
+        "default_anchor_leverage": 3
+      }
+    },
+    {
+      "bot_id": "bot_orthogonal_retest_confirmed_short_a",
+      "selection_profile": "enhanced",
+      "variant": {
+        "variant_id": "orthogonal_v1_retest_confirmed_short_a",
+        "allowed_side": "short",
+        "entry_family": "retest_confirmed_short",
+        "experiment_family": "orthogonal_v1",
+        "strategy_tree_parent_id": "langlang_plus_01_loss",
+        "strategy_tree_variant_id": "orthogonal_v1_retest_confirmed_short_a",
+        "exploratory": true,
+        "leader_only_long": false,
+        "enable_countertrend_short": true,
+        "min_historical_match_score": 0.0,
+        "structure_stop_pct": 0.065,
+        "partial_take_profit_r": 1.45,
+        "runner_take_profit_r": 2.8,
+        "time_stop_days": 6,
+        "default_alt_leverage": 3,
+        "default_anchor_leverage": 3
+      }
+    },
+    {
+      "bot_id": "bot_orthogonal_retest_confirmed_short_b",
+      "selection_profile": "enhanced",
+      "variant": {
+        "variant_id": "orthogonal_v1_retest_confirmed_short_b",
+        "allowed_side": "short",
+        "entry_family": "retest_confirmed_short",
+        "experiment_family": "orthogonal_v1",
+        "strategy_tree_parent_id": "langlang_plus_01_loss",
+        "strategy_tree_variant_id": "orthogonal_v1_retest_confirmed_short_b",
+        "exploratory": true,
+        "leader_only_long": false,
+        "enable_countertrend_short": true,
+        "min_historical_match_score": 0.0,
+        "structure_stop_pct": 0.05,
+        "partial_take_profit_r": 1.25,
+        "runner_take_profit_r": 2.4,
+        "time_stop_days": 4,
+        "default_alt_leverage": 3,
+        "default_anchor_leverage": 3
+      }
+    },
+    {
+      "bot_id": "bot_orthogonal_payoff_probe_long_a",
+      "selection_profile": "enhanced",
+      "variant": {
+        "variant_id": "orthogonal_v1_payoff_probe_long_a",
+        "allowed_side": "long",
+        "entry_family": "payoff_probe",
+        "experiment_family": "orthogonal_v1",
+        "strategy_tree_parent_id": "langlang_plus_01_loss",
+        "strategy_tree_variant_id": "orthogonal_v1_payoff_probe_long_a",
+        "exploratory": true,
+        "ret_20d_min": 0.12,
+        "ret_60d_min": 0.24,
+        "min_upside_space_pct": 0.0,
+        "payoff_probe_partial_r": 1.25,
+        "payoff_probe_runner_r": 2.5,
+        "payoff_probe_time_stop_days": 5,
+        "default_alt_leverage": 3,
+        "default_anchor_leverage": 3
+      }
+    },
+    {
+      "bot_id": "bot_orthogonal_payoff_probe_short_a",
+      "selection_profile": "enhanced",
+      "variant": {
+        "variant_id": "orthogonal_v1_payoff_probe_short_a",
+        "allowed_side": "short",
+        "entry_family": "payoff_probe",
+        "experiment_family": "orthogonal_v1",
+        "strategy_tree_parent_id": "langlang_plus_01_loss",
+        "strategy_tree_variant_id": "orthogonal_v1_payoff_probe_short_a",
+        "exploratory": true,
+        "leader_only_long": false,
+        "short_ret_20d_max": -0.12,
+        "min_historical_match_score": 0.0,
+        "payoff_probe_partial_r": 1.25,
+        "payoff_probe_runner_r": 2.5,
+        "payoff_probe_time_stop_days": 5,
+        "default_alt_leverage": 3,
+        "default_anchor_leverage": 3
+      }
+    }
+  ]
+}

@@ -104,6 +104,13 @@ class LangLangV1_3Variant(LangLangV1_1Variant):
     autumn_winter_only_best_positions: bool = True
     default_alt_leverage: int = 5
     default_anchor_leverage: int = 10
+    entry_family: str = "default"
+    experiment_family: str = ""
+    strategy_tree_parent_id: str = ""
+    strategy_tree_variant_id: str = ""
+    payoff_probe_partial_r: float = 1.25
+    payoff_probe_runner_r: float = 2.5
+    payoff_probe_time_stop_days: int = 5
 
 
 @dataclass(frozen=True)
@@ -797,6 +804,157 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
     ) -> tuple[str, list[FailureFilter]] | None:
         return None
 
+    def _orthogonal_entry_decision(
+        self,
+        *,
+        snapshot: FeatureSnapshot,
+        entry_family: str,
+        market_season: str,
+        symbol_cycle: str,
+        selection_reason_codes: list[str],
+        selection_filter_codes: list[str],
+        matched_trade_examples: list[dict],
+        historical_match_score: float,
+    ) -> StrategyDecision | None:
+        features = snapshot.features
+        variant = self.variant
+        latest_close = _float_feature(features, "latest_close")
+        ret_20d = _float_feature(features, "ret_20d")
+        ret_60d = _float_feature(features, "ret_60d")
+        pos_20d = _float_feature(features, "pos_20d", 0.5)
+        ma_20 = _float_feature(features, "ma_20")
+        high_20d = _float_feature(features, "high_20d", latest_close)
+        low_20d = _float_feature(features, "low_20d", latest_close)
+        m15_ret_8 = _float_feature(features, "m15_ret_8")
+        m5_ret_6 = _float_feature(features, "m5_ret_6")
+        wyckoff_long_tag = _str_feature(features, "wyckoff_long_setup_tag", "")
+        wyckoff_short_tag = _str_feature(features, "wyckoff_short_setup_tag", "")
+        wyckoff_long_score = _float_feature(features, "wyckoff_long_score")
+        wyckoff_short_score = _float_feature(features, "wyckoff_short_score")
+
+        if entry_family == "low_position_wyckoff_long":
+            if _variant_allowed_side(variant) == "short":
+                return None
+            low_position = pos_20d <= min(variant.low_position_boost_pos, 0.55)
+            spring_or_retest = wyckoff_long_tag in {"spring_reclaim", "lps_retest"}
+            reclaimed_structure = ma_20 > 0 and latest_close >= ma_20 * 0.985
+            if not (low_position and spring_or_retest and wyckoff_long_score >= 0.68 and reclaimed_structure):
+                return None
+            stop_loss = max(low_20d, latest_close * (1 - variant.structure_stop_pct))
+            risk_per_unit = max(latest_close - stop_loss, latest_close * 0.01)
+            return self._enter_v1_3_decision(
+                snapshot=snapshot,
+                side=Side.LONG,
+                regime=MarketRegime.PRE_MAIN_UPTREND,
+                setup=EntrySetup.STARTER_BUY,
+                entry_position_id="1_low_position_wyckoff_spring_long",
+                market_season=market_season,
+                symbol_cycle=symbol_cycle,
+                strength=min(1.0, 0.40 + wyckoff_long_score * 0.35 + max(ret_60d, 0.0) * 0.15),
+                reason_codes=[
+                    "orthogonal_low_position_wyckoff_long",
+                    wyckoff_long_tag,
+                    f"variant:{variant.variant_id}",
+                ],
+                invalidation_price=stop_loss,
+                take_profit_hint=latest_close + risk_per_unit * variant.runner_take_profit_r,
+                matched_trade_examples=matched_trade_examples,
+                historical_match_score=historical_match_score,
+                selection_reason_codes=selection_reason_codes,
+                selection_filter_codes=selection_filter_codes,
+                filter_codes=[FailureFilter.NO_FAILURE_FILTER.value],
+            )
+
+        if entry_family == "failed_breakdown_reclaim_long":
+            if _variant_allowed_side(variant) == "short":
+                return None
+            pattern_tag = _str_feature(features, "strong_pattern_tag", "")
+            pattern_reasons = set(_string_list_feature(features, "pattern_reason_codes"))
+            reclaim_pattern = (
+                pattern_tag == "spoon_bottom_confirmed"
+                or "failed_breakdown_reclaim" in pattern_reasons
+                or _truthy_feature(features, "box_rebound_candidate")
+            )
+            reclaimed_structure = ma_20 > 0 and latest_close >= ma_20 * 0.96
+            intraday_reclaim = _ret_ge(features, "m15", m15_ret_8, variant.intraday_confirm_ret_min) or _ret_ge(
+                features,
+                "m5",
+                m5_ret_6,
+                variant.intraday_confirm_ret_min,
+            )
+            if not (
+                reclaim_pattern
+                and reclaimed_structure
+                and intraday_reclaim
+                and pos_20d <= 0.45
+                and ret_60d >= -0.10
+            ):
+                return None
+            stop_loss = max(low_20d, latest_close * (1 - variant.structure_stop_pct))
+            risk_per_unit = max(latest_close - stop_loss, latest_close * 0.01)
+            return self._enter_v1_3_decision(
+                snapshot=snapshot,
+                side=Side.LONG,
+                regime=MarketRegime.CHOPPY_INVALID,
+                setup=EntrySetup.BOX_REBOUND_LONG,
+                entry_position_id="6_failed_breakdown_reclaim_long",
+                market_season=market_season,
+                symbol_cycle=symbol_cycle,
+                strength=min(1.0, 0.36 + max(ret_20d, 0.0) * 0.20 + max(ret_60d, 0.0) * 0.12 + 0.22),
+                reason_codes=[
+                    "orthogonal_failed_breakdown_reclaim_long",
+                    pattern_tag or "failed_breakdown_reclaim",
+                    f"variant:{variant.variant_id}",
+                ],
+                invalidation_price=stop_loss,
+                take_profit_hint=latest_close + risk_per_unit * variant.partial_take_profit_r,
+                matched_trade_examples=matched_trade_examples,
+                historical_match_score=historical_match_score,
+                selection_reason_codes=selection_reason_codes,
+                selection_filter_codes=selection_filter_codes,
+                force_no_runner=True,
+                filter_codes=[FailureFilter.NO_FAILURE_FILTER.value],
+            )
+
+        if entry_family == "retest_confirmed_short":
+            if _variant_allowed_side(variant) == "long":
+                return None
+            retest_tag = wyckoff_short_tag in {"upthrust_reversal", "utad_risk", "lpsy_retest"}
+            intraday_reject = _has_wyckoff_intraday_confirmation(features, "short", variant, m15_ret_8, m5_ret_6)
+            if not (retest_tag and wyckoff_short_score >= 0.70 and intraday_reject):
+                return None
+            setup = (
+                EntrySetup.TOP_SHORT
+                if wyckoff_short_tag in {"upthrust_reversal", "utad_risk"}
+                else EntrySetup.SHORT_REBOUND_FAILURE
+            )
+            stop_loss = max(high_20d, latest_close * (1 + variant.structure_stop_pct))
+            risk_per_unit = max(stop_loss - latest_close, latest_close * 0.01)
+            return self._enter_v1_3_decision(
+                snapshot=snapshot,
+                side=Side.SHORT,
+                regime=MarketRegime.TOP_DIVERGENCE,
+                setup=setup,
+                entry_position_id="3_retest_confirmed_short",
+                market_season=market_season,
+                symbol_cycle=symbol_cycle,
+                strength=min(1.0, 0.38 + wyckoff_short_score * 0.35 + max(pos_20d, 0.0) * 0.08),
+                reason_codes=[
+                    "orthogonal_retest_confirmed_short",
+                    wyckoff_short_tag,
+                    f"variant:{variant.variant_id}",
+                ],
+                invalidation_price=stop_loss,
+                take_profit_hint=latest_close - risk_per_unit * variant.runner_take_profit_r,
+                matched_trade_examples=matched_trade_examples,
+                historical_match_score=historical_match_score,
+                selection_reason_codes=selection_reason_codes,
+                selection_filter_codes=selection_filter_codes,
+                filter_codes=[FailureFilter.NO_FAILURE_FILTER.value],
+            )
+
+        return None
+
     def decide(self, snapshot: FeatureSnapshot) -> StrategyDecision:
         features = snapshot.features
         variant = self.variant
@@ -827,6 +985,7 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
         selection_tag = _str_feature(features, "symbol_selection_tag", "")
         strong_pattern_tag = _str_feature(features, "strong_pattern_tag", "")
         risk_pattern_tag = _str_feature(features, "risk_pattern_tag", "")
+        entry_family = _variant_entry_family(variant)
         leader_platform_start_score = _float_feature(features, "leader_platform_start_score")
         golden_pit_reclaim_score = _float_feature(features, "golden_pit_reclaim_score")
         small_divergence_absorb_score = _float_feature(features, "small_divergence_absorb_score")
@@ -931,6 +1090,25 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             and (historical_match_score < variant.min_historical_match_score or not matched_trade_examples)
         ):
             return _skip("skip:no_historical_support", [FailureFilter.NO_HISTORICAL_SUPPORT])
+
+        if entry_family in {
+            "low_position_wyckoff_long",
+            "failed_breakdown_reclaim_long",
+            "retest_confirmed_short",
+        }:
+            orthogonal_decision = self._orthogonal_entry_decision(
+                snapshot=snapshot,
+                entry_family=entry_family,
+                market_season=market_season,
+                symbol_cycle=symbol_cycle,
+                selection_reason_codes=selection_reason_codes,
+                selection_filter_codes=selection_filter_codes,
+                matched_trade_examples=matched_trade_examples,
+                historical_match_score=historical_match_score,
+            )
+            if orthogonal_decision is not None:
+                return orthogonal_decision
+            return _skip(f"skip:entry_family_no_match:{entry_family}", [FailureFilter.STRUCTURE_BREAK])
 
         long_trend = (
             ret_20d >= variant.ret_20d_min
@@ -1204,10 +1382,31 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             risk_notes.append("补涨/箱体/逆势类不允许右尾持有，只按短拿计划处理")
         else:
             risk_notes.append("①/④或高质量主升浪结构保留 runner 捕获右尾")
+        entry_family = _variant_entry_family(variant)
+        experiment_family = _variant_experiment_family(variant)
+        strategy_tree_variant_id = _strategy_tree_variant_id(variant)
+        strategy_tree_parent_id = _strategy_tree_parent_id(variant)
+        strategy_tree_path = _strategy_tree_path(variant)
+        partial_r = variant.partial_take_profit_r
+        partial_exit_fraction = 1.0 if force_no_runner else variant.partial_exit_fraction
+        runner_r = variant.runner_take_profit_r
+        runner_enabled = not force_no_runner
+        time_stop_days = min(3, variant.time_stop_days) if force_no_runner else variant.time_stop_days
+        payoff_probe = ""
+        if entry_family == "payoff_probe":
+            partial_r = variant.payoff_probe_partial_r
+            runner_r = variant.payoff_probe_runner_r
+            time_stop_days = min(variant.payoff_probe_time_stop_days, variant.time_stop_days)
+            payoff_probe = "early_partial_breakeven_time_stop"
         decision_trace = {
             "action": StrategyAction.ENTER.value,
             "strategy_version": self.version,
             "strategy_line": self._strategy_line(),
+            "experiment_family": experiment_family,
+            "entry_family": entry_family,
+            "strategy_tree_variant_id": strategy_tree_variant_id,
+            "strategy_tree_parent_id": strategy_tree_parent_id,
+            "strategy_tree_path": strategy_tree_path,
             "market_season": market_season,
             "symbol_cycle": symbol_cycle,
             "entry_position_id": entry_position_id,
@@ -1225,6 +1424,8 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             "matched_trade_examples": matched_trade_examples,
             "historical_match_score": historical_match_score,
         }
+        if payoff_probe:
+            decision_trace["payoff_probe"] = payoff_probe
         signal = LangLangSignal(
             symbol=snapshot.symbol,
             side=side,
@@ -1234,6 +1435,11 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             features={
                 **snapshot.features,
                 **variant.to_dict(),
+                "experiment_family": experiment_family,
+                "entry_family": entry_family,
+                "strategy_tree_variant_id": strategy_tree_variant_id,
+                "strategy_tree_parent_id": strategy_tree_parent_id,
+                "strategy_tree_path": strategy_tree_path,
                 "market_season": market_season,
                 "symbol_cycle": symbol_cycle,
                 "entry_position_id": entry_position_id,
@@ -1246,17 +1452,17 @@ class RulesLangLangV1_3Strategy(RulesLangLangV1_1Strategy):
             stop_loss=invalidation_price,
             take_profit_hint=take_profit_hint,
             take_profit_plan={
-                "partial_r": variant.partial_take_profit_r,
-                "partial_exit_fraction": 1.0 if force_no_runner else variant.partial_exit_fraction,
-                "runner_r": variant.runner_take_profit_r,
+                "partial_r": partial_r,
+                "partial_exit_fraction": partial_exit_fraction,
+                "runner_r": runner_r,
                 "risk_unit": risk_unit,
             },
             hold_plan={
-                "runner": not force_no_runner,
-                "time_stop_days": min(3, variant.time_stop_days) if force_no_runner else variant.time_stop_days,
+                "runner": runner_enabled,
+                "time_stop_days": time_stop_days,
                 "trend_break_buffer_pct": variant.trend_break_buffer_pct,
                 "exit_on": ["structure_break", "mae_stop", "trend_break_exit", "time_stop"],
-                "right_tail_required": not force_no_runner,
+                "right_tail_required": runner_enabled,
             },
             strategy_version=self.version,
             regime=regime,
@@ -1431,6 +1637,37 @@ def _skip(explanation: str, filters: list[FailureFilter]) -> StrategyDecision:
         risk_notes=[],
         filter_codes=filters,
     )
+
+
+def _variant_entry_family(variant: object) -> str:
+    return str(getattr(variant, "entry_family", "") or "default")
+
+
+def _variant_experiment_family(variant: object) -> str:
+    return str(getattr(variant, "experiment_family", "") or "")
+
+
+def _strategy_tree_variant_id(variant: object) -> str:
+    return str(getattr(variant, "strategy_tree_variant_id", "") or getattr(variant, "variant_id", ""))
+
+
+def _strategy_tree_parent_id(variant: object) -> str:
+    parent_id = str(getattr(variant, "strategy_tree_parent_id", "") or "")
+    if parent_id:
+        return parent_id
+    if _variant_experiment_family(variant) == "orthogonal_v1":
+        return "langlang_plus_01_loss"
+    return ""
+
+
+def _strategy_tree_path(variant: object) -> list[str]:
+    variant_id = _strategy_tree_variant_id(variant)
+    if _variant_experiment_family(variant) == "orthogonal_v1":
+        return ["langlang_01", "langlang_plus_01", "langlang_plus_01_loss", variant_id]
+    parent_id = _strategy_tree_parent_id(variant)
+    if parent_id:
+        return [parent_id, variant_id]
+    return [variant_id] if variant_id else []
 
 
 def _list_feature(features: dict, key: str) -> list[dict]:

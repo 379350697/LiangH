@@ -50,6 +50,21 @@
         "risk_pattern_and_wyckoff_risk_filters_must_reduce_big_loss_overlap",
         "no_live_without_separate_authorization"
       ]
+    },
+    {
+      "strategy_id": "orthogonal_v1_exploration",
+      "family_id": "langlang",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_exploration",
+      "hypothesis": "第三批并行纸盘不继续微调现有 short waterfall / 高位追涨参数，而是用低位威科夫多头、跌破失败反包、回抽确认空头和出场收益结构四类正交假设补足真实样本。",
+      "promotion_rules": [
+        "paper_only_until_sample_sufficiency_passes",
+        "strategy_tree_trace_required",
+        "sample_sufficiency_gate_required",
+        "no_daily_loss_hard_gate",
+        "realtime_price_required_for_entry",
+        "no_live_without_separate_authorization"
+      ]
     }
   ],
   "variants": [
@@ -3113,6 +3128,374 @@
         "bucket_attribution_required_before_live",
         "non_exploratory_signal_count_required",
         "max_drawdown_not_worse_than_langlang_plus_01_loss",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "orthogonal_v1_low_position_wyckoff_long_a",
+      "display_name": "orthogonal-v1-low-position-wyckoff-long-a",
+      "lineage_group": "orthogonal_v1",
+      "strategy_id": "orthogonal_v1_exploration",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_exploration",
+      "hypothesis": "只测试低位/中低位威科夫 spring reclaim 多头，不继续追高位主升浪。",
+      "factor_set": {
+        "experiment_family": "orthogonal_v1",
+        "entry_family": "low_position_wyckoff_long",
+        "side": "long",
+        "entry": ["wyckoff_spring_reclaim", "low_position_reclaim"],
+        "exit": ["partial_take_profit_1_6r", "runner_3_2r"],
+        "max_daily_loss_usdt": null
+      },
+      "changed_factors": ["entry_family_low_position_wyckoff_long", "orthogonal_exploration_family"],
+      "core_logic": [
+        "low_position_wyckoff_spring_long",
+        "strategy_tree_trace_required",
+        "realtime_price_required_for_entry",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "current_paper_sample_attribution",
+        "long_filter_diagnosis",
+        "configs/fleet/selected_fleet_config_orthogonal_v1.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "max_daily_loss_usdt": null,
+        "max_open_positions": 2,
+        "max_open_symbols": 2,
+        "realtime_price_required": true
+      },
+      "iteration_notes": "第三批正交探索节点；只用于收集低位威科夫多头真实样本，不代表样本已足够扩张。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "sample_sufficiency_gate_required",
+        "closed_trades_lt_20_diagnostic_only",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "orthogonal_v1_low_position_wyckoff_long_b",
+      "display_name": "orthogonal-v1-low-position-wyckoff-long-b",
+      "lineage_group": "orthogonal_v1",
+      "strategy_id": "orthogonal_v1_exploration",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_exploration",
+      "hypothesis": "低位威科夫多头的更紧止损/更快出场版本，用来区分方向假设和盈亏结构。",
+      "factor_set": {
+        "experiment_family": "orthogonal_v1",
+        "entry_family": "low_position_wyckoff_long",
+        "side": "long",
+        "entry": ["wyckoff_spring_reclaim", "wyckoff_lps_retest"],
+        "exit": ["partial_take_profit_1_4r", "runner_2_8r"],
+        "max_daily_loss_usdt": null
+      },
+      "changed_factors": ["entry_family_low_position_wyckoff_long", "tighter_stop_and_faster_exit"],
+      "core_logic": [
+        "low_position_wyckoff_spring_long",
+        "strategy_tree_trace_required",
+        "realtime_price_required_for_entry",
+        "paper_multi_executor_only"
+      ],
+      "source_basis": [
+        "current_paper_sample_attribution",
+        "long_filter_diagnosis",
+        "configs/fleet/selected_fleet_config_orthogonal_v1.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "max_daily_loss_usdt": null,
+        "max_open_positions": 2,
+        "max_open_symbols": 2,
+        "realtime_price_required": true
+      },
+      "iteration_notes": "第三批正交探索节点；作为 low_position_wyckoff_long_a 的出场/止损对照。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "sample_sufficiency_gate_required",
+        "closed_trades_lt_20_diagnostic_only",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "orthogonal_v1_failed_breakdown_reclaim_long_a",
+      "display_name": "orthogonal-v1-failed-breakdown-reclaim-long-a",
+      "lineage_group": "orthogonal_v1",
+      "strategy_id": "orthogonal_v1_exploration",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_exploration",
+      "hypothesis": "测试跌破失败后的反包多头，不把它归类成 leader breakout 或高位主升浪。",
+      "factor_set": {
+        "experiment_family": "orthogonal_v1",
+        "entry_family": "failed_breakdown_reclaim_long",
+        "side": "long",
+        "entry": ["spoon_bottom_confirmed", "failed_breakdown_reclaim"],
+        "exit": ["single_partial_take_profit", "short_time_stop"],
+        "max_daily_loss_usdt": null
+      },
+      "changed_factors": ["entry_family_failed_breakdown_reclaim_long", "box_rebound_research_arm"],
+      "core_logic": [
+        "failed_breakdown_reclaim_long",
+        "box_internal_rebound_probe",
+        "strategy_tree_trace_required",
+        "realtime_price_required_for_entry"
+      ],
+      "source_basis": [
+        "current_paper_sample_attribution",
+        "long_filter_diagnosis",
+        "configs/fleet/selected_fleet_config_orthogonal_v1.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "max_daily_loss_usdt": null,
+        "max_open_positions": 2,
+        "max_open_symbols": 2,
+        "realtime_price_required": true
+      },
+      "iteration_notes": "第三批正交探索节点；用于验证瀑布后 reclaim 是否比当前追空链路更有信息量。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "sample_sufficiency_gate_required",
+        "closed_trades_lt_20_diagnostic_only",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "orthogonal_v1_failed_breakdown_reclaim_long_b",
+      "display_name": "orthogonal-v1-failed-breakdown-reclaim-long-b",
+      "lineage_group": "orthogonal_v1",
+      "strategy_id": "orthogonal_v1_exploration",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_exploration",
+      "hypothesis": "跌破失败反包的更快确认/更快止盈版本，用来观察 box rebound 是否只适合短拿。",
+      "factor_set": {
+        "experiment_family": "orthogonal_v1",
+        "entry_family": "failed_breakdown_reclaim_long",
+        "side": "long",
+        "entry": ["failed_breakdown_reclaim", "intraday_reclaim"],
+        "exit": ["partial_take_profit_1_25r", "time_stop_3d"],
+        "max_daily_loss_usdt": null
+      },
+      "changed_factors": ["entry_family_failed_breakdown_reclaim_long", "faster_payoff_variant"],
+      "core_logic": [
+        "failed_breakdown_reclaim_long",
+        "box_internal_rebound_probe",
+        "strategy_tree_trace_required",
+        "realtime_price_required_for_entry"
+      ],
+      "source_basis": [
+        "current_paper_sample_attribution",
+        "long_filter_diagnosis",
+        "configs/fleet/selected_fleet_config_orthogonal_v1.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "max_daily_loss_usdt": null,
+        "max_open_positions": 2,
+        "max_open_symbols": 2,
+        "realtime_price_required": true
+      },
+      "iteration_notes": "第三批正交探索节点；作为 failed_breakdown_reclaim_long_a 的短拿对照。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "sample_sufficiency_gate_required",
+        "closed_trades_lt_20_diagnostic_only",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "orthogonal_v1_retest_confirmed_short_a",
+      "display_name": "orthogonal-v1-retest-confirmed-short-a",
+      "lineage_group": "orthogonal_v1",
+      "strategy_id": "orthogonal_v1_exploration",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_exploration",
+      "hypothesis": "空头只在派发/反弹失败回抽确认后入场，不追 fresh low 或 waterfall continuation。",
+      "factor_set": {
+        "experiment_family": "orthogonal_v1",
+        "entry_family": "retest_confirmed_short",
+        "side": "short",
+        "entry": ["wyckoff_upthrust_or_lpsy_retest", "rebound_failure"],
+        "exit": ["partial_take_profit_1_45r", "runner_2_8r"],
+        "max_daily_loss_usdt": null
+      },
+      "changed_factors": ["entry_family_retest_confirmed_short", "ban_fresh_low_waterfall_chase"],
+      "core_logic": [
+        "retest_confirmed_short",
+        "wyckoff_distribution_retest",
+        "strategy_tree_trace_required",
+        "realtime_price_required_for_entry"
+      ],
+      "source_basis": [
+        "current_paper_sample_attribution",
+        "short_stop_loss_attribution",
+        "configs/fleet/selected_fleet_config_orthogonal_v1.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "max_daily_loss_usdt": null,
+        "max_open_positions": 2,
+        "max_open_symbols": 2,
+        "realtime_price_required": true
+      },
+      "iteration_notes": "第三批正交探索节点；用于验证当前空头亏损是否来自追跌而不是做空方向本身。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "sample_sufficiency_gate_required",
+        "closed_trades_lt_20_diagnostic_only",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "orthogonal_v1_retest_confirmed_short_b",
+      "display_name": "orthogonal-v1-retest-confirmed-short-b",
+      "lineage_group": "orthogonal_v1",
+      "strategy_id": "orthogonal_v1_exploration",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_exploration",
+      "hypothesis": "回抽确认空头的紧止损短拿版本，测试反弹失败是否只能吃第一段。",
+      "factor_set": {
+        "experiment_family": "orthogonal_v1",
+        "entry_family": "retest_confirmed_short",
+        "side": "short",
+        "entry": ["wyckoff_lpsy_retest", "rebound_failure"],
+        "exit": ["partial_take_profit_1_25r", "runner_2_4r"],
+        "max_daily_loss_usdt": null
+      },
+      "changed_factors": ["entry_family_retest_confirmed_short", "tighter_stop_and_faster_exit"],
+      "core_logic": [
+        "retest_confirmed_short",
+        "wyckoff_distribution_retest",
+        "strategy_tree_trace_required",
+        "realtime_price_required_for_entry"
+      ],
+      "source_basis": [
+        "current_paper_sample_attribution",
+        "short_stop_loss_attribution",
+        "configs/fleet/selected_fleet_config_orthogonal_v1.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "max_daily_loss_usdt": null,
+        "max_open_positions": 2,
+        "max_open_symbols": 2,
+        "realtime_price_required": true
+      },
+      "iteration_notes": "第三批正交探索节点；作为 retest_confirmed_short_a 的短拿对照。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "sample_sufficiency_gate_required",
+        "closed_trades_lt_20_diagnostic_only",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "orthogonal_v1_payoff_probe_long_a",
+      "display_name": "orthogonal-v1-payoff-probe-long-a",
+      "lineage_group": "orthogonal_v1",
+      "strategy_id": "orthogonal_v1_exploration",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_exploration",
+      "hypothesis": "不先改多头入场，只把部分止盈前移并缩短持有，测试当前全止损现象是否有收益结构问题。",
+      "factor_set": {
+        "experiment_family": "orthogonal_v1",
+        "entry_family": "payoff_probe",
+        "side": "long",
+        "entry": ["existing_v1_3_long_entry"],
+        "exit": ["partial_take_profit_1_25r", "runner_2_5r", "time_stop_5d"],
+        "max_daily_loss_usdt": null
+      },
+      "changed_factors": ["entry_family_payoff_probe", "early_partial_breakeven_time_stop"],
+      "core_logic": [
+        "payoff_probe_long",
+        "early_partial_take_profit",
+        "strategy_tree_trace_required",
+        "realtime_price_required_for_entry"
+      ],
+      "source_basis": [
+        "exit_management_attribution",
+        "current_paper_sample_attribution",
+        "configs/fleet/selected_fleet_config_orthogonal_v1.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "max_daily_loss_usdt": null,
+        "max_open_positions": 2,
+        "max_open_symbols": 2,
+        "realtime_price_required": true
+      },
+      "iteration_notes": "第三批正交探索节点；用于隔离入场问题与出场收益结构问题。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "sample_sufficiency_gate_required",
+        "closed_trades_lt_20_diagnostic_only",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "orthogonal_v1_payoff_probe_short_a",
+      "display_name": "orthogonal-v1-payoff-probe-short-a",
+      "lineage_group": "orthogonal_v1",
+      "strategy_id": "orthogonal_v1_exploration",
+      "parent_id": "langlang_plus_01_loss",
+      "strategy_version": "rules_langlang_v1_3",
+      "status": "paper_exploration",
+      "hypothesis": "不先改空头方向，只把收益兑现前移，测试当前空头亏损是否因追跌后回撤吞没利润。",
+      "factor_set": {
+        "experiment_family": "orthogonal_v1",
+        "entry_family": "payoff_probe",
+        "side": "short",
+        "entry": ["existing_v1_3_short_entry"],
+        "exit": ["partial_take_profit_1_25r", "runner_2_5r", "time_stop_5d"],
+        "max_daily_loss_usdt": null
+      },
+      "changed_factors": ["entry_family_payoff_probe", "early_partial_breakeven_time_stop"],
+      "core_logic": [
+        "payoff_probe_short",
+        "early_partial_take_profit",
+        "strategy_tree_trace_required",
+        "realtime_price_required_for_entry"
+      ],
+      "source_basis": [
+        "exit_management_attribution",
+        "current_paper_sample_attribution",
+        "configs/fleet/selected_fleet_config_orthogonal_v1.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "executor": "paper_multi",
+        "max_daily_loss_usdt": null,
+        "max_open_positions": 2,
+        "max_open_symbols": 2,
+        "realtime_price_required": true
+      },
+      "iteration_notes": "第三批正交探索节点；用于隔离空头入场问题与出场收益结构问题。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "sample_sufficiency_gate_required",
+        "closed_trades_lt_20_diagnostic_only",
         "no_live_without_separate_authorization"
       ]
     }

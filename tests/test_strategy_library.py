@@ -302,6 +302,30 @@ class StrategyLibraryTest(unittest.TestCase):
         self.assertEqual(long_variant.factor_set["feature_profile"], "wyckoff_enhanced_v1_3")
         self.assertEqual(long_variant.factor_set["allow_live_orders"], False)
 
+    def test_default_strategy_tree_registers_orthogonal_v1_experiment_nodes(self):
+        library = StrategyLibrary.load(DEFAULT_REGISTRY_PATH)
+
+        expected_ids = {
+            "orthogonal_v1_low_position_wyckoff_long_a",
+            "orthogonal_v1_low_position_wyckoff_long_b",
+            "orthogonal_v1_failed_breakdown_reclaim_long_a",
+            "orthogonal_v1_failed_breakdown_reclaim_long_b",
+            "orthogonal_v1_retest_confirmed_short_a",
+            "orthogonal_v1_retest_confirmed_short_b",
+            "orthogonal_v1_payoff_probe_long_a",
+            "orthogonal_v1_payoff_probe_short_a",
+        }
+        self.assertTrue(expected_ids.issubset(set(library.variants)))
+        for variant_id in expected_ids:
+            node = library.variant(variant_id)
+            self.assertEqual(node.lineage_group, "orthogonal_v1")
+            self.assertEqual(node.status, "paper_exploration")
+            self.assertEqual(node.strategy_version, "rules_langlang_v1_3")
+            self.assertEqual(node.factor_set["experiment_family"], "orthogonal_v1")
+            self.assertIsNone(node.risk_profile["max_daily_loss_usdt"])
+            self.assertIn("strategy_tree_trace_required", node.promotion_rules)
+            self.assertIn("sample_sufficiency_gate_required", node.promotion_rules)
+
     def test_optimizer_appends_strategy_library_ledger_without_changing_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             registry_path = os.path.join(tmp, "registry.json")

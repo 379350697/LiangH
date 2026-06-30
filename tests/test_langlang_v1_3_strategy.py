@@ -521,6 +521,158 @@ class LangLangV13StrategyTest(unittest.TestCase):
         self.assertIn(decision.signal.setup, {EntrySetup.TOP_SHORT, EntrySetup.WATERFALL_CONTINUATION})
         self.assertIn("wyckoff_short_confirmed", decision.signal.reason_codes)
 
+    def test_orthogonal_low_position_wyckoff_long_records_strategy_tree_trace(self):
+        strategy = RulesLangLangV1_3Strategy(
+            LangLangV1_3Variant(
+                variant_id="orthogonal_v1_low_position_wyckoff_long_a",
+                allowed_side="long",
+                entry_family="low_position_wyckoff_long",
+                experiment_family="orthogonal_v1",
+                exploratory=True,
+                ret_20d_min=0.30,
+                pos_20d_min=0.70,
+                min_upside_space_pct=0.0,
+            )
+        )
+
+        decision = strategy.decide(
+            snapshot(
+                symbol_cycle="box_chop",
+                ret_20d=0.08,
+                ret_60d=0.30,
+                pos_20d=0.36,
+                latest_close=109.0,
+                ma_5=104.0,
+                ma_20=110.0,
+                wyckoff_phase_tag="accumulation",
+                wyckoff_long_setup_tag="spring_reclaim",
+                wyckoff_long_score=0.72,
+                h1_wyckoff_long_score=0.52,
+                wyckoff_reason_codes=["wyckoff_spring_reclaim"],
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.ENTER)
+        self.assertEqual(decision.signal.side, Side.LONG)
+        self.assertEqual(decision.signal.decision_trace["experiment_family"], "orthogonal_v1")
+        self.assertEqual(decision.signal.decision_trace["entry_family"], "low_position_wyckoff_long")
+        self.assertEqual(
+            decision.signal.decision_trace["strategy_tree_variant_id"],
+            "orthogonal_v1_low_position_wyckoff_long_a",
+        )
+        self.assertEqual(decision.signal.decision_trace["entry_position_id"], "1_low_position_wyckoff_spring_long")
+        self.assertIn("orthogonal_low_position_wyckoff_long", decision.signal.reason_codes)
+
+    def test_orthogonal_failed_breakdown_reclaim_long_is_not_a_leader_breakout_clone(self):
+        strategy = RulesLangLangV1_3Strategy(
+            LangLangV1_3Variant(
+                variant_id="orthogonal_v1_failed_breakdown_reclaim_long_a",
+                allowed_side="long",
+                entry_family="failed_breakdown_reclaim_long",
+                experiment_family="orthogonal_v1",
+                exploratory=True,
+                ret_20d_min=0.28,
+                pos_20d_min=0.68,
+                min_upside_space_pct=0.0,
+            )
+        )
+
+        decision = strategy.decide(
+            snapshot(
+                symbol_cycle="box_chop",
+                ret_20d=-0.04,
+                ret_60d=0.12,
+                pos_20d=0.28,
+                latest_close=101.0,
+                ma_5=99.0,
+                ma_20=103.0,
+                low_20d=88.0,
+                strong_pattern_tag="spoon_bottom_confirmed",
+                spoon_bottom_confirmed_score=0.74,
+                strong_pattern_score=0.74,
+                bottom_lift_confirmed=True,
+                pattern_reason_codes=["spoon_bottom_confirmed", "failed_breakdown_reclaim"],
+                m15_ret_8=0.012,
+                m5_ret_6=0.006,
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.ENTER)
+        self.assertEqual(decision.signal.side, Side.LONG)
+        self.assertEqual(decision.signal.decision_trace["entry_family"], "failed_breakdown_reclaim_long")
+        self.assertEqual(decision.signal.decision_trace["entry_position_id"], "6_failed_breakdown_reclaim_long")
+        self.assertIn("orthogonal_failed_breakdown_reclaim_long", decision.signal.reason_codes)
+        self.assertNotIn("leader_main_wave_candidate", decision.signal.reason_codes)
+
+    def test_orthogonal_retest_confirmed_short_does_not_record_waterfall_chase(self):
+        strategy = RulesLangLangV1_3Strategy(
+            LangLangV1_3Variant(
+                variant_id="orthogonal_v1_retest_confirmed_short_a",
+                allowed_side="short",
+                entry_family="retest_confirmed_short",
+                experiment_family="orthogonal_v1",
+                exploratory=True,
+                leader_only_long=False,
+                min_historical_match_score=0.0,
+            )
+        )
+
+        decision = strategy.decide(
+            snapshot(
+                requested_side="short",
+                symbol_cycle="box_chop",
+                ret_20d=0.03,
+                ret_60d=0.18,
+                pos_20d=0.58,
+                latest_close=105.0,
+                ma_5=103.0,
+                ma_20=101.0,
+                high_20d=118.0,
+                low_20d=96.0,
+                h1_ret_24=-0.006,
+                m15_ret_8=-0.006,
+                m5_ret_6=-0.004,
+                wyckoff_phase_tag="distribution",
+                wyckoff_short_setup_tag="lpsy_retest",
+                wyckoff_short_score=0.74,
+                h1_wyckoff_short_score=0.48,
+                wyckoff_reason_codes=["wyckoff_lpsy_retest"],
+            )
+        )
+
+        self.assertEqual(decision.action, StrategyAction.ENTER)
+        self.assertEqual(decision.signal.side, Side.SHORT)
+        self.assertEqual(decision.signal.setup, EntrySetup.SHORT_REBOUND_FAILURE)
+        self.assertEqual(decision.signal.decision_trace["entry_family"], "retest_confirmed_short")
+        self.assertEqual(decision.signal.decision_trace["entry_position_id"], "3_retest_confirmed_short")
+        self.assertNotEqual(decision.signal.decision_trace["entry_position_id"], "short_waterfall_continuation")
+        self.assertIn("orthogonal_retest_confirmed_short", decision.signal.reason_codes)
+
+    def test_orthogonal_payoff_probe_records_exit_arm_and_keeps_stop_loss(self):
+        strategy = RulesLangLangV1_3Strategy(
+            LangLangV1_3Variant(
+                variant_id="orthogonal_v1_payoff_probe_long_a",
+                allowed_side="long",
+                entry_family="payoff_probe",
+                experiment_family="orthogonal_v1",
+                exploratory=True,
+                ret_20d_min=0.10,
+                ret_60d_min=0.20,
+                min_upside_space_pct=0.0,
+            )
+        )
+
+        decision = strategy.decide(snapshot(symbol_cycle="platform_start"))
+
+        self.assertEqual(decision.action, StrategyAction.ENTER)
+        self.assertEqual(decision.signal.decision_trace["entry_family"], "payoff_probe")
+        self.assertEqual(decision.signal.decision_trace["payoff_probe"], "early_partial_breakeven_time_stop")
+        self.assertEqual(decision.signal.take_profit_plan["partial_r"], 1.25)
+        self.assertEqual(decision.signal.take_profit_plan["runner_r"], 2.5)
+        self.assertLessEqual(decision.signal.hold_plan["time_stop_days"], 5)
+        self.assertGreater(decision.signal.stop_loss, 0)
+        self.assertLess(decision.signal.stop_loss, snapshot(symbol_cycle="platform_start").features["latest_close"])
+
 
 if __name__ == "__main__":
     unittest.main()
