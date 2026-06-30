@@ -12,7 +12,7 @@ from langlang_trader.features import FeatureSnapshot
 from langlang_trader.fleet import BotConfig, FleetConfig, FleetRunner, _bot_allowed_side, _market_data_by_symbol, _selection_states_for_profiles, _with_selection_features, load_fleet_config
 from langlang_trader.ledger import Ledger
 from langlang_trader.market_cache import PublicMarketDataGuard, RollingKlineCacheMarketData
-from langlang_trader.market_data import FallbackMarketData, StaticMarketData
+from langlang_trader.market_data import FallbackMarketData, StaticMarketData, SymbolMappedMarketData
 from langlang_trader.models import Candle, OrderIntent, Side
 from langlang_trader.strategy import LangLangEnhancedVariant, LangLangNativeVariant, StrategyVariant
 
@@ -968,6 +968,63 @@ class FleetRunnerTest(unittest.TestCase):
             second_runner.run_once()
             self.assertEqual(market_data.metric_calls, ["STRONG-USDT-SWAP"])
 
+    def test_runtime_market_metrics_keep_partial_fields_when_microstructure_fetch_fails(self):
+        class PartialMetricsMarketData(StaticMarketData):
+            def get_market_metrics(self, symbol: str):
+                return {
+                    "funding_rate_last": 0.0003,
+                    "funding_rate_status": "available",
+                    "open_interest_usd": 25_000_000.0,
+                    "open_interest_status": "available",
+                }
+
+            def get_order_book(self, symbol: str, depth: int = 20):
+                raise RuntimeError("public_market_cooldown_opened")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            symbol = "STRONG-USDT-SWAP"
+            config = FleetConfig(
+                run_id="unit-runtime-metrics-partial-run",
+                strategy_version="rules_langlang_v1_2",
+                market_data=MarketDataConfig(
+                    market_metrics_cache_enabled=True,
+                    market_metrics_cache_dir=os.path.join(tmp, "market_metrics"),
+                ),
+                ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+            )
+            ledger = Ledger(config.ledger_path)
+            runner = FleetRunner(
+                config=config,
+                market_data=PartialMetricsMarketData({symbol: layered_cache_candles(symbol)}),
+                ledger=ledger,
+            )
+            snapshots = {
+                symbol: FeatureSnapshot(
+                    symbol=symbol,
+                    bar="1D",
+                    last_ts=1_700_000_000_000,
+                    features={},
+                    created_at="2024-01-01T00:00:00Z",
+                )
+            }
+
+            runner._enrich_selected_market_metrics(
+                symbols=[symbol],
+                snapshots_by_symbol=snapshots,
+                market_data_by_symbol={},
+                default_market_data=runner.market_data,
+                cycle={},
+            )
+
+            features = snapshots[symbol].features
+            self.assertEqual(features["funding_rate_status"], "available")
+            self.assertEqual(features["open_interest_status"], "available")
+            self.assertEqual(features["book_depth_status"], "exchange_error")
+            self.assertEqual(features["spread_status"], "exchange_error")
+            self.assertEqual(features["market_metrics_cache_status"], "fetched_partial")
+            events = [row for row in ledger.list_rows("risk_events") if row["reason"] == "market_metrics_error"]
+            self.assertEqual(events, [])
+
     def test_symbol_fetch_keeps_partial_bars_when_one_timeframe_fails(self):
         class OneBadBarMarketData(StaticMarketData):
             def get_candles(self, symbol: str, bar: str = "1D", limit: int = 120):
@@ -1110,12 +1167,108 @@ class FleetRunnerTest(unittest.TestCase):
         routed = _market_data_by_symbol(FallbackMarketData(okx, binance), snapshot, shared_symbol_policy="binance_first")
 
         self.assertIsInstance(routed["BTC-USDT-SWAP"], FallbackMarketData)
-        self.assertIs(routed["BTC-USDT-SWAP"].primary, binance)
-        self.assertIs(routed["BTC-USDT-SWAP"].fallback, okx)
+        self.assertIsInstance(routed["BTC-USDT-SWAP"].primary, SymbolMappedMarketData)
+        self.assertIs(routed["BTC-USDT-SWAP"].primary.upstream, binance)
+        self.assertEqual(routed["BTC-USDT-SWAP"].primary.symbol_map, {"BTC-USDT-SWAP": "BTCUSDT"})
+        self.assertIsInstance(routed["BTC-USDT-SWAP"].fallback, SymbolMappedMarketData)
+        self.assertIs(routed["BTC-USDT-SWAP"].fallback.upstream, okx)
+        self.assertEqual(routed["BTC-USDT-SWAP"].fallback.symbol_map, {"BTC-USDT-SWAP": "BTC-USDT-SWAP"})
 
         default_routed = _market_data_by_symbol(FallbackMarketData(okx, binance), snapshot)
-        self.assertIs(default_routed["BTC-USDT-SWAP"].primary, binance)
-        self.assertIs(default_routed["BTC-USDT-SWAP"].fallback, okx)
+        self.assertIs(default_routed["BTC-USDT-SWAP"].primary.upstream, binance)
+        self.assertIs(default_routed["BTC-USDT-SWAP"].fallback.upstream, okx)
+
+    def test_market_data_routing_uses_exchange_symbol_but_returns_canonical_rows(self):
+        from langlang_trader.models import utc_now_iso
+        from langlang_trader.universe import UniverseSnapshot, UniverseSymbol
+
+        class RecordingMarketData(StaticMarketData):
+            def __init__(self, candles_by_symbol):
+                super().__init__(candles_by_symbol)
+                self.calls = []
+
+            def get_candles(self, symbol: str, bar: str = "1D", limit: int = 120):
+                self.calls.append(("candles", symbol, bar, limit))
+                return super().get_candles(symbol, bar=bar, limit=limit)
+
+        okx = RecordingMarketData({})
+        binance = RecordingMarketData({"1000PEPEUSDT": candles("1000PEPEUSDT")})
+        snapshot = UniverseSnapshot(
+            mode="okx_binance_usdt_swap_observe",
+            generated_at=utc_now_iso(),
+            symbols=[],
+            reference_symbols=[],
+            rows=[
+                UniverseSymbol(
+                    symbol="PEPE-USDT-SWAP",
+                    base_ccy="PEPE",
+                    quote_ccy="USDT",
+                    inst_type="PERPETUAL",
+                    state="TRADING",
+                    is_reference=False,
+                    tradable=False,
+                    filter_reason="binance_observed_only_not_okx_executable",
+                    raw_payload={},
+                    source_exchange="binance",
+                    exchange_symbol="1000PEPEUSDT",
+                    observed_only=True,
+                )
+            ],
+            raw_payload={},
+            observed_symbols=["PEPE-USDT-SWAP"],
+        )
+
+        routed = _market_data_by_symbol(FallbackMarketData(okx, binance), snapshot)
+        rows = routed["PEPE-USDT-SWAP"].get_candles("PEPE-USDT-SWAP", bar="1D", limit=3)
+
+        self.assertEqual(binance.calls, [("candles", "1000PEPEUSDT", "1D", 3)])
+        self.assertEqual([row.symbol for row in rows], ["PEPE-USDT-SWAP"] * 3)
+
+    def test_exchange_symbol_routes_reuse_mapped_wrappers_for_stable_cache_keys(self):
+        from langlang_trader.models import utc_now_iso
+        from langlang_trader.universe import UniverseSnapshot, UniverseSymbol
+
+        okx = StaticMarketData({"PEPE-USDT-SWAP": candles("PEPE-USDT-SWAP")})
+        binance = StaticMarketData({"1000PEPEUSDT": candles("1000PEPEUSDT")})
+        snapshot = UniverseSnapshot(
+            mode="okx_binance_usdt_swap_observe",
+            generated_at=utc_now_iso(),
+            symbols=[],
+            reference_symbols=[],
+            rows=[
+                UniverseSymbol(
+                    symbol="PEPE-USDT-SWAP",
+                    base_ccy="PEPE",
+                    quote_ccy="USDT",
+                    inst_type="PERPETUAL",
+                    state="TRADING",
+                    is_reference=False,
+                    tradable=False,
+                    filter_reason="binance_observed_only_not_okx_executable",
+                    raw_payload={},
+                    source_exchange="binance",
+                    exchange_symbol="1000PEPEUSDT",
+                    observed_only=True,
+                )
+            ],
+            raw_payload={},
+            observed_symbols=["PEPE-USDT-SWAP"],
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = FleetRunner(
+                config=FleetConfig(
+                    run_id="unit-stable-symbol-route-run",
+                    market_data=MarketDataConfig(symbols=["PEPE-USDT-SWAP"]),
+                    ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                ),
+                market_data=FallbackMarketData(okx, binance),
+                ledger=Ledger(os.path.join(tmp, "fleet.sqlite3")),
+            )
+            first = runner._market_data_by_symbol(snapshot)
+            second = runner._market_data_by_symbol(snapshot)
+
+            self.assertIs(first["PEPE-USDT-SWAP"], second["PEPE-USDT-SWAP"])
+            self.assertEqual(len(runner._symbol_mapped_market_data_wrappers), 1)
 
     def test_cache_wrapping_reuses_exchange_wrappers_for_fallback_routes(self):
         with tempfile.TemporaryDirectory() as tmp:

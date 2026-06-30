@@ -27,7 +27,7 @@ from langlang_trader.features import DailyFeatureBuilder, FeatureSnapshot, Multi
 from langlang_trader.historical_patterns import HistoricalPatternMatcher, read_historical_patterns
 from langlang_trader.ledger import Ledger
 from langlang_trader.market_cache import MarketMetricsCache, MarketSnapshotCache, PublicMarketDataGuard, RollingKlineCacheMarketData
-from langlang_trader.market_data import FallbackMarketData, MarketData, market_microstructure_metrics
+from langlang_trader.market_data import FallbackMarketData, MarketData, SymbolMappedMarketData, market_microstructure_metrics
 from langlang_trader.models import OrderIntent, Position, Side
 from langlang_trader.risk import RiskEngine
 from langlang_trader.strategy import (
@@ -185,6 +185,7 @@ class FleetRunner:
         self.uses_multi_timeframe = any(version in V1_MULTI_TIMEFRAME_STRATEGIES for version in self.strategy_versions)
         self._market_data_cache_wrappers: dict[int, RollingKlineCacheMarketData] = {}
         self._public_market_guard_wrappers: dict[int, PublicMarketDataGuard] = {}
+        self._symbol_mapped_market_data_wrappers: dict[tuple[int, str, str], MarketData] = {}
         snapshot_cache_dir = (
             config.market_data.market_snapshot_cache_dir
             or str(Path(config.market_data.cache_dir) / "market_snapshots")
@@ -233,11 +234,7 @@ class FleetRunner:
             if universe_snapshot is not None
             else set(symbols)
         )
-        market_data_by_symbol = _market_data_by_symbol(
-            self.market_data,
-            universe_snapshot,
-            shared_symbol_policy=self.config.routing.shared_symbol_policy,
-        )
+        market_data_by_symbol = self._market_data_by_symbol(universe_snapshot)
         market_data_by_symbol = {
             symbol: self._cached_market_data(market_data)
             for symbol, market_data in market_data_by_symbol.items()
@@ -1173,6 +1170,14 @@ class FleetRunner:
                 snapshots[symbol] = snapshot
         return snapshots
 
+    def _market_data_by_symbol(self, universe_snapshot: Any | None) -> dict[str, MarketData]:
+        return _market_data_by_symbol(
+            self.market_data,
+            universe_snapshot,
+            shared_symbol_policy=self.config.routing.shared_symbol_policy,
+            mapped_market_data_cache=self._symbol_mapped_market_data_wrappers,
+        )
+
     def _cached_market_data(self, market_data: MarketData) -> MarketData:
         if not self.config.market_data.cache_enabled:
             return self._guarded_market_data(market_data)
@@ -1231,7 +1236,8 @@ class FleetRunner:
                 market_data = market_data_by_symbol.get(symbol, default_market_data)
                 try:
                     metrics = _fetch_runtime_market_metrics(market_data, symbol)
-                    metrics["market_metrics_cache_status"] = "fetched"
+                    partial_error = bool(metrics.pop("_market_metrics_partial_error", False))
+                    metrics["market_metrics_cache_status"] = "fetched_partial" if partial_error else "fetched"
                     self.market_metrics_cache.put(symbol, metrics)
                     cycle["market_metrics_fetches"] = cycle.get("market_metrics_fetches", 0) + 1
                 except Exception as exc:
@@ -1479,25 +1485,62 @@ def _with_universe_market_features(
 
 
 def _fetch_runtime_market_metrics(market_data: MarketData, symbol: str) -> dict[str, Any]:
-    metrics = dict(market_data.get_market_metrics(symbol))
+    partial_error = False
+    try:
+        metrics = dict(market_data.get_market_metrics(symbol))
+    except Exception as exc:
+        partial_error = True
+        metrics = {
+            "funding_rate_status": "exchange_error",
+            "funding_rate_last": "",
+            "funding_rate_error": repr(exc),
+            "open_interest_status": "exchange_error",
+            "open_interest_usd": "",
+            "open_interest_error": repr(exc),
+            "market_cap_status": "provider_limited",
+            "market_cap_usd": "",
+        }
     if (
         metrics.get("book_depth_usdt_1pct") in {None, ""}
         or metrics.get("spread_bps") in {None, ""}
         or metrics.get("book_depth_status") != "available"
         or metrics.get("spread_status") != "available"
     ):
-        ticker = market_data.get_ticker(symbol)
-        order_book = market_data.get_order_book(symbol)
-        microstructure = market_microstructure_metrics(ticker=ticker, order_book=order_book)
-        for key, value in microstructure.items():
-            if metrics.get(key) in {None, ""} or str(metrics.get(f"{key}_status", "")) != "available":
-                metrics[key] = value
+        ticker = None
+        order_book = None
+        try:
+            ticker = market_data.get_ticker(symbol)
+        except Exception as exc:
+            partial_error = True
+            metrics["ticker_status"] = "exchange_error"
+            metrics["ticker_error"] = repr(exc)
+        try:
+            order_book = market_data.get_order_book(symbol)
+        except Exception as exc:
+            partial_error = True
+            metrics["book_depth_status"] = "exchange_error"
+            metrics["book_depth_error"] = repr(exc)
+            metrics["spread_status"] = "exchange_error"
+            metrics["spread_error"] = repr(exc)
+        if ticker is not None and order_book is not None:
+            microstructure = market_microstructure_metrics(ticker=ticker, order_book=order_book)
+            for key, value in microstructure.items():
+                if metrics.get(key) in {None, ""} or str(metrics.get(f"{key}_status", "")) != "available":
+                    metrics[key] = value
+        else:
+            metrics.setdefault("ticker_volume_24h", "" if ticker is None else (ticker.volume_24h or ""))
+            metrics.setdefault("book_depth_usdt_1pct", "")
+            metrics.setdefault("book_depth_status", "exchange_error")
+            metrics.setdefault("spread_bps", "")
+            metrics.setdefault("spread_status", "exchange_error")
     metrics.setdefault("funding_rate_status", "provider_limited")
     metrics.setdefault("funding_rate_last", "")
     metrics.setdefault("open_interest_status", "provider_limited")
     metrics.setdefault("open_interest_usd", "")
     metrics.setdefault("market_cap_status", "provider_limited")
     metrics.setdefault("market_cap_usd", "")
+    if partial_error:
+        metrics["_market_metrics_partial_error"] = True
     return metrics
 
 
@@ -1682,6 +1725,7 @@ def _market_data_by_symbol(
     universe_snapshot: Any | None,
     *,
     shared_symbol_policy: str = "binance_first",
+    mapped_market_data_cache: dict[tuple[int, str, str], MarketData] | None = None,
 ) -> dict[str, MarketData]:
     if universe_snapshot is None or not isinstance(market_data, FallbackMarketData):
         return {}
@@ -1690,20 +1734,56 @@ def _market_data_by_symbol(
         rows_by_symbol.setdefault(row.symbol, []).append(row)
     routed: dict[str, MarketData] = {}
     for symbol, rows in rows_by_symbol.items():
-        has_okx = any(row.source_exchange == "okx" and (row.tradable or row.is_reference) for row in rows)
-        has_binance = any(row.source_exchange == "binance" for row in rows)
-        if has_okx and has_binance:
+        okx_rows = [row for row in rows if row.source_exchange == "okx" and (row.tradable or row.is_reference)]
+        binance_rows = [row for row in rows if row.source_exchange == "binance"]
+        okx_market_data = _symbol_mapped_market_data(
+            market_data.primary,
+            symbol,
+            okx_rows,
+            mapped_market_data_cache=mapped_market_data_cache,
+        )
+        binance_market_data = _symbol_mapped_market_data(
+            market_data.fallback,
+            symbol,
+            binance_rows,
+            mapped_market_data_cache=mapped_market_data_cache,
+        )
+        if okx_rows and binance_rows:
             if shared_symbol_policy == "binance_first":
-                routed[symbol] = FallbackMarketData(market_data.fallback, market_data.primary)
+                routed[symbol] = FallbackMarketData(binance_market_data, okx_market_data)
             else:
-                routed[symbol] = market_data
+                routed[symbol] = FallbackMarketData(okx_market_data, binance_market_data)
             continue
-        if has_okx:
-            routed[symbol] = market_data.primary
+        if okx_rows:
+            routed[symbol] = okx_market_data
             continue
-        if has_binance:
-            routed[symbol] = market_data.fallback
+        if binance_rows:
+            routed[symbol] = binance_market_data
     return routed
+
+
+def _symbol_mapped_market_data(
+    market_data: MarketData,
+    symbol: str,
+    rows: list[Any],
+    *,
+    mapped_market_data_cache: dict[tuple[int, str, str], MarketData] | None = None,
+) -> MarketData:
+    exchange_symbol = ""
+    for row in rows:
+        exchange_symbol = getattr(row, "exchange_symbol", "") or getattr(row, "execution_symbol", "")
+        if exchange_symbol:
+            break
+    if not exchange_symbol:
+        return market_data
+    key = (id(market_data), symbol, exchange_symbol)
+    if mapped_market_data_cache is not None:
+        cached = mapped_market_data_cache.get(key)
+        if cached is None:
+            cached = SymbolMappedMarketData(market_data, {symbol: exchange_symbol})
+            mapped_market_data_cache[key] = cached
+        return cached
+    return SymbolMappedMarketData(market_data, {symbol: exchange_symbol})
 
 
 def _routable_symbols_for_executor(universe_snapshot: Any, executor: str) -> set[str]:
@@ -1786,6 +1866,9 @@ def _bot_config_from_dict(row: dict[str, Any], strategy_version: str) -> BotConf
 
 
 def _market_data_provider_name(market_data: MarketData) -> str:
+    upstream = getattr(market_data, "upstream", None)
+    if upstream is not None:
+        return _market_data_provider_name(upstream)
     name = type(market_data).__name__.lower()
     if "binance" in name:
         return "binance"

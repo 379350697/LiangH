@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from http.client import RemoteDisconnected
 import time
@@ -25,6 +26,34 @@ class MarketData(Protocol):
 
     def get_market_metrics(self, symbol: str) -> dict[str, Any]:
         ...
+
+
+class SymbolMappedMarketData:
+    def __init__(self, upstream: MarketData, symbol_map: dict[str, str]):
+        self.upstream = upstream
+        self.symbol_map = dict(symbol_map)
+
+    def get_candles(self, symbol: str, bar: str = "1D", limit: int = 120) -> list[Candle]:
+        exchange_symbol = self._exchange_symbol(symbol)
+        rows = self.upstream.get_candles(exchange_symbol, bar=bar, limit=limit)
+        return [replace(row, symbol=symbol) for row in rows]
+
+    def latest_price(self, symbol: str) -> float:
+        return self.upstream.latest_price(self._exchange_symbol(symbol))
+
+    def get_ticker(self, symbol: str) -> Ticker:
+        ticker = self.upstream.get_ticker(self._exchange_symbol(symbol))
+        return replace(ticker, symbol=symbol)
+
+    def get_order_book(self, symbol: str, depth: int = 20) -> OrderBook:
+        book = self.upstream.get_order_book(self._exchange_symbol(symbol), depth=depth)
+        return replace(book, symbol=symbol)
+
+    def get_market_metrics(self, symbol: str) -> dict[str, Any]:
+        return dict(self.upstream.get_market_metrics(self._exchange_symbol(symbol)))
+
+    def _exchange_symbol(self, symbol: str) -> str:
+        return self.symbol_map.get(symbol, symbol)
 
 
 class StaticMarketData:
