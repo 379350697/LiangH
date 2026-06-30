@@ -21,7 +21,7 @@
     "max_total_position_usdt": 25000.0,
     "max_open_positions": 3,
     "max_open_symbols": 3,
-    "max_daily_loss_usdt": 300.0,
+    "max_daily_loss_usdt": null,
     "default_leverage": 5,
     "alt_leverage": 5,
     "reference_leverage": 10,

@@ -63,7 +63,9 @@ class RiskEngine:
                     max_total_position_usdt=self.config.max_total_position_usdt,
                 )
                 return None
-        if account.realized_pnl_usdt <= -abs(self.config.max_daily_loss_usdt):
+        if self.config.max_daily_loss_usdt is not None and account.realized_pnl_usdt <= -abs(
+            self.config.max_daily_loss_usdt
+        ):
             self._reject(
                 "max_daily_loss_usdt",
                 realized_pnl_usdt=account.realized_pnl_usdt,

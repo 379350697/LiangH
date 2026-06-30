@@ -84,6 +84,41 @@ class RiskEnginePositionSizingTest(unittest.TestCase):
         self.assertEqual(engine.last_rejection_reason, "max_open_positions")
         self.assertEqual(engine.last_rejection_trace["open_count"], 1)
 
+    def test_daily_loss_gate_can_be_disabled_for_paper_evaluation(self):
+        config = RiskConfig(max_daily_loss_usdt=None)
+        engine = RiskEngine(config)
+
+        intent = engine.intent_from_signal(
+            signal=LangLangSignal(
+                symbol="SOL-USDT-SWAP",
+                side=Side.LONG,
+                strength=0.8,
+                reason_codes=["starter_buy"],
+                filter_codes=[],
+                features={},
+                invalidation_price=95.0,
+                stop_loss=95.0,
+                take_profit_hint=120.0,
+                take_profit_plan={},
+                hold_plan={},
+                strategy_version="rules_langlang_native_final",
+                regime=MarketRegime.PRE_MAIN_UPTREND,
+                setup=EntrySetup.STARTER_BUY,
+                decision_trace={},
+            ),
+            account=AccountSnapshot(
+                equity_usdt=10_000,
+                cash_usdt=10_000,
+                margin_used_usdt=0,
+                realized_pnl_usdt=-10_000,
+            ),
+            latest_price=100.0,
+            open_positions=[],
+        )
+
+        self.assertIsNotNone(intent)
+        self.assertIsNone(engine.last_rejection_reason)
+
     def test_risk_engine_limits_open_symbol_count(self):
         config = RiskConfig(max_open_symbols=2)
         engine = RiskEngine(config)

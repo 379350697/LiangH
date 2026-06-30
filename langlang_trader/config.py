@@ -34,7 +34,7 @@ class RiskConfig:
     max_total_position_usdt: float | None = None
     max_open_positions: int | None = None
     max_open_symbols: int | None = None
-    max_daily_loss_usdt: float = 300.0
+    max_daily_loss_usdt: float | None = None
     default_leverage: int = 3
     alt_leverage: int = 5
     reference_leverage: int = 10

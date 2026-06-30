@@ -12,7 +12,7 @@
   },
   "risk": {
     "max_position_usdt": 1000,
-    "max_daily_loss_usdt": 300,
+    "max_daily_loss_usdt": null,
     "default_leverage": 3,
     "max_slippage_bps": 10,
     "min_signal_strength": 0.35
