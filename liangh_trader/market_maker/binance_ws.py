@@ -278,6 +278,8 @@ class BinanceUsdmWebSocketMarketData:
         self,
         symbol: str,
         snapshot_client: BinanceDepthSnapshotClient | None = None,
+        reconnect_initial_backoff_s: float = 0.25,
+        reconnect_max_backoff_s: float = 5.0,
     ) -> None:
         self.symbol = symbol.upper()
         self.book = LocalOrderBook(symbol=self.symbol)
@@ -285,6 +287,11 @@ class BinanceUsdmWebSocketMarketData:
         self.needs_resync = False
         self.snapshot_error_count = 0
         self.last_snapshot_error = ""
+        self.connection_error_count = 0
+        self.last_connection_error = ""
+        self.reconnect_count = 0
+        self.reconnect_initial_backoff_s = reconnect_initial_backoff_s
+        self.reconnect_max_backoff_s = reconnect_max_backoff_s
         self._snapshot_task: asyncio.Task[dict[str, Any]] | None = None
         self._last_snapshot_attempt_ns = 0
 
@@ -301,6 +308,29 @@ class BinanceUsdmWebSocketMarketData:
         return f"wss://fstream.binance.com/stream?streams={streams}"
 
     async def stream(self) -> AsyncIterator[BookTick | TopBookTick | TradeTick]:
+        backoff_s = max(0.0, self.reconnect_initial_backoff_s)
+        while True:
+            try:
+                async for event in self._stream_connection():
+                    backoff_s = max(0.0, self.reconnect_initial_backoff_s)
+                    yield event
+            except Exception as exc:
+                if not _is_retriable_stream_error(exc):
+                    raise
+                self.connection_error_count += 1
+                self.last_connection_error = repr(exc)
+            else:
+                self.last_connection_error = "websocket stream ended"
+            self.reconnect_count += 1
+            self._reset_connection_state()
+            if backoff_s > 0:
+                await asyncio.sleep(backoff_s)
+            backoff_s = min(
+                max(0.0, self.reconnect_max_backoff_s),
+                backoff_s * 2 if backoff_s > 0 else max(0.0, self.reconnect_initial_backoff_s),
+            )
+
+    async def _stream_connection(self) -> AsyncIterator[BookTick | TopBookTick | TradeTick]:
         try:
             import websockets
         except ModuleNotFoundError as exc:
@@ -315,6 +345,14 @@ class BinanceUsdmWebSocketMarketData:
                 if snapshot_tick is not None:
                     yield snapshot_tick
                 self._ensure_snapshot_task()
+
+    def _reset_connection_state(self) -> None:
+        if self._snapshot_task is not None and not self._snapshot_task.done():
+            self._snapshot_task.cancel()
+        self._snapshot_task = None
+        self._last_snapshot_attempt_ns = 0
+        self.needs_resync = False
+        self.book = LocalOrderBook(symbol=self.symbol)
 
     def handle_message(
         self,
@@ -389,6 +427,16 @@ def _optional_int(value: Any) -> int | None:
     if value is None:
         return None
     return int(value)
+
+
+def _is_retriable_stream_error(exc: Exception) -> bool:
+    if isinstance(exc, (OSError, EOFError, TimeoutError, asyncio.TimeoutError)):
+        return True
+    module = exc.__class__.__module__
+    name = exc.__class__.__name__
+    if module.startswith("websockets.") and name.startswith("ConnectionClosed"):
+        return True
+    return False
 
 
 class _IPv4HTTPSConnection(http.client.HTTPSConnection):

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,7 +10,7 @@ from pathlib import Path
 from liangh_trader.market_maker.binance_execution_ws import BinanceWsApiRequestBuilder
 from liangh_trader.market_maker.binance_rest_recovery import BinanceRestRecoveryClient, RecoveryContextError
 from liangh_trader.market_maker.binance_user_stream import parse_order_trade_update
-from liangh_trader.market_maker.binance_ws import LocalOrderBook
+from liangh_trader.market_maker.binance_ws import BinanceUsdmWebSocketMarketData, LocalOrderBook
 from liangh_trader.market_maker.cli import build_parser
 from liangh_trader.market_maker.config import MarketMakerConfigError, load_market_maker_config
 from liangh_trader.market_maker.exchange_interfaces import MarketSignalState, RateLimitBudget
@@ -221,6 +223,62 @@ class BinanceOrderBookTest(unittest.TestCase):
         self.assertTrue(book.stale)
 
 
+class BinanceMarketDataReconnectTest(unittest.TestCase):
+    def test_stream_reconnects_after_connection_reset(self):
+        class FakeWebSocket:
+            def __init__(self, attempt: int) -> None:
+                self.attempt = attempt
+                self.emitted = False
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if self.attempt == 1:
+                    raise ConnectionResetError("fixture reset")
+                if self.emitted:
+                    raise StopAsyncIteration
+                self.emitted = True
+                return '{"data":{"e":"trade","E":1000,"p":"100.0","q":"0.5","m":false,"t":"t-1"}}'
+
+        class FakeWebSocketsModule:
+            def __init__(self) -> None:
+                self.attempts = 0
+
+            def connect(self, *args, **kwargs):
+                self.attempts += 1
+                return FakeWebSocket(self.attempts)
+
+        fake_websockets = FakeWebSocketsModule()
+        previous = sys.modules.get("websockets")
+        sys.modules["websockets"] = fake_websockets
+        try:
+            market_data = BinanceUsdmWebSocketMarketData("BTCUSDT")
+            market_data.reconnect_initial_backoff_s = 0.0
+
+            async def collect_one():
+                async for event in market_data.stream():
+                    return event
+                return None
+
+            event = asyncio.run(asyncio.wait_for(collect_one(), timeout=1.0))
+        finally:
+            if previous is None:
+                sys.modules.pop("websockets", None)
+            else:
+                sys.modules["websockets"] = previous
+
+        self.assertIsInstance(event, TradeTick)
+        self.assertEqual(fake_websockets.attempts, 2)
+        self.assertEqual(market_data.connection_error_count, 1)
+
+
 class MarketMakerStrategyTest(unittest.TestCase):
     def test_reference_strategy_skews_quotes_when_inventory_is_near_cap(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -250,6 +308,48 @@ class MarketMakerStrategyTest(unittest.TestCase):
         short_inventory = InventoryState(symbol="BTCUSDT", base_qty=-0.019)
         short_quotes = strategy.generate_quotes(book, short_inventory, now_ns=2_000_000)
         self.assertEqual([quote.side for quote in short_quotes], ["buy"])
+
+    def test_strategies_cap_inventory_increasing_quote_qty_near_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_market_maker_config(
+                write_config(
+                    tmp,
+                    risk={
+                        "max_inventory_base": 1.0,
+                        "max_notional_usdt": 500.0,
+                        "stale_feed_ms": 1500,
+                        "max_loop_lag_ms": 200,
+                        "max_spread_bps": 50.0,
+                    },
+                    strategy={
+                        "strategy_version": "scalp_passive_maker_ofi_v1",
+                        "variant_id": "scalp_maker_ofi_btc_v1",
+                        "quote_size_usdt": 100.0,
+                        "quote_spread_bps": 4.0,
+                        "order_ttl_ms": 1000,
+                        "quote_interval_ms": 250,
+                        "min_quote_edge_bps": 0.0,
+                        "min_ofi_abs": 0.2,
+                    },
+                )
+            )
+        book = BookTick(
+            symbol="BTCUSDT",
+            event_time_ms=1_000,
+            receive_time_ns=1_000_000,
+            best_bid=99.99,
+            best_bid_qty=5.0,
+            best_ask=100.01,
+            best_ask_qty=5.0,
+            update_id=10,
+        )
+        inventory = InventoryState(symbol="BTCUSDT", base_qty=0.75)
+
+        for strategy in (ReferencePassiveMakerStrategy(config), OfiInventorySkewMakerStrategy(config)):
+            quotes = strategy.generate_quotes(book, inventory, now_ns=2_000_000)
+            by_side = {quote.side: quote for quote in quotes}
+            self.assertLessEqual(by_side["buy"].qty, 0.25 + 1e-12)
+            self.assertGreater(by_side["sell"].qty, 0.9)
 
     def test_ofi_inventory_skew_strategy_blocks_adverse_side_and_keeps_tree_trace(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -466,6 +566,42 @@ class MarketMakerRunnerRiskTest(unittest.TestCase):
             reasons = [row["reason"] for row in ledger.list_rows("mm_risk_events")]
             self.assertIn("inventory_cap_exceeded", reasons)
 
+    def test_inventory_cap_force_flattens_inventory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_market_maker_config(write_config(tmp))
+            ledger = MarketMakerLedger(config.ledger_path, context=config.ledger_context)
+            executor = MarketMakerPaperExecutor(config=config, ledger=ledger)
+            runner = MarketMakerRunner(config=config, ledger=ledger, executor=executor)
+            executor.inventory.base_qty = 0.021
+            executor.inventory.avg_price = 100.0
+            book = BookTick(
+                symbol="BTCUSDT",
+                event_time_ms=1_000,
+                receive_time_ns=1_000_000,
+                best_bid=99.9,
+                best_bid_qty=5.0,
+                best_ask=100.01,
+                best_ask_qty=5.0,
+                update_id=1,
+                source="l2_depth",
+                book_status="hot",
+            )
+
+            allowed = runner.evaluate_risk(
+                book=book,
+                now_ns=1_100_000,
+                last_event_receive_ns=1_000_000,
+                loop_lag_ms=1.0,
+            )
+
+            self.assertFalse(allowed)
+            self.assertAlmostEqual(executor.inventory.base_qty, 0.0)
+            fill_rows = ledger.list_rows("mm_fills")
+            self.assertEqual(fill_rows[-1]["liquidity"], "taker_stop")
+            self.assertEqual(fill_rows[-1]["trade_id"], "inventory_cap_exceeded")
+            inventory_rows = ledger.list_rows("mm_inventory_snapshots")
+            self.assertEqual(inventory_rows[-1]["reason"], "inventory_cap_exceeded")
+
     def test_runner_blocks_rebuilding_depth_book_and_records_latency(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = load_market_maker_config(write_config(tmp))
@@ -620,6 +756,34 @@ class HybridRuntimeTest(unittest.TestCase):
             self.assertEqual(request_rows[0]["gateway"], "paper")
             self.assertEqual(request_rows[0]["method"], "quote_batch")
             self.assertEqual(request_rows[0]["strategy_tree_variant_id"], "mm_v1_reference_passive_btcusdt")
+
+    def test_inventory_cap_force_flattens_paper_gateway(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_market_maker_config(write_config(tmp))
+            ledger = MarketMakerLedger(config.ledger_path, context=config.ledger_context)
+            runtime = HybridMarketMakerRuntime(config=config, ledger=ledger)
+            runtime.execution_gateway.inventory.base_qty = -0.021
+            runtime.execution_gateway.inventory.avg_price = 100.0
+            book = BookTick(
+                symbol="BTCUSDT",
+                event_time_ms=1_000,
+                receive_time_ns=1_000_000,
+                best_bid=99.99,
+                best_bid_qty=5.0,
+                best_ask=100.01,
+                best_ask_qty=5.0,
+                update_id=1,
+                source="l2_depth",
+                book_status="hot",
+            )
+
+            runtime.on_market_event(book, now_ns=2_000_000)
+
+            self.assertAlmostEqual(runtime.execution_gateway.inventory.base_qty, 0.0)
+            fill_rows = ledger.list_rows("mm_fills")
+            self.assertEqual(fill_rows[-1]["side"], "buy")
+            self.assertEqual(fill_rows[-1]["liquidity"], "taker_stop")
+            self.assertEqual(fill_rows[-1]["trade_id"], "inventory_cap_exceeded")
 
     def test_rate_limit_budget_blocks_quote_cycle_without_calling_rest_recovery(self):
         with tempfile.TemporaryDirectory() as tmp:

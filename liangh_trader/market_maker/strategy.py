@@ -42,7 +42,9 @@ class ReferencePassiveMakerStrategy:
         quotes: list[QuoteIntent] = []
         for side in sides:
             price = buy_price if side == "buy" else sell_price
-            qty = self.config.strategy.quote_size_usdt / price
+            qty = _inventory_capped_quote_qty(self.config, side=side, price=price, inventory=inventory)
+            if qty <= 1e-12:
+                continue
             quotes.append(
                 QuoteIntent(
                     symbol=self.config.symbol,
@@ -88,7 +90,9 @@ class OfiInventorySkewMakerStrategy:
         quotes: list[QuoteIntent] = []
         for side in sides:
             price = buy_price if side == "buy" else sell_price
-            qty = self.config.strategy.quote_size_usdt / price
+            qty = _inventory_capped_quote_qty(self.config, side=side, price=price, inventory=inventory)
+            if qty <= 1e-12:
+                continue
             quotes.append(
                 QuoteIntent(
                     symbol=self.config.symbol,
@@ -126,6 +130,26 @@ class OfiInventorySkewMakerStrategy:
 
 def reference_passive_maker(config: MarketMakerConfig) -> ReferencePassiveMakerStrategy:
     return ReferencePassiveMakerStrategy(config)
+
+
+def _inventory_capped_quote_qty(
+    config: MarketMakerConfig,
+    *,
+    side: str,
+    price: float,
+    inventory: InventoryState,
+) -> float:
+    if price <= 0:
+        return 0.0
+    raw_qty = config.strategy.quote_size_usdt / price
+    max_inventory = config.risk.max_inventory_base
+    if max_inventory <= 0:
+        return raw_qty
+    if side == "buy":
+        capacity = max_inventory - inventory.base_qty
+    else:
+        capacity = max_inventory + inventory.base_qty
+    return min(raw_qty, max(0.0, capacity))
 
 
 def _queue_imbalance(book: BookTick) -> float:

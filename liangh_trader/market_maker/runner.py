@@ -71,7 +71,13 @@ class MarketMakerRunner:
         if spread_bps is None or spread_bps > self.config.risk.max_spread_bps:
             reasons.append(("abnormal_spread", {"spread_bps": spread_bps}))
         if abs(self.executor.inventory.base_qty) > self.config.risk.max_inventory_base:
-            reasons.append(("inventory_cap_exceeded", {"base_qty": self.executor.inventory.base_qty}))
+            self._force_flatten_inventory(
+                book=book,
+                now_ns=now_ns,
+                reason="inventory_cap_exceeded",
+                payload={"base_qty": self.executor.inventory.base_qty},
+            )
+            return False
         if mid_price is not None:
             if _inventory_stop_hit(
                 base_qty=self.executor.inventory.base_qty,
@@ -93,7 +99,13 @@ class MarketMakerRunner:
                 return False
             inventory_notional = abs(self.executor.inventory.base_qty * mid_price)
             if inventory_notional > self.config.risk.max_notional_usdt:
-                reasons.append(("notional_cap_exceeded", {"notional_usdt": inventory_notional}))
+                self._force_flatten_inventory(
+                    book=book,
+                    now_ns=now_ns,
+                    reason="notional_cap_exceeded",
+                    payload={"notional_usdt": inventory_notional},
+                )
+                return False
 
         if reasons:
             for reason, payload in reasons:
@@ -101,6 +113,11 @@ class MarketMakerRunner:
             self.executor.cancel_all(reason="risk_halt")
             return False
         return True
+
+    def _force_flatten_inventory(self, book: BookTick, now_ns: int, reason: str, payload: dict[str, object]) -> None:
+        self.ledger.record_risk_event(reason=reason, payload=payload)
+        self.executor.cancel_all(reason=reason)
+        self.executor.flatten_inventory(book, now_ns=now_ns, reason=reason)
 
     def record_market_data_latency(
         self,

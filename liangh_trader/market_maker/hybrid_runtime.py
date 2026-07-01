@@ -153,7 +153,13 @@ class HybridMarketMakerRuntime:
             reasons.append(("spread_shock", {"signal": "book_ticker"}))
         inventory = self.execution_gateway.inventory
         if abs(inventory.base_qty) > self.config.risk.max_inventory_base:
-            reasons.append(("inventory_cap_exceeded", {"base_qty": inventory.base_qty}))
+            self._force_flatten_inventory(
+                book=book,
+                now_ns=now_ns,
+                reason="inventory_cap_exceeded",
+                payload={"base_qty": inventory.base_qty},
+            )
+            return False
         mid_price = book.mid_price
         if mid_price is not None:
             if _inventory_stop_hit(
@@ -177,13 +183,26 @@ class HybridMarketMakerRuntime:
                     flatten(book, now_ns=now_ns, reason="inventory_stop_loss")
                 return False
             if abs(inventory.base_qty * mid_price) > self.config.risk.max_notional_usdt:
-                reasons.append(("notional_cap_exceeded", {"base_qty": inventory.base_qty, "mid_price": mid_price}))
+                self._force_flatten_inventory(
+                    book=book,
+                    now_ns=now_ns,
+                    reason="notional_cap_exceeded",
+                    payload={"base_qty": inventory.base_qty, "mid_price": mid_price},
+                )
+                return False
         if not reasons:
             return True
         for reason, payload in reasons:
             self.ledger.record_risk_event(reason=reason, payload=payload)
         self.execution_gateway.cancel_all(reason="risk_halt", now_ns=now_ns)
         return False
+
+    def _force_flatten_inventory(self, book: BookTick, now_ns: int, reason: str, payload: dict[str, object]) -> None:
+        self.ledger.record_risk_event(reason=reason, payload=payload)
+        self.execution_gateway.cancel_all(reason=reason, now_ns=now_ns)
+        flatten = getattr(self.execution_gateway, "flatten_inventory", None)
+        if flatten is not None:
+            flatten(book, now_ns=now_ns, reason=reason)
 
     def _record_book_latency(self, event: BookTick | TopBookTick, now_ns: int) -> None:
         event_age_ms = 0.0
