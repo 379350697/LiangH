@@ -52,11 +52,9 @@ async def run_from_args(args: argparse.Namespace) -> None:
 
     market_data = BinanceUsdmWebSocketMarketData(config.symbol)
     deadline_ns = time.monotonic_ns() + int(args.duration_seconds * 1_000_000_000)
-    last_loop_ns = time.monotonic_ns()
     async for event in market_data.stream():
         now_ns = time.monotonic_ns()
-        loop_lag_ms = max(0.0, (now_ns - last_loop_ns) / 1_000_000.0)
-        last_loop_ns = now_ns
+        loop_lag_ms = _event_dispatch_lag_ms(event, now_ns=now_ns)
         if isinstance(event, TopBookTick):
             runner.record_market_data_latency(event, now_ns=now_ns)
         elif isinstance(event, BookTick):
@@ -97,11 +95,9 @@ async def _run_hybrid_market_data(config: MarketMakerConfig, ledger: MarketMaker
     runtime = _build_hybrid_runtime(config=config, ledger=ledger)
     market_data = BinanceUsdmWebSocketMarketData(config.symbol)
     deadline_ns = time.monotonic_ns() + int(duration_seconds * 1_000_000_000)
-    last_loop_ns = time.monotonic_ns()
     async for event in market_data.stream():
         now_ns = time.monotonic_ns()
-        loop_lag_ms = max(0.0, (now_ns - last_loop_ns) / 1_000_000.0)
-        last_loop_ns = now_ns
+        loop_lag_ms = _event_dispatch_lag_ms(event, now_ns=now_ns)
         runtime.on_market_event(event, now_ns=now_ns, loop_lag_ms=loop_lag_ms)
         if now_ns >= deadline_ns:
             runtime.execution_gateway.cancel_all(reason="duration_complete", now_ns=now_ns)
@@ -263,6 +259,10 @@ def _ledger_counts(ledger: MarketMakerLedger) -> dict[str, int]:
             "mm_risk_events",
         )
     }
+
+
+def _event_dispatch_lag_ms(event: BookTick | TopBookTick | TradeTick, now_ns: int) -> float:
+    return max(0.0, (now_ns - event.receive_time_ns) / 1_000_000.0)
 
 
 def main() -> None:

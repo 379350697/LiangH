@@ -11,7 +11,7 @@ from liangh_trader.market_maker.binance_execution_ws import BinanceWsApiRequestB
 from liangh_trader.market_maker.binance_rest_recovery import BinanceRestRecoveryClient, RecoveryContextError
 from liangh_trader.market_maker.binance_user_stream import parse_order_trade_update
 from liangh_trader.market_maker.binance_ws import BinanceUsdmWebSocketMarketData, LocalOrderBook
-from liangh_trader.market_maker.cli import build_parser
+from liangh_trader.market_maker.cli import _event_dispatch_lag_ms, build_parser
 from liangh_trader.market_maker.config import MarketMakerConfigError, load_market_maker_config
 from liangh_trader.market_maker.exchange_interfaces import MarketSignalState, RateLimitBudget
 from liangh_trader.market_maker.hybrid_runtime import HybridMarketMakerRuntime
@@ -106,6 +106,23 @@ class MarketMakerConfigTest(unittest.TestCase):
 
         self.assertEqual(config.mode, "paper")
         self.assertEqual(config.execution.primary_gateway, "binance_ws_api")
+
+
+class MarketMakerCliTimingTest(unittest.TestCase):
+    def test_dispatch_lag_uses_event_receive_time_not_message_gap(self):
+        event = BookTick(
+            symbol="BTCUSDT",
+            event_time_ms=1_000,
+            receive_time_ns=10_000_000,
+            best_bid=99.0,
+            best_bid_qty=5.0,
+            best_ask=101.0,
+            best_ask_qty=5.0,
+            update_id=1,
+        )
+
+        self.assertEqual(_event_dispatch_lag_ms(event, now_ns=10_500_000), 0.5)
+        self.assertEqual(_event_dispatch_lag_ms(event, now_ns=9_000_000), 0.0)
 
 
 class BinanceOrderBookTest(unittest.TestCase):
