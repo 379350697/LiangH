@@ -1,0 +1,76 @@
+{
+  "run_id": "market_maker_v1_btcusdt",
+  "bot_id": "mm-v1-reference-passive-btcusdt",
+  "mode": "paper",
+  "venue": "binance_usdm",
+  "symbol": "BTCUSDT",
+  "allowed_symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "DOGEUSDT",
+    "ADAUSDT",
+    "TRXUSDT",
+    "HYPEUSDT",
+    "ZECUSDT",
+    "XMRUSDT",
+    "LINKUSDT",
+    "AVAXUSDT",
+    "BCHUSDT",
+    "LTCUSDT",
+    "DOTUSDT",
+    "SUIUSDT",
+    "XLMUSDT",
+    "HBARUSDT",
+    "NEARUSDT",
+    "APTUSDT",
+    "UNIUSDT",
+    "ETCUSDT"
+  ],
+  "ledger_path": "output/fleet/market_maker_v1/btcusdt/fleet.sqlite3",
+  "execution": {
+    "allow_live_orders": false,
+    "primary_gateway": "paper"
+  },
+  "signals": {
+    "use_book_ticker": true,
+    "use_trade_flow": true
+  },
+  "limits": {
+    "max_order_ops_per_minute": 1000,
+    "max_order_ops_per_10s": 240
+  },
+  "paper": {
+    "initial_quote_usdt": 10000.0,
+    "maker_fee_bps": 2.0,
+    "taker_fee_bps": 5.0,
+    "queue_fill_ratio": 1.0
+  },
+  "risk": {
+    "max_inventory_base": 0.02,
+    "max_notional_usdt": 500.0,
+    "stale_feed_ms": 1500,
+    "max_loop_lag_ms": 200,
+    "max_spread_bps": 50.0
+  },
+  "strategy": {
+    "strategy_version": "market_maker_v1",
+    "variant_id": "mm_v1_reference_passive_btcusdt",
+    "quote_size_usdt": 100.0,
+    "quote_spread_bps": 4.0,
+    "order_ttl_ms": 1000,
+    "quote_interval_ms": 250
+  },
+  "strategy_tree": {
+    "strategy_tree_variant_id": "mm_v1_reference_passive_btcusdt",
+    "strategy_tree_parent_id": "market_maker_v1_root",
+    "strategy_tree_path": [
+      "market_making",
+      "market_maker_v1",
+      "reference_passive",
+      "btcusdt"
+    ]
+  }
+}

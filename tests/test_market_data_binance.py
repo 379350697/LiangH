@@ -41,10 +41,16 @@ class StubBinanceRestMarketData(BinanceRestMarketData):
         self.urls.append(url)
         if "klines" in url:
             return self.payloads["klines"]
+        if "aggTrades" in url:
+            return self.payloads["aggTrades"]
         if "ticker/24hr" in url:
             return self.payloads["ticker"]
         if "depth" in url:
             return self.payloads["depth"]
+        if "premiumIndex" in url:
+            return self.payloads["premiumIndex"]
+        if "openInterest" in url:
+            return self.payloads["openInterest"]
         raise AssertionError(url)
 
 
@@ -106,6 +112,77 @@ class BinanceMarketDataTest(unittest.TestCase):
 
         self.assertEqual(candles[0].bar, "4H")
         self.assertIn("interval=4h", market.urls[0])
+
+    def test_binance_rest_market_data_supports_3m_klines(self):
+        market = StubBinanceRestMarketData(
+            {
+                "klines": [[1_700_000_000_000, "100", "110", "90", "105", "1234", 1_700_000_059_999]],
+                "ticker": {},
+                "depth": {},
+            }
+        )
+
+        candles = market.get_candles("BTC-USDT-SWAP", bar="3m", limit=1)
+
+        self.assertEqual(candles[0].bar, "3m")
+        self.assertIn("interval=3m", market.urls[0])
+
+    def test_binance_rest_market_data_builds_second_candles_from_agg_trades(self):
+        market = StubBinanceRestMarketData(
+            {
+                "klines": [],
+                "aggTrades": [
+                    {"T": 1_700_000_000_100, "p": "100.0", "q": "2.0"},
+                    {"T": 1_700_000_001_200, "p": "101.0", "q": "1.0"},
+                    {"T": 1_700_000_004_900, "p": "99.0", "q": "3.0"},
+                    {"T": 1_700_000_005_100, "p": "102.0", "q": "4.0"},
+                ],
+                "ticker": {},
+                "depth": {},
+            }
+        )
+
+        candles = market.get_candles("BTC-USDT-SWAP", bar="5s", limit=10)
+
+        self.assertIn("aggTrades", market.urls[0])
+        self.assertEqual([row.ts for row in candles], [1_700_000_000_000, 1_700_000_005_000])
+        self.assertEqual(candles[0].open, 100.0)
+        self.assertEqual(candles[0].high, 101.0)
+        self.assertEqual(candles[0].low, 99.0)
+        self.assertEqual(candles[0].close, 99.0)
+        self.assertEqual(candles[0].volume, 6.0)
+        self.assertEqual(candles[0].source, "binance_agg_trades")
+
+    def test_binance_market_metrics_include_mark_index_basis_and_next_funding_time(self):
+        market = StubBinanceRestMarketData(
+            {
+                "klines": [],
+                "aggTrades": [],
+                "ticker": {
+                    "closeTime": 1_700_000_120_000,
+                    "lastPrice": "101",
+                    "bidPrice": "100.9",
+                    "askPrice": "101.1",
+                    "quoteVolume": "123456",
+                },
+                "depth": {"lastUpdateId": 99, "bids": [["100.9", "10"]], "asks": [["101.1", "11"]]},
+                "premiumIndex": {
+                    "markPrice": "101.0",
+                    "indexPrice": "100.0",
+                    "lastFundingRate": "0.0004",
+                    "nextFundingTime": 1_700_028_800_000,
+                },
+                "openInterest": {"openInterest": "1000"},
+            }
+        )
+
+        metrics = market.get_market_metrics("BTC-USDT-SWAP")
+
+        self.assertEqual(metrics["mark_price"], 101.0)
+        self.assertEqual(metrics["index_price"], 100.0)
+        self.assertAlmostEqual(metrics["basis_bps"], 100.0)
+        self.assertEqual(metrics["next_funding_time_ms"], 1_700_028_800_000)
+        self.assertEqual(metrics["funding_rate_last"], 0.0004)
 
     def test_fallback_market_data_uses_secondary_source_when_primary_does_not_have_symbol(self):
         primary = StubMarketData(error=RuntimeError("not on okx"))

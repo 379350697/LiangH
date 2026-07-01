@@ -1,0 +1,251 @@
+{
+  "run_id": "five-bar-scalp-18bot-paper-v1",
+  "strategy_version": "five_bar_fractal_scalp_v1",
+  "ledger_path": "output/fleet/five_bar_scalp_18bot/fleet.sqlite3",
+  "execution": {
+    "mode": "paper",
+    "exchange": "binance",
+    "executor": "paper_binance",
+    "allow_live_orders": false
+  },
+  "paper": {
+    "initial_equity_usdt": 10000.0,
+    "fee_bps": 4.0,
+    "slippage_bps": 2.0
+  },
+  "risk": {
+    "position_sizing_mode": "fixed_notional",
+    "max_position_usdt": 100.0,
+    "max_total_position_usdt": 1800.0,
+    "max_open_positions": 18,
+    "max_open_symbols": 6,
+    "max_daily_loss_usdt": 300.0,
+    "default_leverage": 3,
+    "max_slippage_bps": 8.0,
+    "min_signal_strength": 0.35
+  },
+  "market_data": {
+    "symbols": [
+      "BTC-USDT-SWAP",
+      "ETH-USDT-SWAP",
+      "DOGE-USDT-SWAP",
+      "HYPE-USDT-SWAP",
+      "XRP-USDT-SWAP",
+      "BNB-USDT-SWAP"
+    ],
+    "bars": [
+      "1s",
+      "5s",
+      "15s",
+      "1m",
+      "3m",
+      "5m"
+    ],
+    "candle_limit": 160,
+    "max_fetch_workers": 3,
+    "cache_enabled": false,
+    "market_snapshot_cache_enabled": false,
+    "market_metrics_cache_enabled": false,
+    "public_error_cooldown_enabled": true
+  },
+  "universe": {
+    "mode": "static",
+    "provider": "binance",
+    "exclude_reference_symbols": false,
+    "reference_symbols": [],
+    "snapshot_path": "",
+    "liquidity_top_n": 200
+  },
+  "selection": {
+    "enabled": false,
+    "style": "mixed"
+  },
+  "bots": [
+    {
+      "bot_id": "scalp_btc_1s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_BTC_1s",
+        "symbol": "BTC-USDT-SWAP",
+        "scalp_bar": "1s",
+        "entry_mode": "fractal_confirm",
+        "order_flow_mode": "weak",
+        "min_order_flow_imbalance": 0.12,
+        "position_size_multiplier": 0.25
+      }
+    },
+    {
+      "bot_id": "scalp_btc_5s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_BTC_5s",
+        "symbol": "BTC-USDT-SWAP",
+        "scalp_bar": "5s"
+      }
+    },
+    {
+      "bot_id": "scalp_btc_15s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_BTC_15s",
+        "symbol": "BTC-USDT-SWAP",
+        "scalp_bar": "15s"
+      }
+    },
+    {
+      "bot_id": "scalp_eth_1s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_ETH_1s",
+        "symbol": "ETH-USDT-SWAP",
+        "scalp_bar": "1s",
+        "entry_mode": "fractal_confirm",
+        "order_flow_mode": "weak",
+        "min_order_flow_imbalance": 0.12,
+        "position_size_multiplier": 0.25
+      }
+    },
+    {
+      "bot_id": "scalp_eth_5s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_ETH_5s",
+        "symbol": "ETH-USDT-SWAP",
+        "scalp_bar": "5s"
+      }
+    },
+    {
+      "bot_id": "scalp_eth_15s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_ETH_15s",
+        "symbol": "ETH-USDT-SWAP",
+        "scalp_bar": "15s"
+      }
+    },
+    {
+      "bot_id": "scalp_doge_1s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_DOGE_1s",
+        "symbol": "DOGE-USDT-SWAP",
+        "scalp_bar": "1s",
+        "entry_mode": "fractal_confirm",
+        "order_flow_mode": "weak",
+        "min_order_flow_imbalance": 0.12,
+        "position_size_multiplier": 0.25
+      }
+    },
+    {
+      "bot_id": "scalp_doge_5s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_DOGE_5s",
+        "symbol": "DOGE-USDT-SWAP",
+        "scalp_bar": "5s"
+      }
+    },
+    {
+      "bot_id": "scalp_doge_15s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_DOGE_15s",
+        "symbol": "DOGE-USDT-SWAP",
+        "scalp_bar": "15s"
+      }
+    },
+    {
+      "bot_id": "scalp_hype_1s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_HYPE_1s",
+        "symbol": "HYPE-USDT-SWAP",
+        "scalp_bar": "1s",
+        "entry_mode": "fractal_confirm",
+        "order_flow_mode": "weak",
+        "min_order_flow_imbalance": 0.12,
+        "position_size_multiplier": 0.25
+      }
+    },
+    {
+      "bot_id": "scalp_hype_5s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_HYPE_5s",
+        "symbol": "HYPE-USDT-SWAP",
+        "scalp_bar": "5s"
+      }
+    },
+    {
+      "bot_id": "scalp_hype_15s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_HYPE_15s",
+        "symbol": "HYPE-USDT-SWAP",
+        "scalp_bar": "15s"
+      }
+    },
+    {
+      "bot_id": "scalp_xrp_1s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_XRP_1s",
+        "symbol": "XRP-USDT-SWAP",
+        "scalp_bar": "1s",
+        "entry_mode": "fractal_confirm",
+        "order_flow_mode": "weak",
+        "min_order_flow_imbalance": 0.12,
+        "position_size_multiplier": 0.25
+      }
+    },
+    {
+      "bot_id": "scalp_xrp_5s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_XRP_5s",
+        "symbol": "XRP-USDT-SWAP",
+        "scalp_bar": "5s"
+      }
+    },
+    {
+      "bot_id": "scalp_xrp_15s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_XRP_15s",
+        "symbol": "XRP-USDT-SWAP",
+        "scalp_bar": "15s"
+      }
+    },
+    {
+      "bot_id": "scalp_bnb_1s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_BNB_1s",
+        "symbol": "BNB-USDT-SWAP",
+        "scalp_bar": "1s",
+        "entry_mode": "fractal_confirm",
+        "order_flow_mode": "weak",
+        "min_order_flow_imbalance": 0.12,
+        "position_size_multiplier": 0.25
+      }
+    },
+    {
+      "bot_id": "scalp_bnb_5s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_BNB_5s",
+        "symbol": "BNB-USDT-SWAP",
+        "scalp_bar": "5s"
+      }
+    },
+    {
+      "bot_id": "scalp_bnb_15s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "variant": {
+        "variant_id": "scalp_BNB_15s",
+        "symbol": "BNB-USDT-SWAP",
+        "scalp_bar": "15s"
+      }
+    }
+  ]
+}

@@ -13,7 +13,8 @@ from langlang_trader.fleet import BotConfig, FleetConfig, FleetRunner, _bot_allo
 from langlang_trader.ledger import Ledger
 from langlang_trader.market_cache import PublicMarketDataGuard, RollingKlineCacheMarketData
 from langlang_trader.market_data import FallbackMarketData, StaticMarketData, SymbolMappedMarketData
-from langlang_trader.models import Candle, OrderIntent, Side
+from langlang_trader.models import Candle, OrderBook, OrderBookLevel, OrderIntent, Side
+from langlang_trader.scalping import ScalpingVariant
 from langlang_trader.strategy import LangLangEnhancedVariant, LangLangNativeVariant, StrategyVariant
 
 
@@ -86,6 +87,82 @@ class FleetRunnerTest(unittest.TestCase):
             _bot_allowed_side(SimpleNamespace(variant_id="llv1_3_short_r20_0.20_hm_0.25")),
             "short",
         )
+
+    def test_five_bar_scalp_bot_records_paper_stop_loss(self):
+        class ScalpMarketData(StaticMarketData):
+            def latest_price(self, symbol: str) -> float:
+                return 100.1
+
+            def get_order_book(self, symbol: str, depth: int = 20) -> OrderBook:
+                return OrderBook(
+                    symbol=symbol,
+                    ts=1_700_000_030_000,
+                    bids=[OrderBookLevel(price=100.09, qty=30.0)],
+                    asks=[OrderBookLevel(price=100.11, qty=8.0)],
+                )
+
+        def scalp_rows(symbol="BTC-USDT-SWAP"):
+            rows = [
+                Candle(symbol, "5s", 1, 100.00, 100.04, 99.96, 100.02, 800),
+                Candle(symbol, "5s", 2, 100.02, 100.03, 99.94, 99.98, 300),
+                Candle(symbol, "5s", 3, 99.98, 99.99, 99.85, 99.90, 200),
+                Candle(symbol, "5s", 4, 99.90, 100.06, 99.91, 100.03, 1500),
+                Candle(symbol, "5s", 5, 100.03, 100.08, 99.98, 100.07, 1800),
+                Candle(symbol, "1m", 10, 99.90, 100.02, 99.80, 99.95, 1000),
+                Candle(symbol, "1m", 11, 99.95, 100.20, 99.90, 100.16, 1100),
+                Candle(symbol, "3m", 20, 99.80, 100.00, 99.70, 99.90, 1000),
+                Candle(symbol, "3m", 21, 99.90, 100.25, 99.80, 100.18, 1100),
+                Candle(symbol, "5m", 30, 99.70, 99.95, 99.60, 99.85, 1000),
+                Candle(symbol, "5m", 31, 99.85, 100.30, 99.80, 100.20, 1100),
+            ]
+            return rows
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = FleetConfig(
+                run_id="unit-five-bar-scalp-paper",
+                strategy_version="five_bar_fractal_scalp_v1",
+                execution=ExecutionConfig(mode="paper", exchange="binance", executor="paper_binance"),
+                paper=PaperConfig(initial_equity_usdt=10_000, fee_bps=0, slippage_bps=0),
+                risk=RiskConfig(max_position_usdt=100, max_open_positions=1, max_open_symbols=1),
+                market_data=MarketDataConfig(
+                    symbols=["BTC-USDT-SWAP"],
+                    bars=["5s", "1m", "3m", "5m"],
+                    candle_limit=20,
+                ),
+                universe=UniverseConfig(mode="static", reference_symbols=[], snapshot_path=""),
+                ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                bots=[
+                    BotConfig(
+                        bot_id="scalp-btc-5s",
+                        variant=ScalpingVariant(
+                            variant_id="scalp_BTC_5s",
+                            symbol="BTC-USDT-SWAP",
+                            scalp_bar="5s",
+                            min_order_flow_imbalance=0.05,
+                        ),
+                        strategy_version="five_bar_fractal_scalp_v1",
+                    )
+                ],
+            )
+            ledger = Ledger(config.ledger_path)
+            runner = FleetRunner(config=config, market_data=ScalpMarketData({"BTC-USDT-SWAP": scalp_rows()}), ledger=ledger)
+
+            cycle = runner.run_once()
+
+            self.assertEqual(cycle["signals"], 1)
+            self.assertEqual(cycle["intents"], 1)
+            self.assertEqual(cycle["fills"], 1)
+            intents = ledger.list_rows("order_intents")
+            self.assertEqual(len(intents), 1)
+            self.assertEqual(intents[0]["exchange"], "binance")
+            self.assertGreater(intents[0]["stop_loss"], 0)
+            self.assertLess(intents[0]["stop_loss"], 100.1)
+            equity = ledger.list_rows("equity_snapshots")
+            self.assertTrue(equity)
+            self.assertEqual({row["exchange"] for row in equity}, {"binance"})
+            trade = ledger.list_rows("trade_lifecycle")[0]
+            self.assertAlmostEqual(trade["initial_stop_loss"], intents[0]["stop_loss"])
+            self.assertAlmostEqual(trade["current_stop_loss"], intents[0]["stop_loss"])
 
     def test_with_selection_features_writes_requested_side_from_selection_bias(self):
         enriched = _with_selection_features(

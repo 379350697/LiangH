@@ -14,6 +14,14 @@ from langlang_trader.models import (
     StrategyAction,
     StrategyDecision,
 )
+from langlang_trader.micro_scalping import (
+    MicroScalpVariant,
+    RulesFundingBasisShadowStrategy,
+    RulesOfiMicropriceScalpStrategy,
+    RulesVolatilityBreakoutScalpStrategy,
+    RulesVwapMeanReversionScalpStrategy,
+)
+from langlang_trader.scalping import RulesFiveBarScalpStrategy, ScalpingVariant
 
 
 @dataclass(frozen=True)
@@ -1565,7 +1573,26 @@ class RulesLangLangV1_2Strategy(RulesLangLangV1_1Strategy):
     version = "rules_langlang_v1_2"
 
 
-def strategy_from_version(version: str, variant: StrategyVariant | LangLangV1Variant | None = None):
+def strategy_from_version(
+    version: str,
+    variant: StrategyVariant | LangLangV1Variant | ScalpingVariant | MicroScalpVariant | None = None,
+):
+    micro_versions = {
+        RulesOfiMicropriceScalpStrategy.version: RulesOfiMicropriceScalpStrategy,
+        RulesVwapMeanReversionScalpStrategy.version: RulesVwapMeanReversionScalpStrategy,
+        RulesVolatilityBreakoutScalpStrategy.version: RulesVolatilityBreakoutScalpStrategy,
+        RulesFundingBasisShadowStrategy.version: RulesFundingBasisShadowStrategy,
+    }
+    if version in micro_versions:
+        if variant is not None and not isinstance(variant, MicroScalpVariant):
+            variant = MicroScalpVariant(**variant.to_dict())
+        return micro_versions[version](
+            variant or MicroScalpVariant(variant_id=f"{version}_default", symbol="", strategy_kind=version)
+        )
+    if version == RulesFiveBarScalpStrategy.version:
+        if variant is not None and not isinstance(variant, ScalpingVariant):
+            variant = ScalpingVariant(**variant.to_dict())
+        return RulesFiveBarScalpStrategy(variant or ScalpingVariant(variant_id="five_bar_scalp_default", symbol=""))
     if version == RulesLangLangEnhancedPayoffStrategy.version:
         if variant is not None and not isinstance(variant, LangLangEnhancedVariant):
             variant = LangLangEnhancedVariant(**variant.to_dict())

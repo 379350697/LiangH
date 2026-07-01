@@ -133,11 +133,12 @@ class TradingRunner:
         return True
 
     def _build_executor(self) -> Executor:
-        if self.config.execution.executor == "paper_okx":
+        if self.config.execution.executor in {"paper_okx", "paper_binance"}:
             return PaperExecutor(
                 ledger=self.ledger,
                 paper_config=self.config.paper,
                 price_provider=self.market_data.latest_price,
+                exchange=self.config.execution.exchange,
             )
         if self.config.execution.executor == "live_okx":
             return OkxLiveExecutor(config=self.config.execution)

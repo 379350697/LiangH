@@ -239,6 +239,8 @@ class BinanceRestMarketData:
         }
 
     def get_candles(self, symbol: str, bar: str = "1D", limit: int = 120) -> list[Candle]:
+        if bar in {"1s", "5s", "15s"}:
+            return self._get_second_candles(symbol, bar=bar, limit=limit)
         query = parse.urlencode(
             {
                 "symbol": _binance_symbol(symbol),
@@ -264,6 +266,36 @@ class BinanceRestMarketData:
                 )
             )
         return sorted(rows, key=lambda candle: candle.ts)
+
+    def _get_second_candles(self, symbol: str, *, bar: str, limit: int) -> list[Candle]:
+        bucket_ms = _second_bar_ms(bar)
+        query = parse.urlencode({"symbol": _binance_symbol(symbol), "limit": str(min(max(limit * 20, 100), 1000))})
+        payload = self._get_json(f"{self.base_url}/fapi/v1/aggTrades?{query}")
+        buckets: dict[int, list[dict[str, Any]]] = {}
+        for trade in payload:
+            ts = int(trade["T"])
+            bucket_ts = ts - (ts % bucket_ms)
+            buckets.setdefault(bucket_ts, []).append(trade)
+        rows = []
+        for bucket_ts in sorted(buckets):
+            trades = sorted(buckets[bucket_ts], key=lambda item: int(item["T"]))
+            prices = [float(item["p"]) for item in trades]
+            qty = sum(float(item["q"]) for item in trades)
+            rows.append(
+                Candle(
+                    symbol=symbol,
+                    bar=bar,
+                    ts=bucket_ts,
+                    open=prices[0],
+                    high=max(prices),
+                    low=min(prices),
+                    close=prices[-1],
+                    volume=qty,
+                    vol_quote=sum(float(item["p"]) * float(item["q"]) for item in trades),
+                    source="binance_agg_trades",
+                )
+            )
+        return rows[-limit:]
 
     def latest_price(self, symbol: str) -> float:
         return self.get_ticker(symbol).last
@@ -307,12 +339,25 @@ class BinanceRestMarketData:
             funding_query = parse.urlencode({"symbol": binance_symbol})
             funding_payload = self._get_json(f"{self.base_url}/fapi/v1/premiumIndex?{funding_query}")
             funding_rate = _float_or_none(funding_payload.get("lastFundingRate"))
+            mark_price = _float_or_none(funding_payload.get("markPrice"))
+            index_price = _float_or_none(funding_payload.get("indexPrice"))
             metrics["funding_rate_last"] = funding_rate if funding_rate is not None else ""
             metrics["funding_rate_status"] = "available" if funding_rate is not None else "exchange_unavailable"
+            metrics["mark_price"] = mark_price if mark_price is not None else ""
+            metrics["index_price"] = index_price if index_price is not None else ""
+            metrics["next_funding_time_ms"] = int(funding_payload.get("nextFundingTime") or 0)
+            if mark_price is not None and index_price is not None and index_price > 0:
+                metrics["basis_bps"] = (mark_price / index_price - 1.0) * 10_000.0
+            else:
+                metrics["basis_bps"] = ""
         except Exception as exc:
             metrics["funding_rate_last"] = ""
             metrics["funding_rate_status"] = "exchange_error"
             metrics["funding_rate_error"] = repr(exc)
+            metrics["mark_price"] = ""
+            metrics["index_price"] = ""
+            metrics["basis_bps"] = ""
+            metrics["next_funding_time_ms"] = 0
 
         try:
             oi_query = parse.urlencode({"symbol": binance_symbol})
@@ -457,6 +502,7 @@ def _binance_symbol(symbol: str) -> str:
 def _binance_interval(bar: str) -> str:
     mapping = {
         "1m": "1m",
+        "3m": "3m",
         "5m": "5m",
         "15m": "15m",
         "1H": "1h",
@@ -468,4 +514,11 @@ def _binance_interval(bar: str) -> str:
     }
     if bar not in mapping:
         raise ValueError(f"unsupported Binance kline interval: {bar}")
+    return mapping[bar]
+
+
+def _second_bar_ms(bar: str) -> int:
+    mapping = {"1s": 1_000, "5s": 5_000, "15s": 15_000}
+    if bar not in mapping:
+        raise ValueError(f"unsupported Binance second interval: {bar}")
     return mapping[bar]

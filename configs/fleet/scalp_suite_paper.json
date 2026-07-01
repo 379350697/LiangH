@@ -1,0 +1,157 @@
+{
+  "run_id": "scalp-suite-paper-v1",
+  "strategy_version": "scalp_ofi_microprice_directional_v1",
+  "ledger_path": "output/fleet/scalp_suite_paper/fleet.sqlite3",
+  "execution": {
+    "mode": "paper",
+    "exchange": "binance",
+    "executor": "paper_binance",
+    "allow_live_orders": false
+  },
+  "paper": {
+    "initial_equity_usdt": 10000.0,
+    "fee_bps": 4.0,
+    "slippage_bps": 2.0
+  },
+  "risk": {
+    "position_sizing_mode": "fixed_notional",
+    "max_position_usdt": 100.0,
+    "max_total_position_usdt": 600.0,
+    "max_open_positions": 6,
+    "max_open_symbols": 2,
+    "max_daily_loss_usdt": 150.0,
+    "default_leverage": 3,
+    "max_slippage_bps": 8.0,
+    "min_signal_strength": 0.35
+  },
+  "market_data": {
+    "symbols": [
+      "BTC-USDT-SWAP",
+      "ETH-USDT-SWAP"
+    ],
+    "bars": [
+      "5s",
+      "15s"
+    ],
+    "candle_limit": 160,
+    "max_fetch_workers": 2,
+    "cache_enabled": false,
+    "market_snapshot_cache_enabled": false,
+    "market_metrics_cache_enabled": false,
+    "public_error_cooldown_enabled": true
+  },
+  "universe": {
+    "mode": "static",
+    "provider": "binance",
+    "exclude_reference_symbols": false,
+    "reference_symbols": [],
+    "snapshot_path": "",
+    "liquidity_top_n": 200
+  },
+  "selection": {
+    "enabled": false,
+    "style": "mixed"
+  },
+  "bots": [
+    {
+      "bot_id": "scalp_ofi_micro_btc_5s",
+      "strategy_version": "scalp_ofi_microprice_directional_v1",
+      "variant": {
+        "variant_id": "scalp_ofi_micro_btc_5s_v1",
+        "symbol": "BTC-USDT-SWAP",
+        "strategy_kind": "ofi_microprice_directional",
+        "bar": "5s",
+        "min_ofi": 0.2,
+        "min_microprice_edge_bps": 1.0,
+        "strategy_tree_parent_id": "scalp_ofi_microprice_directional_v1"
+      }
+    },
+    {
+      "bot_id": "scalp_ofi_micro_eth_5s",
+      "strategy_version": "scalp_ofi_microprice_directional_v1",
+      "variant": {
+        "variant_id": "scalp_ofi_micro_eth_5s_v1",
+        "symbol": "ETH-USDT-SWAP",
+        "strategy_kind": "ofi_microprice_directional",
+        "bar": "5s",
+        "min_ofi": 0.2,
+        "min_microprice_edge_bps": 1.0,
+        "strategy_tree_parent_id": "scalp_ofi_microprice_directional_v1"
+      }
+    },
+    {
+      "bot_id": "scalp_funding_basis_btc",
+      "strategy_version": "scalp_funding_basis_delta_neutral_v1",
+      "variant": {
+        "variant_id": "scalp_funding_basis_btc_v1",
+        "symbol": "BTC-USDT-SWAP",
+        "strategy_kind": "funding_basis_delta_neutral",
+        "min_basis_bps": 8.0,
+        "pair_stop_bps": 12.0,
+        "strategy_tree_parent_id": "scalp_funding_basis_delta_neutral_v1"
+      }
+    },
+    {
+      "bot_id": "scalp_funding_basis_eth",
+      "strategy_version": "scalp_funding_basis_delta_neutral_v1",
+      "variant": {
+        "variant_id": "scalp_funding_basis_eth_v1",
+        "symbol": "ETH-USDT-SWAP",
+        "strategy_kind": "funding_basis_delta_neutral",
+        "min_basis_bps": 8.0,
+        "pair_stop_bps": 12.0,
+        "strategy_tree_parent_id": "scalp_funding_basis_delta_neutral_v1"
+      }
+    },
+    {
+      "bot_id": "scalp_vwap_mr_btc_15s",
+      "strategy_version": "scalp_vwap_mean_reversion_v1",
+      "variant": {
+        "variant_id": "scalp_vwap_mr_btc_15s_v1",
+        "symbol": "BTC-USDT-SWAP",
+        "strategy_kind": "vwap_mean_reversion",
+        "bar": "15s",
+        "vwap_deviation_bps": 8.0,
+        "strategy_tree_parent_id": "scalp_vwap_mean_reversion_v1"
+      }
+    },
+    {
+      "bot_id": "scalp_vwap_mr_eth_15s",
+      "strategy_version": "scalp_vwap_mean_reversion_v1",
+      "variant": {
+        "variant_id": "scalp_vwap_mr_eth_15s_v1",
+        "symbol": "ETH-USDT-SWAP",
+        "strategy_kind": "vwap_mean_reversion",
+        "bar": "15s",
+        "vwap_deviation_bps": 8.0,
+        "strategy_tree_parent_id": "scalp_vwap_mean_reversion_v1"
+      }
+    },
+    {
+      "bot_id": "scalp_vol_breakout_btc_5s",
+      "strategy_version": "scalp_volatility_breakout_v1",
+      "variant": {
+        "variant_id": "scalp_vol_breakout_btc_5s_v1",
+        "symbol": "BTC-USDT-SWAP",
+        "strategy_kind": "volatility_breakout",
+        "bar": "5s",
+        "breakout_lookback_bars": 12,
+        "min_volume_ratio": 1.4,
+        "strategy_tree_parent_id": "scalp_volatility_breakout_v1"
+      }
+    },
+    {
+      "bot_id": "scalp_vol_breakout_eth_5s",
+      "strategy_version": "scalp_volatility_breakout_v1",
+      "variant": {
+        "variant_id": "scalp_vol_breakout_eth_5s_v1",
+        "symbol": "ETH-USDT-SWAP",
+        "strategy_kind": "volatility_breakout",
+        "bar": "5s",
+        "breakout_lookback_bars": 12,
+        "min_volume_ratio": 1.4,
+        "strategy_tree_parent_id": "scalp_volatility_breakout_v1"
+      }
+    }
+  ]
+}

@@ -151,6 +151,27 @@ class StrategyLibraryTest(unittest.TestCase):
             with self.assertRaisesRegex(StrategyLibraryError, "cycle"):
                 StrategyLibrary.load(cycle_path)
 
+    def test_five_bar_scalp_strategy_tree_marks_1s_as_probe_lane(self):
+        library = StrategyLibrary.load(DEFAULT_REGISTRY_PATH)
+        one_second = [
+            library.variant(variant_id)
+            for variant_id in [
+                "scalp_BTC_1s",
+                "scalp_ETH_1s",
+                "scalp_DOGE_1s",
+                "scalp_HYPE_1s",
+                "scalp_XRP_1s",
+                "scalp_BNB_1s",
+            ]
+        ]
+        mainline = [library.variant("scalp_BTC_5s"), library.variant("scalp_BTC_15s")]
+
+        self.assertTrue(all(row.factor_set["entry_mode"] == "fractal_confirm" for row in one_second))
+        self.assertTrue(all(row.factor_set["order_flow_mode"] == "weak" for row in one_second))
+        self.assertTrue(all(row.factor_set["position_size_multiplier"] == 0.25 for row in one_second))
+        self.assertTrue(all(row.factor_set["entry_mode"] == "breakout" for row in mainline))
+        self.assertTrue(all(row.factor_set["order_flow_mode"] == "strong" for row in mainline))
+
     def test_ingests_leaderboard_runs_and_compares_factor_deltas(self):
         with tempfile.TemporaryDirectory() as tmp:
             registry_path = os.path.join(tmp, "registry.json")
@@ -325,6 +346,68 @@ class StrategyLibraryTest(unittest.TestCase):
             self.assertIsNone(node.risk_profile["max_daily_loss_usdt"])
             self.assertIn("strategy_tree_trace_required", node.promotion_rules)
             self.assertIn("sample_sufficiency_gate_required", node.promotion_rules)
+
+    def test_default_strategy_tree_registers_five_bar_scalp_18bot_nodes(self):
+        library = StrategyLibrary.load(DEFAULT_REGISTRY_PATH)
+
+        scalp_nodes = [
+            node
+            for node in library.variants.values()
+            if node.lineage_group == "five_bar_fractal_scalp_18bot"
+        ]
+        self.assertEqual(len(scalp_nodes), 18)
+        self.assertEqual({node.strategy_id for node in scalp_nodes}, {"five_bar_fractal_scalp"})
+        self.assertEqual({node.strategy_version for node in scalp_nodes}, {"five_bar_fractal_scalp_v1"})
+        self.assertEqual(
+            {node.factor_set["symbol"] for node in scalp_nodes},
+            {
+                "BTC-USDT-SWAP",
+                "ETH-USDT-SWAP",
+                "DOGE-USDT-SWAP",
+                "HYPE-USDT-SWAP",
+                "XRP-USDT-SWAP",
+                "BNB-USDT-SWAP",
+            },
+        )
+        self.assertEqual({node.factor_set["scalp_bar"] for node in scalp_nodes}, {"1s", "5s", "15s"})
+        for node in scalp_nodes:
+            self.assertIn("max_stop_bps_35", node.factor_set["risk"])
+            self.assertIn("no_live_without_separate_authorization", node.promotion_rules)
+
+    def test_default_strategy_tree_registers_micro_scalp_suite_nodes(self):
+        library = StrategyLibrary.load(DEFAULT_REGISTRY_PATH)
+
+        expected_strategy_ids = {
+            "scalp_passive_maker_ofi",
+            "scalp_ofi_microprice_directional",
+            "scalp_funding_basis_delta_neutral",
+            "scalp_vwap_mean_reversion",
+            "scalp_volatility_breakout",
+        }
+        symbols = ["btc", "eth", "doge", "hype", "xrp", "bnb"]
+        expected_variant_ids = {
+            *(f"scalp_maker_ofi_{symbol}_v1" for symbol in symbols),
+            *(f"scalp_ofi_micro_{symbol}_5s_v1" for symbol in symbols),
+            *(f"scalp_funding_basis_{symbol}_v1" for symbol in symbols),
+            *(f"scalp_vwap_mr_{symbol}_15s_v1" for symbol in symbols),
+            *(f"scalp_vol_breakout_{symbol}_5s_v1" for symbol in symbols),
+        }
+
+        self.assertEqual(library.families["scalping"].name, "剥头皮策略族")
+        self.assertTrue(expected_strategy_ids.issubset(set(library.strategies)))
+        self.assertTrue(expected_variant_ids.issubset(set(library.variants)))
+        self.assertEqual(
+            len([node for node in library.variants.values() if node.strategy_id in expected_strategy_ids]),
+            30,
+        )
+        for variant_id in expected_variant_ids:
+            node = library.variant(variant_id)
+            self.assertEqual(node.status, "paper_candidate")
+            self.assertTrue(node.risk_profile["paper_only"])
+            self.assertIn("hard_stop_loss", node.risk_profile)
+            self.assertIn("time_stop", node.risk_profile)
+            self.assertIn("strategy_tree_trace_required", node.promotion_rules)
+            self.assertEqual(node.factor_set["strategy_tree_variant_id"], variant_id)
 
     def test_optimizer_appends_strategy_library_ledger_without_changing_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:

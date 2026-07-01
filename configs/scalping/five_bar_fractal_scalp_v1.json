@@ -1,0 +1,87 @@
+{
+  "strategy_id": "five_bar_fractal_scalp_v1",
+  "status": "research_only",
+  "market": "crypto_usdt_perpetual",
+  "data_requirements": [
+    "second_level_candles",
+    "aggressor_trade_flow",
+    "l2_order_book"
+  ],
+  "default_config": {
+    "scalp_bar": "5s",
+    "entry_mode": "breakout",
+    "trend_bars": [
+      "1m",
+      "3m",
+      "5m"
+    ],
+    "min_aligned_trend_bars": 1,
+    "require_order_flow": true,
+    "min_order_flow_imbalance": 0.2,
+    "min_depth_replenish": 0.05,
+    "min_queue_ratio": 0.55,
+    "max_spread_bps": 6.0,
+    "total_cost_bps": 4.0,
+    "stop_buffer_bps": 2.0,
+    "min_stop_bps": 8.0,
+    "max_stop_bps": 35.0,
+    "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+    "min_range_cost_multiple": 3.0,
+    "take_profit_r": 1.5,
+    "min_take_profit_cost_multiple": 3.0,
+    "time_stop_bars": 5,
+    "order_flow_mode": "strong",
+    "position_size_multiplier": 1.0
+  },
+  "validation_matrix": {
+    "symbols": [
+      "BTC-USDT-SWAP",
+      "ETH-USDT-SWAP",
+      "DOGE-USDT-SWAP",
+      "HYPE-USDT-SWAP",
+      "XRP-USDT-SWAP",
+      "BNB-USDT-SWAP"
+    ],
+    "scalp_bars": [
+      "1s",
+      "5s",
+      "15s"
+    ],
+    "ablations": [
+      "fractal_only",
+      "fractal_plus_trend",
+      "fractal_plus_trend_plus_order_flow",
+      "breakout_entry_vs_fractal_confirm_entry"
+    ],
+    "market_buckets": [
+      "trend",
+      "range",
+      "high_volume",
+      "low_volume"
+    ]
+  },
+  "promotion_rules": [
+    "net_expectancy_after_cost_bps > 0",
+    "profit_factor > 1.2",
+    "order_flow_confirmation_improves_false_turn_filtering",
+    "no_live_without_separate_authorization"
+  ],
+  "probe_1s_config": {
+    "scalp_bar": "1s",
+    "entry_mode": "fractal_confirm",
+    "order_flow_mode": "weak",
+    "min_order_flow_imbalance": 0.12,
+    "position_size_multiplier": 0.25,
+    "intended_use": "paper_probe_frequency_and_entry_ablation_only"
+  },
+  "mainline_config": {
+    "scalp_bars": [
+      "5s",
+      "15s"
+    ],
+    "entry_mode": "breakout",
+    "order_flow_mode": "strong",
+    "position_size_multiplier": 1.0,
+    "intended_use": "primary_edge_validation"
+  }
+}

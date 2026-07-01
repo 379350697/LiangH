@@ -9,6 +9,16 @@
         "excel_all_sheet_evidence",
         "kline_market_feature_dataset"
       ]
+    },
+    {
+      "family_id": "scalping",
+      "name": "剥头皮策略族",
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation",
+        "paper_only_scalp_suite"
+      ]
     }
   ],
   "strategies": [
@@ -65,9 +75,1216 @@
         "realtime_price_required_for_entry",
         "no_live_without_separate_authorization"
       ]
+    },
+    {
+      "strategy_id": "five_bar_fractal_scalp",
+      "family_id": "scalping",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "用 1s/5s/15s 小周期 5-bar 分型识别顺大周期回撤失败后的拐点，等待局部突破入场，并用订单流、盘口、spread 和结构止损过滤假拐点。",
+      "promotion_rules": [
+        "paper_only_until_18bot_sample_sufficiency_passes",
+        "net_expectancy_after_fee_spread_slippage_bps > 0",
+        "profit_factor > 1.2",
+        "stop_loss_policy_must_be_fractal_extreme_buffer_with_min_max_risk",
+        "order_flow_confirmation_must_improve_false_turn_filtering",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "strategy_id": "scalp_passive_maker_ofi",
+      "family_id": "scalping",
+      "strategy_version": "scalp_passive_maker_ofi_v1",
+      "status": "paper_candidate",
+      "hypothesis": "用 Binance USD-M L2 热盘口做 post-only 被动报价，只在队列不逆风、库存未接近上限、spread 足以覆盖手续费和撤单成本时挂单。",
+      "promotion_rules": [
+        "paper_only_until_maker_fill_quality_is_positive",
+        "post_only_rejection_rate_must_stay_low",
+        "inventory_stop_loss_must_be_recorded",
+        "strategy_tree_trace_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "strategy_id": "scalp_ofi_microprice_directional",
+      "family_id": "scalping",
+      "strategy_version": "scalp_ofi_microprice_directional_v1",
+      "status": "paper_candidate",
+      "hypothesis": "用订单簿不平衡和 microprice 偏移捕捉极短线方向延续，只有预测边际大于手续费、点差和滑点时入场。",
+      "promotion_rules": [
+        "paper_only_until_cost_adjusted_expectancy_positive",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "strategy_tree_trace_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "strategy_id": "scalp_funding_basis_delta_neutral",
+      "family_id": "scalping",
+      "strategy_version": "scalp_funding_basis_delta_neutral_v1",
+      "status": "paper_candidate",
+      "hypothesis": "只记录影子双腿基差/资金费率计划，不伪造单腿订单；当 mark/index 基差和资金费率同向足以覆盖成本时观察收敛。",
+      "promotion_rules": [
+        "shadow_pair_ledger_required_before_execution",
+        "basis_stop_required",
+        "time_stop_required",
+        "strategy_tree_trace_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "strategy_id": "scalp_vwap_mean_reversion",
+      "family_id": "scalping",
+      "strategy_version": "scalp_vwap_mean_reversion_v1",
+      "status": "paper_candidate",
+      "hypothesis": "在 spread 可控的主流币上，交易短周期价格相对滚动 VWAP 的过度偏离回归，使用固定 bps 硬止损和时间止损限制尾部亏损。",
+      "promotion_rules": [
+        "paper_only_until_deviation_bucket_expectancy_positive",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "strategy_tree_trace_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "strategy_id": "scalp_volatility_breakout",
+      "family_id": "scalping",
+      "strategy_version": "scalp_volatility_breakout_v1",
+      "status": "paper_candidate",
+      "hypothesis": "在短周期收缩后，只交易放量突破，要求突破距离覆盖费用并用固定 bps 硬止损防止假突破。",
+      "promotion_rules": [
+        "paper_only_until_breakout_bucket_expectancy_positive",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "strategy_tree_trace_required",
+        "no_live_without_separate_authorization"
+      ]
     }
   ],
   "variants": [
+    {
+      "variant_id": "scalp_BTC_1s",
+      "display_name": "BTC 1s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": null,
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BTC-USDT-SWAP 1s bot：只在大周期同向时交易 5-bar 回撤拐点，分型收盘确认后小仓观察入场，用弱订单流确认并保留结构止损。",
+      "factor_set": {
+        "symbol": "BTC-USDT-SWAP",
+        "scalp_bar": "1s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "fractal_confirm",
+        "order_flow_mode": "weak",
+        "min_order_flow_imbalance": 0.12,
+        "position_size_multiplier": 0.25,
+        "lane": "probe"
+      },
+      "changed_factors": [
+        "entry_mode",
+        "order_flow_mode",
+        "position_size_multiplier",
+        "scalp_bar",
+        "symbol"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation",
+        "fractal_close_confirm_probe_entry",
+        "weak_order_flow_confirmation",
+        "small_probe_position_sizing"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "1s probe lane: fractal-confirm entry, weak order-flow, 0.25x fixed-notional paper sizing; 5s/15s remain strict breakout mainline.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_BTC_5s",
+      "display_name": "BTC 5s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": "scalp_BTC_1s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BTC-USDT-SWAP 5s bot：只在大周期同向时交易 5-bar 回撤拐点，突破确认后入场，并用订单流、盘口和结构止损过滤。",
+      "factor_set": {
+        "symbol": "BTC-USDT-SWAP",
+        "scalp_bar": "5s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "breakout",
+        "order_flow_mode": "strong",
+        "position_size_multiplier": 1.0,
+        "lane": "mainline"
+      },
+      "changed_factors": [
+        "symbol",
+        "scalp_bar"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "Mainline lane: strict breakout entry with strong order-flow and full fixed-notional paper sizing.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_BTC_15s",
+      "display_name": "BTC 15s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": "scalp_BTC_5s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BTC-USDT-SWAP 15s bot：只在大周期同向时交易 5-bar 回撤拐点，突破确认后入场，并用订单流、盘口和结构止损过滤。",
+      "factor_set": {
+        "symbol": "BTC-USDT-SWAP",
+        "scalp_bar": "15s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "breakout",
+        "order_flow_mode": "strong",
+        "position_size_multiplier": 1.0,
+        "lane": "mainline"
+      },
+      "changed_factors": [
+        "symbol",
+        "scalp_bar"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "Mainline lane: strict breakout entry with strong order-flow and full fixed-notional paper sizing.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_ETH_1s",
+      "display_name": "ETH 1s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": null,
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "ETH-USDT-SWAP 1s bot：只在大周期同向时交易 5-bar 回撤拐点，分型收盘确认后小仓观察入场，用弱订单流确认并保留结构止损。",
+      "factor_set": {
+        "symbol": "ETH-USDT-SWAP",
+        "scalp_bar": "1s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "fractal_confirm",
+        "order_flow_mode": "weak",
+        "min_order_flow_imbalance": 0.12,
+        "position_size_multiplier": 0.25,
+        "lane": "probe"
+      },
+      "changed_factors": [
+        "entry_mode",
+        "order_flow_mode",
+        "position_size_multiplier",
+        "scalp_bar",
+        "symbol"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation",
+        "fractal_close_confirm_probe_entry",
+        "weak_order_flow_confirmation",
+        "small_probe_position_sizing"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "1s probe lane: fractal-confirm entry, weak order-flow, 0.25x fixed-notional paper sizing; 5s/15s remain strict breakout mainline.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_ETH_5s",
+      "display_name": "ETH 5s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": "scalp_ETH_1s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "ETH-USDT-SWAP 5s bot：只在大周期同向时交易 5-bar 回撤拐点，突破确认后入场，并用订单流、盘口和结构止损过滤。",
+      "factor_set": {
+        "symbol": "ETH-USDT-SWAP",
+        "scalp_bar": "5s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "breakout",
+        "order_flow_mode": "strong",
+        "position_size_multiplier": 1.0,
+        "lane": "mainline"
+      },
+      "changed_factors": [
+        "symbol",
+        "scalp_bar"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "Mainline lane: strict breakout entry with strong order-flow and full fixed-notional paper sizing.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_ETH_15s",
+      "display_name": "ETH 15s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": "scalp_ETH_5s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "ETH-USDT-SWAP 15s bot：只在大周期同向时交易 5-bar 回撤拐点，突破确认后入场，并用订单流、盘口和结构止损过滤。",
+      "factor_set": {
+        "symbol": "ETH-USDT-SWAP",
+        "scalp_bar": "15s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "breakout",
+        "order_flow_mode": "strong",
+        "position_size_multiplier": 1.0,
+        "lane": "mainline"
+      },
+      "changed_factors": [
+        "symbol",
+        "scalp_bar"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "Mainline lane: strict breakout entry with strong order-flow and full fixed-notional paper sizing.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_DOGE_1s",
+      "display_name": "DOGE 1s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": null,
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "DOGE-USDT-SWAP 1s bot：只在大周期同向时交易 5-bar 回撤拐点，分型收盘确认后小仓观察入场，用弱订单流确认并保留结构止损。",
+      "factor_set": {
+        "symbol": "DOGE-USDT-SWAP",
+        "scalp_bar": "1s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "fractal_confirm",
+        "order_flow_mode": "weak",
+        "min_order_flow_imbalance": 0.12,
+        "position_size_multiplier": 0.25,
+        "lane": "probe"
+      },
+      "changed_factors": [
+        "entry_mode",
+        "order_flow_mode",
+        "position_size_multiplier",
+        "scalp_bar",
+        "symbol"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation",
+        "fractal_close_confirm_probe_entry",
+        "weak_order_flow_confirmation",
+        "small_probe_position_sizing"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "1s probe lane: fractal-confirm entry, weak order-flow, 0.25x fixed-notional paper sizing; 5s/15s remain strict breakout mainline.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_DOGE_5s",
+      "display_name": "DOGE 5s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": "scalp_DOGE_1s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "DOGE-USDT-SWAP 5s bot：只在大周期同向时交易 5-bar 回撤拐点，突破确认后入场，并用订单流、盘口和结构止损过滤。",
+      "factor_set": {
+        "symbol": "DOGE-USDT-SWAP",
+        "scalp_bar": "5s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "breakout",
+        "order_flow_mode": "strong",
+        "position_size_multiplier": 1.0,
+        "lane": "mainline"
+      },
+      "changed_factors": [
+        "symbol",
+        "scalp_bar"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "Mainline lane: strict breakout entry with strong order-flow and full fixed-notional paper sizing.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_DOGE_15s",
+      "display_name": "DOGE 15s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": "scalp_DOGE_5s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "DOGE-USDT-SWAP 15s bot：只在大周期同向时交易 5-bar 回撤拐点，突破确认后入场，并用订单流、盘口和结构止损过滤。",
+      "factor_set": {
+        "symbol": "DOGE-USDT-SWAP",
+        "scalp_bar": "15s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "breakout",
+        "order_flow_mode": "strong",
+        "position_size_multiplier": 1.0,
+        "lane": "mainline"
+      },
+      "changed_factors": [
+        "symbol",
+        "scalp_bar"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "Mainline lane: strict breakout entry with strong order-flow and full fixed-notional paper sizing.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_HYPE_1s",
+      "display_name": "HYPE 1s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": null,
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "HYPE-USDT-SWAP 1s bot：只在大周期同向时交易 5-bar 回撤拐点，分型收盘确认后小仓观察入场，用弱订单流确认并保留结构止损。",
+      "factor_set": {
+        "symbol": "HYPE-USDT-SWAP",
+        "scalp_bar": "1s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "fractal_confirm",
+        "order_flow_mode": "weak",
+        "min_order_flow_imbalance": 0.12,
+        "position_size_multiplier": 0.25,
+        "lane": "probe"
+      },
+      "changed_factors": [
+        "entry_mode",
+        "order_flow_mode",
+        "position_size_multiplier",
+        "scalp_bar",
+        "symbol"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation",
+        "fractal_close_confirm_probe_entry",
+        "weak_order_flow_confirmation",
+        "small_probe_position_sizing"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "1s probe lane: fractal-confirm entry, weak order-flow, 0.25x fixed-notional paper sizing; 5s/15s remain strict breakout mainline.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_HYPE_5s",
+      "display_name": "HYPE 5s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": "scalp_HYPE_1s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "HYPE-USDT-SWAP 5s bot：只在大周期同向时交易 5-bar 回撤拐点，突破确认后入场，并用订单流、盘口和结构止损过滤。",
+      "factor_set": {
+        "symbol": "HYPE-USDT-SWAP",
+        "scalp_bar": "5s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "breakout",
+        "order_flow_mode": "strong",
+        "position_size_multiplier": 1.0,
+        "lane": "mainline"
+      },
+      "changed_factors": [
+        "symbol",
+        "scalp_bar"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "Mainline lane: strict breakout entry with strong order-flow and full fixed-notional paper sizing.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_HYPE_15s",
+      "display_name": "HYPE 15s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": "scalp_HYPE_5s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "HYPE-USDT-SWAP 15s bot：只在大周期同向时交易 5-bar 回撤拐点，突破确认后入场，并用订单流、盘口和结构止损过滤。",
+      "factor_set": {
+        "symbol": "HYPE-USDT-SWAP",
+        "scalp_bar": "15s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "breakout",
+        "order_flow_mode": "strong",
+        "position_size_multiplier": 1.0,
+        "lane": "mainline"
+      },
+      "changed_factors": [
+        "symbol",
+        "scalp_bar"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "Mainline lane: strict breakout entry with strong order-flow and full fixed-notional paper sizing.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_XRP_1s",
+      "display_name": "XRP 1s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": null,
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "XRP-USDT-SWAP 1s bot：只在大周期同向时交易 5-bar 回撤拐点，分型收盘确认后小仓观察入场，用弱订单流确认并保留结构止损。",
+      "factor_set": {
+        "symbol": "XRP-USDT-SWAP",
+        "scalp_bar": "1s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "fractal_confirm",
+        "order_flow_mode": "weak",
+        "min_order_flow_imbalance": 0.12,
+        "position_size_multiplier": 0.25,
+        "lane": "probe"
+      },
+      "changed_factors": [
+        "entry_mode",
+        "order_flow_mode",
+        "position_size_multiplier",
+        "scalp_bar",
+        "symbol"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation",
+        "fractal_close_confirm_probe_entry",
+        "weak_order_flow_confirmation",
+        "small_probe_position_sizing"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "1s probe lane: fractal-confirm entry, weak order-flow, 0.25x fixed-notional paper sizing; 5s/15s remain strict breakout mainline.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_XRP_5s",
+      "display_name": "XRP 5s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": "scalp_XRP_1s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "XRP-USDT-SWAP 5s bot：只在大周期同向时交易 5-bar 回撤拐点，突破确认后入场，并用订单流、盘口和结构止损过滤。",
+      "factor_set": {
+        "symbol": "XRP-USDT-SWAP",
+        "scalp_bar": "5s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "breakout",
+        "order_flow_mode": "strong",
+        "position_size_multiplier": 1.0,
+        "lane": "mainline"
+      },
+      "changed_factors": [
+        "symbol",
+        "scalp_bar"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "Mainline lane: strict breakout entry with strong order-flow and full fixed-notional paper sizing.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_XRP_15s",
+      "display_name": "XRP 15s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": "scalp_XRP_5s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "XRP-USDT-SWAP 15s bot：只在大周期同向时交易 5-bar 回撤拐点，突破确认后入场，并用订单流、盘口和结构止损过滤。",
+      "factor_set": {
+        "symbol": "XRP-USDT-SWAP",
+        "scalp_bar": "15s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "breakout",
+        "order_flow_mode": "strong",
+        "position_size_multiplier": 1.0,
+        "lane": "mainline"
+      },
+      "changed_factors": [
+        "symbol",
+        "scalp_bar"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "Mainline lane: strict breakout entry with strong order-flow and full fixed-notional paper sizing.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_BNB_1s",
+      "display_name": "BNB 1s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": null,
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BNB-USDT-SWAP 1s bot：只在大周期同向时交易 5-bar 回撤拐点，分型收盘确认后小仓观察入场，用弱订单流确认并保留结构止损。",
+      "factor_set": {
+        "symbol": "BNB-USDT-SWAP",
+        "scalp_bar": "1s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "fractal_confirm",
+        "order_flow_mode": "weak",
+        "min_order_flow_imbalance": 0.12,
+        "position_size_multiplier": 0.25,
+        "lane": "probe"
+      },
+      "changed_factors": [
+        "entry_mode",
+        "order_flow_mode",
+        "position_size_multiplier",
+        "scalp_bar",
+        "symbol"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation",
+        "fractal_close_confirm_probe_entry",
+        "weak_order_flow_confirmation",
+        "small_probe_position_sizing"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "1s probe lane: fractal-confirm entry, weak order-flow, 0.25x fixed-notional paper sizing; 5s/15s remain strict breakout mainline.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_BNB_5s",
+      "display_name": "BNB 5s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": "scalp_BNB_1s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BNB-USDT-SWAP 5s bot：只在大周期同向时交易 5-bar 回撤拐点，突破确认后入场，并用订单流、盘口和结构止损过滤。",
+      "factor_set": {
+        "symbol": "BNB-USDT-SWAP",
+        "scalp_bar": "5s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "breakout",
+        "order_flow_mode": "strong",
+        "position_size_multiplier": 1.0,
+        "lane": "mainline"
+      },
+      "changed_factors": [
+        "symbol",
+        "scalp_bar"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "Mainline lane: strict breakout entry with strong order-flow and full fixed-notional paper sizing.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_BNB_15s",
+      "display_name": "BNB 15s 5-Bar Scalp",
+      "lineage_group": "five_bar_fractal_scalp_18bot",
+      "strategy_id": "five_bar_fractal_scalp",
+      "parent_id": "scalp_BNB_5s",
+      "strategy_version": "five_bar_fractal_scalp_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BNB-USDT-SWAP 15s bot：只在大周期同向时交易 5-bar 回撤拐点，突破确认后入场，并用订单流、盘口和结构止损过滤。",
+      "factor_set": {
+        "symbol": "BNB-USDT-SWAP",
+        "scalp_bar": "15s",
+        "trend_bars": [
+          "1m",
+          "3m",
+          "5m"
+        ],
+        "risk": [
+          "fractal_extreme_buffer",
+          "min_stop_bps_8",
+          "max_stop_bps_35",
+          "time_stop_5_bars"
+        ],
+        "entry_mode": "breakout",
+        "order_flow_mode": "strong",
+        "position_size_multiplier": 1.0,
+        "lane": "mainline"
+      },
+      "changed_factors": [
+        "symbol",
+        "scalp_bar"
+      ],
+      "core_logic": [
+        "higher_timeframe_trend_filter",
+        "five_bar_fractal_pullback",
+        "breakout_confirmation_entry",
+        "order_flow_and_l2_confirmation",
+        "fractal_extreme_buffer_stop_loss",
+        "paper_only_validation"
+      ],
+      "source_basis": [
+        "user_research_plan",
+        "second_level_candle_fractal",
+        "order_flow_and_l2_confirmation"
+      ],
+      "risk_profile": {
+        "stop_loss_policy": "fractal_extreme_buffer_with_min_max_risk",
+        "min_stop_bps": 8.0,
+        "max_stop_bps": 35.0,
+        "take_profit_r": 1.5,
+        "time_stop_bars": 5,
+        "paper_only": true
+      },
+      "iteration_notes": "Mainline lane: strict breakout entry with strong order-flow and full fixed-notional paper sizing.",
+      "promotion_rules": [
+        "paper_sample_required",
+        "cost_adjusted_expectancy_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
     {
       "variant_id": "langlang_01",
       "display_name": "langlang-01",
@@ -3144,11 +4361,20 @@
         "experiment_family": "orthogonal_v1",
         "entry_family": "low_position_wyckoff_long",
         "side": "long",
-        "entry": ["wyckoff_spring_reclaim", "low_position_reclaim"],
-        "exit": ["partial_take_profit_1_6r", "runner_3_2r"],
+        "entry": [
+          "wyckoff_spring_reclaim",
+          "low_position_reclaim"
+        ],
+        "exit": [
+          "partial_take_profit_1_6r",
+          "runner_3_2r"
+        ],
         "max_daily_loss_usdt": null
       },
-      "changed_factors": ["entry_family_low_position_wyckoff_long", "orthogonal_exploration_family"],
+      "changed_factors": [
+        "entry_family_low_position_wyckoff_long",
+        "orthogonal_exploration_family"
+      ],
       "core_logic": [
         "low_position_wyckoff_spring_long",
         "strategy_tree_trace_required",
@@ -3190,11 +4416,20 @@
         "experiment_family": "orthogonal_v1",
         "entry_family": "low_position_wyckoff_long",
         "side": "long",
-        "entry": ["wyckoff_spring_reclaim", "wyckoff_lps_retest"],
-        "exit": ["partial_take_profit_1_4r", "runner_2_8r"],
+        "entry": [
+          "wyckoff_spring_reclaim",
+          "wyckoff_lps_retest"
+        ],
+        "exit": [
+          "partial_take_profit_1_4r",
+          "runner_2_8r"
+        ],
         "max_daily_loss_usdt": null
       },
-      "changed_factors": ["entry_family_low_position_wyckoff_long", "tighter_stop_and_faster_exit"],
+      "changed_factors": [
+        "entry_family_low_position_wyckoff_long",
+        "tighter_stop_and_faster_exit"
+      ],
       "core_logic": [
         "low_position_wyckoff_spring_long",
         "strategy_tree_trace_required",
@@ -3236,11 +4471,20 @@
         "experiment_family": "orthogonal_v1",
         "entry_family": "failed_breakdown_reclaim_long",
         "side": "long",
-        "entry": ["spoon_bottom_confirmed", "failed_breakdown_reclaim"],
-        "exit": ["single_partial_take_profit", "short_time_stop"],
+        "entry": [
+          "spoon_bottom_confirmed",
+          "failed_breakdown_reclaim"
+        ],
+        "exit": [
+          "single_partial_take_profit",
+          "short_time_stop"
+        ],
         "max_daily_loss_usdt": null
       },
-      "changed_factors": ["entry_family_failed_breakdown_reclaim_long", "box_rebound_research_arm"],
+      "changed_factors": [
+        "entry_family_failed_breakdown_reclaim_long",
+        "box_rebound_research_arm"
+      ],
       "core_logic": [
         "failed_breakdown_reclaim_long",
         "box_internal_rebound_probe",
@@ -3282,11 +4526,20 @@
         "experiment_family": "orthogonal_v1",
         "entry_family": "failed_breakdown_reclaim_long",
         "side": "long",
-        "entry": ["failed_breakdown_reclaim", "intraday_reclaim"],
-        "exit": ["partial_take_profit_1_25r", "time_stop_3d"],
+        "entry": [
+          "failed_breakdown_reclaim",
+          "intraday_reclaim"
+        ],
+        "exit": [
+          "partial_take_profit_1_25r",
+          "time_stop_3d"
+        ],
         "max_daily_loss_usdt": null
       },
-      "changed_factors": ["entry_family_failed_breakdown_reclaim_long", "faster_payoff_variant"],
+      "changed_factors": [
+        "entry_family_failed_breakdown_reclaim_long",
+        "faster_payoff_variant"
+      ],
       "core_logic": [
         "failed_breakdown_reclaim_long",
         "box_internal_rebound_probe",
@@ -3328,11 +4581,20 @@
         "experiment_family": "orthogonal_v1",
         "entry_family": "retest_confirmed_short",
         "side": "short",
-        "entry": ["wyckoff_upthrust_or_lpsy_retest", "rebound_failure"],
-        "exit": ["partial_take_profit_1_45r", "runner_2_8r"],
+        "entry": [
+          "wyckoff_upthrust_or_lpsy_retest",
+          "rebound_failure"
+        ],
+        "exit": [
+          "partial_take_profit_1_45r",
+          "runner_2_8r"
+        ],
         "max_daily_loss_usdt": null
       },
-      "changed_factors": ["entry_family_retest_confirmed_short", "ban_fresh_low_waterfall_chase"],
+      "changed_factors": [
+        "entry_family_retest_confirmed_short",
+        "ban_fresh_low_waterfall_chase"
+      ],
       "core_logic": [
         "retest_confirmed_short",
         "wyckoff_distribution_retest",
@@ -3374,11 +4636,20 @@
         "experiment_family": "orthogonal_v1",
         "entry_family": "retest_confirmed_short",
         "side": "short",
-        "entry": ["wyckoff_lpsy_retest", "rebound_failure"],
-        "exit": ["partial_take_profit_1_25r", "runner_2_4r"],
+        "entry": [
+          "wyckoff_lpsy_retest",
+          "rebound_failure"
+        ],
+        "exit": [
+          "partial_take_profit_1_25r",
+          "runner_2_4r"
+        ],
         "max_daily_loss_usdt": null
       },
-      "changed_factors": ["entry_family_retest_confirmed_short", "tighter_stop_and_faster_exit"],
+      "changed_factors": [
+        "entry_family_retest_confirmed_short",
+        "tighter_stop_and_faster_exit"
+      ],
       "core_logic": [
         "retest_confirmed_short",
         "wyckoff_distribution_retest",
@@ -3420,11 +4691,20 @@
         "experiment_family": "orthogonal_v1",
         "entry_family": "payoff_probe",
         "side": "long",
-        "entry": ["existing_v1_3_long_entry"],
-        "exit": ["partial_take_profit_1_25r", "runner_2_5r", "time_stop_5d"],
+        "entry": [
+          "existing_v1_3_long_entry"
+        ],
+        "exit": [
+          "partial_take_profit_1_25r",
+          "runner_2_5r",
+          "time_stop_5d"
+        ],
         "max_daily_loss_usdt": null
       },
-      "changed_factors": ["entry_family_payoff_probe", "early_partial_breakeven_time_stop"],
+      "changed_factors": [
+        "entry_family_payoff_probe",
+        "early_partial_breakeven_time_stop"
+      ],
       "core_logic": [
         "payoff_probe_long",
         "early_partial_take_profit",
@@ -3466,11 +4746,20 @@
         "experiment_family": "orthogonal_v1",
         "entry_family": "payoff_probe",
         "side": "short",
-        "entry": ["existing_v1_3_short_entry"],
-        "exit": ["partial_take_profit_1_25r", "runner_2_5r", "time_stop_5d"],
+        "entry": [
+          "existing_v1_3_short_entry"
+        ],
+        "exit": [
+          "partial_take_profit_1_25r",
+          "runner_2_5r",
+          "time_stop_5d"
+        ],
         "max_daily_loss_usdt": null
       },
-      "changed_factors": ["entry_family_payoff_probe", "early_partial_breakeven_time_stop"],
+      "changed_factors": [
+        "entry_family_payoff_probe",
+        "early_partial_breakeven_time_stop"
+      ],
       "core_logic": [
         "payoff_probe_short",
         "early_partial_take_profit",
@@ -3496,6 +4785,1462 @@
         "strategy_tree_trace_required",
         "sample_sufficiency_gate_required",
         "closed_trades_lt_20_diagnostic_only",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_maker_ofi_btc_v1",
+      "display_name": "BTC Passive Maker OFI Scalp",
+      "lineage_group": "scalp_passive_maker_ofi",
+      "strategy_id": "scalp_passive_maker_ofi",
+      "parent_id": null,
+      "strategy_version": "scalp_passive_maker_ofi_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BTCUSDT maker-only OFI 库存偏斜版本，只在盘口热、spread 足够、队列不逆风时挂单。",
+      "factor_set": {
+        "strategy_kind": "passive_maker_ofi",
+        "symbol": "BTCUSDT",
+        "venue": "binance_usdm",
+        "quote_spread_bps": 4.0,
+        "min_quote_edge_bps": 1.0,
+        "min_ofi_abs": 0.2,
+        "strategy_tree_variant_id": "scalp_maker_ofi_btc_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_btcusdt",
+        "maker_ofi_inventory_skew"
+      ],
+      "core_logic": [
+        "post_only_passive_quote",
+        "ofi_queue_imbalance_filter",
+        "inventory_skew",
+        "inventory_stop_loss",
+        "strategy_tree_trace_required"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/market_maker/scalp_passive_maker_ofi_btcusdt.json",
+        "configs/market_maker/scalp_passive_maker_ofi_batch5_btcusdt.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "inventory_stop_bps_20",
+        "time_stop": "order_ttl_1000ms",
+        "max_spread_bps": 50.0,
+        "post_only": true
+      },
+      "iteration_notes": "新剥头皮套件 BTC maker OFI 初始纸盘节点；后续变体只改 symbol、quote_spread、OFI 阈值或库存止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "paper_only_until_maker_fill_quality_is_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_maker_ofi_eth_v1",
+      "display_name": "ETH Passive Maker OFI Scalp",
+      "lineage_group": "scalp_passive_maker_ofi",
+      "strategy_id": "scalp_passive_maker_ofi",
+      "parent_id": null,
+      "strategy_version": "scalp_passive_maker_ofi_v1",
+      "status": "paper_candidate",
+      "hypothesis": "ETHUSDT maker-only OFI 库存偏斜版本，用较小库存上限验证主流高流动性 maker fill 质量。",
+      "factor_set": {
+        "strategy_kind": "passive_maker_ofi",
+        "symbol": "ETHUSDT",
+        "venue": "binance_usdm",
+        "quote_spread_bps": 4.0,
+        "min_quote_edge_bps": 1.0,
+        "min_ofi_abs": 0.2,
+        "strategy_tree_variant_id": "scalp_maker_ofi_eth_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_ethusdt",
+        "maker_ofi_inventory_skew"
+      ],
+      "core_logic": [
+        "post_only_passive_quote",
+        "ofi_queue_imbalance_filter",
+        "inventory_skew",
+        "inventory_stop_loss",
+        "strategy_tree_trace_required"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/market_maker/scalp_passive_maker_ofi_ethusdt.json",
+        "configs/market_maker/scalp_passive_maker_ofi_batch5_ethusdt.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "inventory_stop_bps_20",
+        "time_stop": "order_ttl_1000ms",
+        "max_spread_bps": 50.0,
+        "post_only": true
+      },
+      "iteration_notes": "新剥头皮套件 ETH maker OFI 初始纸盘节点。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "paper_only_until_maker_fill_quality_is_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_ofi_micro_btc_5s_v1",
+      "display_name": "BTC 5s OFI Microprice Scalp",
+      "lineage_group": "scalp_ofi_microprice_directional",
+      "strategy_id": "scalp_ofi_microprice_directional",
+      "parent_id": null,
+      "strategy_version": "scalp_ofi_microprice_directional_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BTC 5s 订单簿不平衡和 microprice 同向时，捕捉极短线顺流延续。",
+      "factor_set": {
+        "strategy_kind": "ofi_microprice_directional",
+        "symbol": "BTC-USDT-SWAP",
+        "bar": "5s",
+        "min_ofi": 0.2,
+        "min_microprice_edge_bps": 1.0,
+        "strategy_tree_variant_id": "scalp_ofi_micro_btc_5s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_btc",
+        "ofi_microprice_entry"
+      ],
+      "core_logic": [
+        "order_book_imbalance",
+        "microprice_edge",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_paper.json",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "普通 paper fleet BTC OFI/microprice 初始节点。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_ofi_micro_eth_5s_v1",
+      "display_name": "ETH 5s OFI Microprice Scalp",
+      "lineage_group": "scalp_ofi_microprice_directional",
+      "strategy_id": "scalp_ofi_microprice_directional",
+      "parent_id": null,
+      "strategy_version": "scalp_ofi_microprice_directional_v1",
+      "status": "paper_candidate",
+      "hypothesis": "ETH 5s 订单簿不平衡和 microprice 同向时，捕捉极短线顺流延续。",
+      "factor_set": {
+        "strategy_kind": "ofi_microprice_directional",
+        "symbol": "ETH-USDT-SWAP",
+        "bar": "5s",
+        "min_ofi": 0.2,
+        "min_microprice_edge_bps": 1.0,
+        "strategy_tree_variant_id": "scalp_ofi_micro_eth_5s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_eth",
+        "ofi_microprice_entry"
+      ],
+      "core_logic": [
+        "order_book_imbalance",
+        "microprice_edge",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_paper.json",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "普通 paper fleet ETH OFI/microprice 初始节点。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_funding_basis_btc_v1",
+      "display_name": "BTC Funding Basis Shadow Scalp",
+      "lineage_group": "scalp_funding_basis_delta_neutral",
+      "strategy_id": "scalp_funding_basis_delta_neutral",
+      "parent_id": null,
+      "strategy_version": "scalp_funding_basis_delta_neutral_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BTC mark/index 基差和资金费率同向时记录 delta-neutral 影子双腿，不生成单腿订单。",
+      "factor_set": {
+        "strategy_kind": "funding_basis_delta_neutral",
+        "symbol": "BTC-USDT-SWAP",
+        "min_basis_bps": 8.0,
+        "pair_stop_bps": 12.0,
+        "strategy_tree_variant_id": "scalp_funding_basis_btc_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_btc",
+        "shadow_pair_ledger"
+      ],
+      "core_logic": [
+        "funding_basis_filter",
+        "delta_neutral_shadow_pair",
+        "basis_stop",
+        "time_stop",
+        "no_single_leg_order"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_paper.json",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "basis_stop_bps_12",
+        "time_stop": "10_minutes",
+        "shadow_pair_only": true
+      },
+      "iteration_notes": "先用 ledger 观察 funding/basis 收敛，不接执行。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "shadow_pair_ledger_required_before_execution",
+        "basis_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_funding_basis_eth_v1",
+      "display_name": "ETH Funding Basis Shadow Scalp",
+      "lineage_group": "scalp_funding_basis_delta_neutral",
+      "strategy_id": "scalp_funding_basis_delta_neutral",
+      "parent_id": null,
+      "strategy_version": "scalp_funding_basis_delta_neutral_v1",
+      "status": "paper_candidate",
+      "hypothesis": "ETH mark/index 基差和资金费率同向时记录 delta-neutral 影子双腿，不生成单腿订单。",
+      "factor_set": {
+        "strategy_kind": "funding_basis_delta_neutral",
+        "symbol": "ETH-USDT-SWAP",
+        "min_basis_bps": 8.0,
+        "pair_stop_bps": 12.0,
+        "strategy_tree_variant_id": "scalp_funding_basis_eth_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_eth",
+        "shadow_pair_ledger"
+      ],
+      "core_logic": [
+        "funding_basis_filter",
+        "delta_neutral_shadow_pair",
+        "basis_stop",
+        "time_stop",
+        "no_single_leg_order"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_paper.json",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "basis_stop_bps_12",
+        "time_stop": "10_minutes",
+        "shadow_pair_only": true
+      },
+      "iteration_notes": "ETH funding/basis 影子双腿初始节点。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "shadow_pair_ledger_required_before_execution",
+        "basis_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_vwap_mr_btc_15s_v1",
+      "display_name": "BTC 15s VWAP Mean Reversion Scalp",
+      "lineage_group": "scalp_vwap_mean_reversion",
+      "strategy_id": "scalp_vwap_mean_reversion",
+      "parent_id": null,
+      "strategy_version": "scalp_vwap_mean_reversion_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BTC 15s 相对 VWAP 过度偏离后回归，费用和点差不足时不入场。",
+      "factor_set": {
+        "strategy_kind": "vwap_mean_reversion",
+        "symbol": "BTC-USDT-SWAP",
+        "bar": "15s",
+        "vwap_deviation_bps": 8.0,
+        "strategy_tree_variant_id": "scalp_vwap_mr_btc_15s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_btc",
+        "vwap_deviation_entry"
+      ],
+      "core_logic": [
+        "rolling_vwap_deviation",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_paper.json",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "普通 paper fleet BTC VWAP 回归初始节点。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_vwap_mr_eth_15s_v1",
+      "display_name": "ETH 15s VWAP Mean Reversion Scalp",
+      "lineage_group": "scalp_vwap_mean_reversion",
+      "strategy_id": "scalp_vwap_mean_reversion",
+      "parent_id": null,
+      "strategy_version": "scalp_vwap_mean_reversion_v1",
+      "status": "paper_candidate",
+      "hypothesis": "ETH 15s 相对 VWAP 过度偏离后回归，费用和点差不足时不入场。",
+      "factor_set": {
+        "strategy_kind": "vwap_mean_reversion",
+        "symbol": "ETH-USDT-SWAP",
+        "bar": "15s",
+        "vwap_deviation_bps": 8.0,
+        "strategy_tree_variant_id": "scalp_vwap_mr_eth_15s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_eth",
+        "vwap_deviation_entry"
+      ],
+      "core_logic": [
+        "rolling_vwap_deviation",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_paper.json",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "普通 paper fleet ETH VWAP 回归初始节点。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_vol_breakout_btc_5s_v1",
+      "display_name": "BTC 5s Volatility Breakout Scalp",
+      "lineage_group": "scalp_volatility_breakout",
+      "strategy_id": "scalp_volatility_breakout",
+      "parent_id": null,
+      "strategy_version": "scalp_volatility_breakout_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BTC 5s 收缩后放量突破，突破距离必须覆盖交易成本。",
+      "factor_set": {
+        "strategy_kind": "volatility_breakout",
+        "symbol": "BTC-USDT-SWAP",
+        "bar": "5s",
+        "breakout_lookback_bars": 12,
+        "min_volume_ratio": 1.4,
+        "strategy_tree_variant_id": "scalp_vol_breakout_btc_5s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_btc",
+        "volatility_breakout_entry"
+      ],
+      "core_logic": [
+        "range_compression",
+        "volume_expansion",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_paper.json",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "普通 paper fleet BTC 放量突破初始节点。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_vol_breakout_eth_5s_v1",
+      "display_name": "ETH 5s Volatility Breakout Scalp",
+      "lineage_group": "scalp_volatility_breakout",
+      "strategy_id": "scalp_volatility_breakout",
+      "parent_id": null,
+      "strategy_version": "scalp_volatility_breakout_v1",
+      "status": "paper_candidate",
+      "hypothesis": "ETH 5s 收缩后放量突破，突破距离必须覆盖交易成本。",
+      "factor_set": {
+        "strategy_kind": "volatility_breakout",
+        "symbol": "ETH-USDT-SWAP",
+        "bar": "5s",
+        "breakout_lookback_bars": 12,
+        "min_volume_ratio": 1.4,
+        "strategy_tree_variant_id": "scalp_vol_breakout_eth_5s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_eth",
+        "volatility_breakout_entry"
+      ],
+      "core_logic": [
+        "range_compression",
+        "volume_expansion",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_paper.json",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "普通 paper fleet ETH 放量突破初始节点。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_maker_ofi_doge_v1",
+      "display_name": "DOGE Passive Maker OFI Scalp",
+      "lineage_group": "scalp_passive_maker_ofi",
+      "strategy_id": "scalp_passive_maker_ofi",
+      "parent_id": null,
+      "strategy_version": "scalp_passive_maker_ofi_v1",
+      "status": "paper_candidate",
+      "hypothesis": "DOGEUSDT maker-only OFI 库存偏斜版本，只在盘口热、spread 足够、队列不逆风时挂单。",
+      "factor_set": {
+        "strategy_kind": "passive_maker_ofi",
+        "symbol": "DOGEUSDT",
+        "venue": "binance_usdm",
+        "quote_spread_bps": 4.0,
+        "min_quote_edge_bps": 1.0,
+        "min_ofi_abs": 0.2,
+        "strategy_tree_variant_id": "scalp_maker_ofi_doge_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_dogeusdt",
+        "maker_ofi_inventory_skew"
+      ],
+      "core_logic": [
+        "post_only_passive_quote",
+        "ofi_queue_imbalance_filter",
+        "inventory_skew",
+        "inventory_stop_loss",
+        "strategy_tree_trace_required"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/market_maker/scalp_passive_maker_ofi_batch5_dogeusdt.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "inventory_stop_bps_20",
+        "time_stop": "order_ttl_1000ms",
+        "max_spread_bps": 50.0,
+        "post_only": true
+      },
+      "iteration_notes": "第五批 5x6 maker OFI 纸盘节点；DOGE 初始参数，后续变体只改 quote_spread、OFI 阈值或库存止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "paper_only_until_maker_fill_quality_is_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_ofi_micro_doge_5s_v1",
+      "display_name": "DOGE 5s OFI Microprice Scalp",
+      "lineage_group": "scalp_ofi_microprice_directional",
+      "strategy_id": "scalp_ofi_microprice_directional",
+      "parent_id": null,
+      "strategy_version": "scalp_ofi_microprice_directional_v1",
+      "status": "paper_candidate",
+      "hypothesis": "DOGE 5s 订单簿不平衡和 microprice 同向时，捕捉极短线顺流延续。",
+      "factor_set": {
+        "strategy_kind": "ofi_microprice_directional",
+        "symbol": "DOGE-USDT-SWAP",
+        "bar": "5s",
+        "min_ofi": 0.2,
+        "min_microprice_edge_bps": 1.0,
+        "strategy_tree_variant_id": "scalp_ofi_micro_doge_5s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_doge",
+        "ofi_microprice_entry"
+      ],
+      "core_logic": [
+        "order_book_imbalance",
+        "microprice_edge",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；DOGE scalp_ofi_microprice_directional 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_funding_basis_doge_v1",
+      "display_name": "DOGE Funding Basis Shadow Scalp",
+      "lineage_group": "scalp_funding_basis_delta_neutral",
+      "strategy_id": "scalp_funding_basis_delta_neutral",
+      "parent_id": null,
+      "strategy_version": "scalp_funding_basis_delta_neutral_v1",
+      "status": "paper_candidate",
+      "hypothesis": "DOGE mark/index 基差和资金费率同向时记录 delta-neutral 影子双腿，不生成单腿订单。",
+      "factor_set": {
+        "strategy_kind": "funding_basis_delta_neutral",
+        "symbol": "DOGE-USDT-SWAP",
+        "min_basis_bps": 8.0,
+        "pair_stop_bps": 12.0,
+        "strategy_tree_variant_id": "scalp_funding_basis_doge_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_doge",
+        "shadow_pair_ledger"
+      ],
+      "core_logic": [
+        "funding_basis_filter",
+        "delta_neutral_shadow_pair",
+        "basis_stop",
+        "time_stop",
+        "no_single_leg_order"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "basis_stop_bps_12",
+        "time_stop": "10_minutes",
+        "shadow_pair_only": true
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；DOGE scalp_funding_basis_delta_neutral 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "shadow_pair_ledger_required_before_execution",
+        "basis_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_vwap_mr_doge_15s_v1",
+      "display_name": "DOGE 15s VWAP Mean Reversion Scalp",
+      "lineage_group": "scalp_vwap_mean_reversion",
+      "strategy_id": "scalp_vwap_mean_reversion",
+      "parent_id": null,
+      "strategy_version": "scalp_vwap_mean_reversion_v1",
+      "status": "paper_candidate",
+      "hypothesis": "DOGE 15s 相对 VWAP 过度偏离后回归，费用和点差不足时不入场。",
+      "factor_set": {
+        "strategy_kind": "vwap_mean_reversion",
+        "symbol": "DOGE-USDT-SWAP",
+        "bar": "15s",
+        "vwap_deviation_bps": 8.0,
+        "strategy_tree_variant_id": "scalp_vwap_mr_doge_15s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_doge",
+        "vwap_deviation_entry"
+      ],
+      "core_logic": [
+        "rolling_vwap_deviation",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；DOGE scalp_vwap_mean_reversion 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_vol_breakout_doge_5s_v1",
+      "display_name": "DOGE 5s Volatility Breakout Scalp",
+      "lineage_group": "scalp_volatility_breakout",
+      "strategy_id": "scalp_volatility_breakout",
+      "parent_id": null,
+      "strategy_version": "scalp_volatility_breakout_v1",
+      "status": "paper_candidate",
+      "hypothesis": "DOGE 5s 收缩后放量突破，突破距离必须覆盖交易成本。",
+      "factor_set": {
+        "strategy_kind": "volatility_breakout",
+        "symbol": "DOGE-USDT-SWAP",
+        "bar": "5s",
+        "breakout_lookback_bars": 12,
+        "min_volume_ratio": 1.4,
+        "strategy_tree_variant_id": "scalp_vol_breakout_doge_5s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_doge",
+        "volatility_breakout_entry"
+      ],
+      "core_logic": [
+        "range_compression",
+        "volume_expansion",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；DOGE scalp_volatility_breakout 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_maker_ofi_hype_v1",
+      "display_name": "HYPE Passive Maker OFI Scalp",
+      "lineage_group": "scalp_passive_maker_ofi",
+      "strategy_id": "scalp_passive_maker_ofi",
+      "parent_id": null,
+      "strategy_version": "scalp_passive_maker_ofi_v1",
+      "status": "paper_candidate",
+      "hypothesis": "HYPEUSDT maker-only OFI 库存偏斜版本，只在盘口热、spread 足够、队列不逆风时挂单。",
+      "factor_set": {
+        "strategy_kind": "passive_maker_ofi",
+        "symbol": "HYPEUSDT",
+        "venue": "binance_usdm",
+        "quote_spread_bps": 4.0,
+        "min_quote_edge_bps": 1.0,
+        "min_ofi_abs": 0.2,
+        "strategy_tree_variant_id": "scalp_maker_ofi_hype_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_hypeusdt",
+        "maker_ofi_inventory_skew"
+      ],
+      "core_logic": [
+        "post_only_passive_quote",
+        "ofi_queue_imbalance_filter",
+        "inventory_skew",
+        "inventory_stop_loss",
+        "strategy_tree_trace_required"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/market_maker/scalp_passive_maker_ofi_batch5_hypeusdt.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "inventory_stop_bps_20",
+        "time_stop": "order_ttl_1000ms",
+        "max_spread_bps": 50.0,
+        "post_only": true
+      },
+      "iteration_notes": "第五批 5x6 maker OFI 纸盘节点；HYPE 初始参数，后续变体只改 quote_spread、OFI 阈值或库存止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "paper_only_until_maker_fill_quality_is_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_ofi_micro_hype_5s_v1",
+      "display_name": "HYPE 5s OFI Microprice Scalp",
+      "lineage_group": "scalp_ofi_microprice_directional",
+      "strategy_id": "scalp_ofi_microprice_directional",
+      "parent_id": null,
+      "strategy_version": "scalp_ofi_microprice_directional_v1",
+      "status": "paper_candidate",
+      "hypothesis": "HYPE 5s 订单簿不平衡和 microprice 同向时，捕捉极短线顺流延续。",
+      "factor_set": {
+        "strategy_kind": "ofi_microprice_directional",
+        "symbol": "HYPE-USDT-SWAP",
+        "bar": "5s",
+        "min_ofi": 0.2,
+        "min_microprice_edge_bps": 1.0,
+        "strategy_tree_variant_id": "scalp_ofi_micro_hype_5s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_hype",
+        "ofi_microprice_entry"
+      ],
+      "core_logic": [
+        "order_book_imbalance",
+        "microprice_edge",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；HYPE scalp_ofi_microprice_directional 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_funding_basis_hype_v1",
+      "display_name": "HYPE Funding Basis Shadow Scalp",
+      "lineage_group": "scalp_funding_basis_delta_neutral",
+      "strategy_id": "scalp_funding_basis_delta_neutral",
+      "parent_id": null,
+      "strategy_version": "scalp_funding_basis_delta_neutral_v1",
+      "status": "paper_candidate",
+      "hypothesis": "HYPE mark/index 基差和资金费率同向时记录 delta-neutral 影子双腿，不生成单腿订单。",
+      "factor_set": {
+        "strategy_kind": "funding_basis_delta_neutral",
+        "symbol": "HYPE-USDT-SWAP",
+        "min_basis_bps": 8.0,
+        "pair_stop_bps": 12.0,
+        "strategy_tree_variant_id": "scalp_funding_basis_hype_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_hype",
+        "shadow_pair_ledger"
+      ],
+      "core_logic": [
+        "funding_basis_filter",
+        "delta_neutral_shadow_pair",
+        "basis_stop",
+        "time_stop",
+        "no_single_leg_order"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "basis_stop_bps_12",
+        "time_stop": "10_minutes",
+        "shadow_pair_only": true
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；HYPE scalp_funding_basis_delta_neutral 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "shadow_pair_ledger_required_before_execution",
+        "basis_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_vwap_mr_hype_15s_v1",
+      "display_name": "HYPE 15s VWAP Mean Reversion Scalp",
+      "lineage_group": "scalp_vwap_mean_reversion",
+      "strategy_id": "scalp_vwap_mean_reversion",
+      "parent_id": null,
+      "strategy_version": "scalp_vwap_mean_reversion_v1",
+      "status": "paper_candidate",
+      "hypothesis": "HYPE 15s 相对 VWAP 过度偏离后回归，费用和点差不足时不入场。",
+      "factor_set": {
+        "strategy_kind": "vwap_mean_reversion",
+        "symbol": "HYPE-USDT-SWAP",
+        "bar": "15s",
+        "vwap_deviation_bps": 8.0,
+        "strategy_tree_variant_id": "scalp_vwap_mr_hype_15s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_hype",
+        "vwap_deviation_entry"
+      ],
+      "core_logic": [
+        "rolling_vwap_deviation",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；HYPE scalp_vwap_mean_reversion 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_vol_breakout_hype_5s_v1",
+      "display_name": "HYPE 5s Volatility Breakout Scalp",
+      "lineage_group": "scalp_volatility_breakout",
+      "strategy_id": "scalp_volatility_breakout",
+      "parent_id": null,
+      "strategy_version": "scalp_volatility_breakout_v1",
+      "status": "paper_candidate",
+      "hypothesis": "HYPE 5s 收缩后放量突破，突破距离必须覆盖交易成本。",
+      "factor_set": {
+        "strategy_kind": "volatility_breakout",
+        "symbol": "HYPE-USDT-SWAP",
+        "bar": "5s",
+        "breakout_lookback_bars": 12,
+        "min_volume_ratio": 1.4,
+        "strategy_tree_variant_id": "scalp_vol_breakout_hype_5s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_hype",
+        "volatility_breakout_entry"
+      ],
+      "core_logic": [
+        "range_compression",
+        "volume_expansion",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；HYPE scalp_volatility_breakout 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_maker_ofi_xrp_v1",
+      "display_name": "XRP Passive Maker OFI Scalp",
+      "lineage_group": "scalp_passive_maker_ofi",
+      "strategy_id": "scalp_passive_maker_ofi",
+      "parent_id": null,
+      "strategy_version": "scalp_passive_maker_ofi_v1",
+      "status": "paper_candidate",
+      "hypothesis": "XRPUSDT maker-only OFI 库存偏斜版本，只在盘口热、spread 足够、队列不逆风时挂单。",
+      "factor_set": {
+        "strategy_kind": "passive_maker_ofi",
+        "symbol": "XRPUSDT",
+        "venue": "binance_usdm",
+        "quote_spread_bps": 4.0,
+        "min_quote_edge_bps": 1.0,
+        "min_ofi_abs": 0.2,
+        "strategy_tree_variant_id": "scalp_maker_ofi_xrp_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_xrpusdt",
+        "maker_ofi_inventory_skew"
+      ],
+      "core_logic": [
+        "post_only_passive_quote",
+        "ofi_queue_imbalance_filter",
+        "inventory_skew",
+        "inventory_stop_loss",
+        "strategy_tree_trace_required"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/market_maker/scalp_passive_maker_ofi_batch5_xrpusdt.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "inventory_stop_bps_20",
+        "time_stop": "order_ttl_1000ms",
+        "max_spread_bps": 50.0,
+        "post_only": true
+      },
+      "iteration_notes": "第五批 5x6 maker OFI 纸盘节点；XRP 初始参数，后续变体只改 quote_spread、OFI 阈值或库存止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "paper_only_until_maker_fill_quality_is_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_ofi_micro_xrp_5s_v1",
+      "display_name": "XRP 5s OFI Microprice Scalp",
+      "lineage_group": "scalp_ofi_microprice_directional",
+      "strategy_id": "scalp_ofi_microprice_directional",
+      "parent_id": null,
+      "strategy_version": "scalp_ofi_microprice_directional_v1",
+      "status": "paper_candidate",
+      "hypothesis": "XRP 5s 订单簿不平衡和 microprice 同向时，捕捉极短线顺流延续。",
+      "factor_set": {
+        "strategy_kind": "ofi_microprice_directional",
+        "symbol": "XRP-USDT-SWAP",
+        "bar": "5s",
+        "min_ofi": 0.2,
+        "min_microprice_edge_bps": 1.0,
+        "strategy_tree_variant_id": "scalp_ofi_micro_xrp_5s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_xrp",
+        "ofi_microprice_entry"
+      ],
+      "core_logic": [
+        "order_book_imbalance",
+        "microprice_edge",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；XRP scalp_ofi_microprice_directional 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_funding_basis_xrp_v1",
+      "display_name": "XRP Funding Basis Shadow Scalp",
+      "lineage_group": "scalp_funding_basis_delta_neutral",
+      "strategy_id": "scalp_funding_basis_delta_neutral",
+      "parent_id": null,
+      "strategy_version": "scalp_funding_basis_delta_neutral_v1",
+      "status": "paper_candidate",
+      "hypothesis": "XRP mark/index 基差和资金费率同向时记录 delta-neutral 影子双腿，不生成单腿订单。",
+      "factor_set": {
+        "strategy_kind": "funding_basis_delta_neutral",
+        "symbol": "XRP-USDT-SWAP",
+        "min_basis_bps": 8.0,
+        "pair_stop_bps": 12.0,
+        "strategy_tree_variant_id": "scalp_funding_basis_xrp_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_xrp",
+        "shadow_pair_ledger"
+      ],
+      "core_logic": [
+        "funding_basis_filter",
+        "delta_neutral_shadow_pair",
+        "basis_stop",
+        "time_stop",
+        "no_single_leg_order"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "basis_stop_bps_12",
+        "time_stop": "10_minutes",
+        "shadow_pair_only": true
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；XRP scalp_funding_basis_delta_neutral 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "shadow_pair_ledger_required_before_execution",
+        "basis_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_vwap_mr_xrp_15s_v1",
+      "display_name": "XRP 15s VWAP Mean Reversion Scalp",
+      "lineage_group": "scalp_vwap_mean_reversion",
+      "strategy_id": "scalp_vwap_mean_reversion",
+      "parent_id": null,
+      "strategy_version": "scalp_vwap_mean_reversion_v1",
+      "status": "paper_candidate",
+      "hypothesis": "XRP 15s 相对 VWAP 过度偏离后回归，费用和点差不足时不入场。",
+      "factor_set": {
+        "strategy_kind": "vwap_mean_reversion",
+        "symbol": "XRP-USDT-SWAP",
+        "bar": "15s",
+        "vwap_deviation_bps": 8.0,
+        "strategy_tree_variant_id": "scalp_vwap_mr_xrp_15s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_xrp",
+        "vwap_deviation_entry"
+      ],
+      "core_logic": [
+        "rolling_vwap_deviation",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；XRP scalp_vwap_mean_reversion 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_vol_breakout_xrp_5s_v1",
+      "display_name": "XRP 5s Volatility Breakout Scalp",
+      "lineage_group": "scalp_volatility_breakout",
+      "strategy_id": "scalp_volatility_breakout",
+      "parent_id": null,
+      "strategy_version": "scalp_volatility_breakout_v1",
+      "status": "paper_candidate",
+      "hypothesis": "XRP 5s 收缩后放量突破，突破距离必须覆盖交易成本。",
+      "factor_set": {
+        "strategy_kind": "volatility_breakout",
+        "symbol": "XRP-USDT-SWAP",
+        "bar": "5s",
+        "breakout_lookback_bars": 12,
+        "min_volume_ratio": 1.4,
+        "strategy_tree_variant_id": "scalp_vol_breakout_xrp_5s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_xrp",
+        "volatility_breakout_entry"
+      ],
+      "core_logic": [
+        "range_compression",
+        "volume_expansion",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；XRP scalp_volatility_breakout 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_maker_ofi_bnb_v1",
+      "display_name": "BNB Passive Maker OFI Scalp",
+      "lineage_group": "scalp_passive_maker_ofi",
+      "strategy_id": "scalp_passive_maker_ofi",
+      "parent_id": null,
+      "strategy_version": "scalp_passive_maker_ofi_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BNBUSDT maker-only OFI 库存偏斜版本，只在盘口热、spread 足够、队列不逆风时挂单。",
+      "factor_set": {
+        "strategy_kind": "passive_maker_ofi",
+        "symbol": "BNBUSDT",
+        "venue": "binance_usdm",
+        "quote_spread_bps": 4.0,
+        "min_quote_edge_bps": 1.0,
+        "min_ofi_abs": 0.2,
+        "strategy_tree_variant_id": "scalp_maker_ofi_bnb_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_bnbusdt",
+        "maker_ofi_inventory_skew"
+      ],
+      "core_logic": [
+        "post_only_passive_quote",
+        "ofi_queue_imbalance_filter",
+        "inventory_skew",
+        "inventory_stop_loss",
+        "strategy_tree_trace_required"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/market_maker/scalp_passive_maker_ofi_batch5_bnbusdt.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "inventory_stop_bps_20",
+        "time_stop": "order_ttl_1000ms",
+        "max_spread_bps": 50.0,
+        "post_only": true
+      },
+      "iteration_notes": "第五批 5x6 maker OFI 纸盘节点；BNB 初始参数，后续变体只改 quote_spread、OFI 阈值或库存止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "paper_only_until_maker_fill_quality_is_positive",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_ofi_micro_bnb_5s_v1",
+      "display_name": "BNB 5s OFI Microprice Scalp",
+      "lineage_group": "scalp_ofi_microprice_directional",
+      "strategy_id": "scalp_ofi_microprice_directional",
+      "parent_id": null,
+      "strategy_version": "scalp_ofi_microprice_directional_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BNB 5s 订单簿不平衡和 microprice 同向时，捕捉极短线顺流延续。",
+      "factor_set": {
+        "strategy_kind": "ofi_microprice_directional",
+        "symbol": "BNB-USDT-SWAP",
+        "bar": "5s",
+        "min_ofi": 0.2,
+        "min_microprice_edge_bps": 1.0,
+        "strategy_tree_variant_id": "scalp_ofi_micro_bnb_5s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_bnb",
+        "ofi_microprice_entry"
+      ],
+      "core_logic": [
+        "order_book_imbalance",
+        "microprice_edge",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；BNB scalp_ofi_microprice_directional 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_funding_basis_bnb_v1",
+      "display_name": "BNB Funding Basis Shadow Scalp",
+      "lineage_group": "scalp_funding_basis_delta_neutral",
+      "strategy_id": "scalp_funding_basis_delta_neutral",
+      "parent_id": null,
+      "strategy_version": "scalp_funding_basis_delta_neutral_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BNB mark/index 基差和资金费率同向时记录 delta-neutral 影子双腿，不生成单腿订单。",
+      "factor_set": {
+        "strategy_kind": "funding_basis_delta_neutral",
+        "symbol": "BNB-USDT-SWAP",
+        "min_basis_bps": 8.0,
+        "pair_stop_bps": 12.0,
+        "strategy_tree_variant_id": "scalp_funding_basis_bnb_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_bnb",
+        "shadow_pair_ledger"
+      ],
+      "core_logic": [
+        "funding_basis_filter",
+        "delta_neutral_shadow_pair",
+        "basis_stop",
+        "time_stop",
+        "no_single_leg_order"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "basis_stop_bps_12",
+        "time_stop": "10_minutes",
+        "shadow_pair_only": true
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；BNB scalp_funding_basis_delta_neutral 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "shadow_pair_ledger_required_before_execution",
+        "basis_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_vwap_mr_bnb_15s_v1",
+      "display_name": "BNB 15s VWAP Mean Reversion Scalp",
+      "lineage_group": "scalp_vwap_mean_reversion",
+      "strategy_id": "scalp_vwap_mean_reversion",
+      "parent_id": null,
+      "strategy_version": "scalp_vwap_mean_reversion_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BNB 15s 相对 VWAP 过度偏离后回归，费用和点差不足时不入场。",
+      "factor_set": {
+        "strategy_kind": "vwap_mean_reversion",
+        "symbol": "BNB-USDT-SWAP",
+        "bar": "15s",
+        "vwap_deviation_bps": 8.0,
+        "strategy_tree_variant_id": "scalp_vwap_mr_bnb_15s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_bnb",
+        "vwap_deviation_entry"
+      ],
+      "core_logic": [
+        "rolling_vwap_deviation",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；BNB scalp_vwap_mean_reversion 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalp_vol_breakout_bnb_5s_v1",
+      "display_name": "BNB 5s Volatility Breakout Scalp",
+      "lineage_group": "scalp_volatility_breakout",
+      "strategy_id": "scalp_volatility_breakout",
+      "parent_id": null,
+      "strategy_version": "scalp_volatility_breakout_v1",
+      "status": "paper_candidate",
+      "hypothesis": "BNB 5s 收缩后放量突破，突破距离必须覆盖交易成本。",
+      "factor_set": {
+        "strategy_kind": "volatility_breakout",
+        "symbol": "BNB-USDT-SWAP",
+        "bar": "5s",
+        "breakout_lookback_bars": 12,
+        "min_volume_ratio": 1.4,
+        "strategy_tree_variant_id": "scalp_vol_breakout_bnb_5s_v1"
+      },
+      "changed_factors": [
+        "strategy_family_scalping",
+        "symbol_bnb",
+        "volatility_breakout_entry"
+      ],
+      "core_logic": [
+        "range_compression",
+        "volume_expansion",
+        "cost_filter",
+        "strict_hard_stop",
+        "time_stop"
+      ],
+      "source_basis": [
+        "scalping_research_synthesis",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "paper_only": true,
+        "allow_live_orders": false,
+        "hard_stop_loss": "stop_bps_12_max_30",
+        "time_stop": "10_bars",
+        "max_spread_bps": 6.0,
+        "total_cost_bps": 4.0
+      },
+      "iteration_notes": "第五批 5x6 纸盘节点；BNB scalp_volatility_breakout 初始参数，后续变体只改阈值、周期或止损。",
+      "promotion_rules": [
+        "strategy_tree_trace_required",
+        "hard_stop_loss_required_on_every_intent",
+        "time_stop_required",
         "no_live_without_separate_authorization"
       ]
     }

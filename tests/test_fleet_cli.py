@@ -1,8 +1,12 @@
+from collections import Counter
+import json
 import unittest
 
 from langlang_trader.config import MarketDataConfig
 from langlang_trader.fleet import FleetConfig, load_fleet_config
-from langlang_trader.fleet_cli import config_with_symbol_override
+from langlang_trader.fleet_cli import config_with_symbol_override, market_data_for_config
+from langlang_trader.market_data import BinanceRestMarketData
+from liangh_trader.market_maker.config import load_market_maker_config
 
 
 class FleetCliTest(unittest.TestCase):
@@ -50,6 +54,86 @@ class FleetCliTest(unittest.TestCase):
             ],
         )
         self.assertEqual(len({bot.variant.variant_id for bot in config.bots}), 8)
+
+    def test_five_bar_scalp_paper_config_registers_18_symbol_period_bots(self):
+        config = load_fleet_config("configs/fleet/five_bar_scalp_18bot_paper.json")
+
+        self.assertEqual(config.run_id, "five-bar-scalp-18bot-paper-v1")
+        self.assertEqual(config.strategy_version, "five_bar_fractal_scalp_v1")
+        self.assertEqual(config.execution.exchange, "binance")
+        self.assertEqual(config.execution.executor, "paper_binance")
+        self.assertEqual(config.universe.provider, "binance")
+        self.assertFalse(config.execution.allow_live_orders)
+        self.assertEqual(len(config.bots), 18)
+        self.assertEqual(config.risk.max_open_positions, 18)
+        self.assertEqual(config.risk.max_open_symbols, 6)
+        self.assertEqual(set(config.market_data.bars), {"1s", "5s", "15s", "1m", "3m", "5m"})
+        self.assertEqual(
+            sorted({bot.variant.symbol for bot in config.bots}),
+            [
+                "BNB-USDT-SWAP",
+                "BTC-USDT-SWAP",
+                "DOGE-USDT-SWAP",
+                "ETH-USDT-SWAP",
+                "HYPE-USDT-SWAP",
+                "XRP-USDT-SWAP",
+            ],
+        )
+        self.assertEqual(sorted({bot.variant.scalp_bar for bot in config.bots}), ["15s", "1s", "5s"])
+        self.assertTrue(all(bot.variant.min_stop_bps == 8.0 for bot in config.bots))
+        self.assertTrue(all(bot.variant.max_stop_bps == 35.0 for bot in config.bots))
+        one_second = [bot.variant for bot in config.bots if bot.variant.scalp_bar == "1s"]
+        mainline = [bot.variant for bot in config.bots if bot.variant.scalp_bar in {"5s", "15s"}]
+        self.assertEqual(len(one_second), 6)
+        self.assertTrue(all(row.entry_mode == "fractal_confirm" for row in one_second))
+        self.assertTrue(all(row.order_flow_mode == "weak" for row in one_second))
+        self.assertTrue(all(row.position_size_multiplier == 0.25 for row in one_second))
+        self.assertTrue(all(row.entry_mode == "breakout" for row in mainline))
+        self.assertTrue(all(row.order_flow_mode == "strong" for row in mainline))
+        self.assertTrue(all(row.position_size_multiplier == 1.0 for row in mainline))
+
+    def test_five_bar_scalp_paper_config_uses_binance_market_data(self):
+        config = load_fleet_config("configs/fleet/five_bar_scalp_18bot_paper.json")
+
+        self.assertIsInstance(market_data_for_config(config), BinanceRestMarketData)
+
+    def test_scalp_suite_batch5_manifest_plans_5_by_6_paper_bots(self):
+        with open("configs/scalping/scalp_suite_batch5_30bot_manifest.json", encoding="utf-8") as f:
+            manifest = json.load(f)
+
+        fourth_batch = load_fleet_config("configs/fleet/five_bar_scalp_18bot_paper.json")
+        signal_fleet = load_fleet_config(manifest["fleet_config"])
+        maker_configs = [load_market_maker_config(path) for path in manifest["market_maker_configs"]]
+
+        self.assertEqual(manifest["batch_id"], "scalp-suite-batch5-30bot-paper-v1")
+        self.assertEqual(manifest["strategy_count_per_symbol"], 5)
+        self.assertEqual(manifest["total_bots"], 30)
+        self.assertEqual(sorted(manifest["symbols"]), sorted(fourth_batch.market_data.symbols))
+        self.assertEqual(sorted(signal_fleet.market_data.symbols), sorted(fourth_batch.market_data.symbols))
+        self.assertEqual(len(signal_fleet.bots), 24)
+        self.assertEqual(len(maker_configs), 6)
+        self.assertEqual(len(signal_fleet.bots) + len(maker_configs), 30)
+        self.assertFalse(signal_fleet.execution.allow_live_orders)
+        self.assertTrue(all(not config.execution.allow_live_orders for config in maker_configs))
+        self.assertEqual(signal_fleet.risk.max_open_positions, 24)
+        self.assertEqual(signal_fleet.risk.max_open_symbols, 6)
+        self.assertEqual(
+            {bot.strategy_version for bot in signal_fleet.bots},
+            {
+                "scalp_ofi_microprice_directional_v1",
+                "scalp_funding_basis_delta_neutral_v1",
+                "scalp_vwap_mean_reversion_v1",
+                "scalp_volatility_breakout_v1",
+            },
+        )
+        self.assertEqual(set(Counter(bot.variant.symbol for bot in signal_fleet.bots).values()), {4})
+        self.assertEqual(
+            sorted(config.symbol for config in maker_configs),
+            ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "ETHUSDT", "HYPEUSDT", "XRPUSDT"],
+        )
+        self.assertTrue(
+            all(config.strategy.strategy_version == "scalp_passive_maker_ofi_v1" for config in maker_configs)
+        )
 
 
 if __name__ == "__main__":

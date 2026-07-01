@@ -47,6 +47,8 @@ def config_with_symbol_override(config: FleetConfig, symbols: str | None) -> Fle
 
 
 def market_data_for_config(config: FleetConfig):
+    if config.execution.exchange == "binance" or config.universe.provider == "binance":
+        return BinanceRestMarketData()
     okx = OkxRestMarketData()
     if config.universe.mode == "okx_binance_usdt_swap_observe" or config.universe.provider == "okx_binance":
         return FallbackMarketData(okx, BinanceRestMarketData())

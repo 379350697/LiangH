@@ -28,8 +28,16 @@ from langlang_trader.historical_patterns import HistoricalPatternMatcher, read_h
 from langlang_trader.ledger import Ledger
 from langlang_trader.market_cache import MarketMetricsCache, MarketSnapshotCache, PublicMarketDataGuard, RollingKlineCacheMarketData
 from langlang_trader.market_data import FallbackMarketData, MarketData, SymbolMappedMarketData, market_microstructure_metrics
+from langlang_trader.micro_scalping import (
+    MicroScalpVariant,
+    RulesFundingBasisShadowStrategy,
+    RulesOfiMicropriceScalpStrategy,
+    RulesVolatilityBreakoutScalpStrategy,
+    RulesVwapMeanReversionScalpStrategy,
+)
 from langlang_trader.models import OrderIntent, Position, Side
 from langlang_trader.risk import RiskEngine
+from langlang_trader.scalping import RulesFiveBarScalpStrategy, ScalpingVariant
 from langlang_trader.strategy import (
     LangLangEnhancedVariant,
     LangLangNativeVariant,
@@ -71,7 +79,21 @@ V1_MULTI_TIMEFRAME_STRATEGIES = {
     RulesLangLangEnhancedFinalStrategy.version,
     RulesLangLangNativePayoffStrategy.version,
     RulesLangLangEnhancedPayoffStrategy.version,
+    RulesFiveBarScalpStrategy.version,
+    RulesOfiMicropriceScalpStrategy.version,
+    RulesVwapMeanReversionScalpStrategy.version,
+    RulesVolatilityBreakoutScalpStrategy.version,
+    RulesFundingBasisShadowStrategy.version,
 }
+
+MICRO_SCALP_STRATEGIES = {
+    RulesOfiMicropriceScalpStrategy.version,
+    RulesVwapMeanReversionScalpStrategy.version,
+    RulesVolatilityBreakoutScalpStrategy.version,
+    RulesFundingBasisShadowStrategy.version,
+}
+
+MICRO_SCALP_SHADOW_STRATEGIES = {RulesFundingBasisShadowStrategy.version}
 
 HISTORICAL_MATCH_STRATEGIES = {
     RulesLangLangV1_1Strategy.version,
@@ -86,7 +108,15 @@ HISTORICAL_MATCH_STRATEGIES = {
 @dataclass(frozen=True)
 class BotConfig:
     bot_id: str
-    variant: StrategyVariant | LangLangV1Variant | LangLangV1_1Variant | LangLangNativeVariant | LangLangEnhancedVariant
+    variant: (
+        StrategyVariant
+        | LangLangV1Variant
+        | LangLangV1_1Variant
+        | LangLangNativeVariant
+        | LangLangEnhancedVariant
+        | ScalpingVariant
+        | MicroScalpVariant
+    )
     strategy_version: str | None = None
     selection_profile: str | None = None
 
@@ -165,8 +195,8 @@ class FleetRunner:
         ledger: Ledger,
         universe_provider: UniverseProvider | None = None,
     ):
-        if config.execution.mode != "paper" or config.execution.executor not in {"paper_okx", "paper_multi"}:
-            raise PermissionError("FleetRunner supports paper_okx or paper_multi execution only")
+        if config.execution.mode != "paper" or config.execution.executor not in {"paper_okx", "paper_binance", "paper_multi"}:
+            raise PermissionError("FleetRunner supports paper_okx, paper_binance, or paper_multi execution only")
         if config.execution.executor == "paper_multi" and config.universe.mode not in {"okx_all_usdt_swap", "okx_binance_usdt_swap_observe"}:
             raise PermissionError("paper_multi requires an exchange-aware universe snapshot")
         self.config = config
@@ -248,6 +278,7 @@ class FleetRunner:
             "orders": 0,
             "fills": 0,
             "stop_exits": 0,
+            "shadow_pair_events": 0,
             "risk_rejections": 0,
             "selected_symbols": 0,
             "selection_skips": 0,
@@ -417,6 +448,7 @@ class FleetRunner:
                 run_id=self.config.run_id,
                 bot_id=bot.bot_id,
                 variant_id=bot.variant.variant_id,
+                exchange=_fleet_event_exchange(self.config),
             )
             def price_provider(symbol: str, prices=latest_prices, sources=latest_price_sources) -> float:
                 if sources.get(symbol) != "realtime_ticker":
@@ -448,6 +480,7 @@ class FleetRunner:
                     ledger=bot_ledger,
                     paper_config=self.config.paper,
                     price_provider=price_provider,
+                    exchange=self.config.execution.exchange,
                     quote_fallback=quote_fallback,
                 )
             _record_bot_account_snapshot(bot_ledger, executor, bot_strategy_version)
@@ -472,6 +505,7 @@ class FleetRunner:
                     if (
                         universe_snapshot is not None
                         and self.config.execution.executor == "paper_okx"
+                        and self.config.execution.exchange == "okx"
                         and symbol not in okx_executable_symbols
                     ):
                         continue
@@ -490,55 +524,110 @@ class FleetRunner:
                         symbol in latest_prices
                         and latest_price_sources.get(symbol) == "realtime_ticker"
                         and self._close_if_stop_loss_hit(
-                        ledger=bot_ledger,
-                        executor=executor,
-                        symbol=symbol,
-                        latest_price=latest_prices[symbol],
-                        cycle=cycle,
+                            ledger=bot_ledger,
+                            executor=executor,
+                            symbol=symbol,
+                            latest_price=latest_prices[symbol],
+                            cycle=cycle,
                         )
                     ):
                         continue
-                    if snapshot is None:
-                        continue
-                    if symbol in reference_symbols and self.config.selection.style == "dual_board":
-                        continue
-                    selection_result = selection_results.get(symbol)
-                    if self.config.selection.enabled and self.config.selection.style == "dual_board":
-                        bot_long_selected = (
-                            bot_selection_state["long_selected_symbols"]
-                            if bot_selection_state is not None
-                            else long_selected_symbols
-                        )
-                        bot_short_selected = (
-                            bot_selection_state["short_selected_symbols"]
-                            if bot_selection_state is not None
-                            else short_selected_symbols
-                        )
-                        allowed_symbols = _selected_symbols_for_side(
-                            allowed_side=allowed_side,
-                            long_selected=bot_long_selected,
-                            short_selected=bot_short_selected,
-                        )
-                        if symbol not in allowed_symbols:
+                    if bot_strategy_version == RulesFiveBarScalpStrategy.version:
+                        if not _scalp_variant_matches_symbol(bot.variant, symbol):
                             continue
-                        selection_result = _selection_result_for_side(
+                        if self.config.selection.enabled and symbol not in selected_symbols:
+                            continue
+                        market_data_for_symbol = market_data_by_symbol.get(symbol, default_market_data)
+                        try:
+                            order_book = market_data_for_symbol.get_order_book(symbol)
+                        except Exception as exc:
+                            bot_ledger.record_risk_event(
+                                "order_book_unavailable_skip",
+                                {"error": repr(exc), "strategy_version": bot_strategy_version},
+                                symbol=symbol,
+                            )
+                            cycle["risk_rejections"] += 1
+                            continue
+                        signal = strategy.generate_from_market_data(
                             symbol=symbol,
-                            allowed_side=allowed_side,
-                            by_side=(
-                                bot_selection_state["selection_results_by_side"]
-                                if bot_selection_state is not None
-                                else selection_results_by_side
-                            ),
+                            candles_by_bar=candles_by_symbol.get(symbol, {}),
+                            order_book=order_book,
                         )
-                    elif self.config.selection.enabled and symbol not in selected_symbols:
-                        continue
-                    snapshot = _with_selection_features(snapshot, selection_result)
-                    if bot_strategy_version in HISTORICAL_MATCH_STRATEGIES and self.pattern_matcher is not None:
-                        snapshot = _with_historical_match(snapshot, self.pattern_matcher)
-                    signal = strategy.generate_from_features(snapshot)
+                    elif bot_strategy_version in MICRO_SCALP_STRATEGIES:
+                        if not _micro_scalp_variant_matches_symbol(bot.variant, symbol):
+                            continue
+                        if self.config.selection.enabled and symbol not in selected_symbols:
+                            continue
+                        market_data_for_symbol = market_data_by_symbol.get(symbol, default_market_data)
+                        market_metrics: dict[str, Any] = {}
+                        if bot_strategy_version in MICRO_SCALP_SHADOW_STRATEGIES:
+                            market_metrics = _fetch_runtime_market_metrics(market_data_for_symbol, symbol)
+                            shadow_pair = strategy.generate_shadow_pair_from_market_data(
+                                symbol=symbol,
+                                market_metrics=market_metrics,
+                            )
+                            if shadow_pair is not None:
+                                bot_ledger.record_shadow_pair_event(shadow_pair)
+                                cycle["shadow_pair_events"] += 1
+                            continue
+                        try:
+                            order_book = market_data_for_symbol.get_order_book(symbol)
+                        except Exception as exc:
+                            bot_ledger.record_risk_event(
+                                "order_book_unavailable_skip",
+                                {"error": repr(exc), "strategy_version": bot_strategy_version},
+                                symbol=symbol,
+                            )
+                            cycle["risk_rejections"] += 1
+                            continue
+                        signal = strategy.generate_from_market_data(
+                            symbol=symbol,
+                            candles_by_bar=candles_by_symbol.get(symbol, {}),
+                            order_book=order_book,
+                            market_metrics=market_metrics,
+                        )
+                    else:
+                        if snapshot is None:
+                            continue
+                        if symbol in reference_symbols and self.config.selection.style == "dual_board":
+                            continue
+                        selection_result = selection_results.get(symbol)
+                        if self.config.selection.enabled and self.config.selection.style == "dual_board":
+                            bot_long_selected = (
+                                bot_selection_state["long_selected_symbols"]
+                                if bot_selection_state is not None
+                                else long_selected_symbols
+                            )
+                            bot_short_selected = (
+                                bot_selection_state["short_selected_symbols"]
+                                if bot_selection_state is not None
+                                else short_selected_symbols
+                            )
+                            allowed_symbols = _selected_symbols_for_side(
+                                allowed_side=allowed_side,
+                                long_selected=bot_long_selected,
+                                short_selected=bot_short_selected,
+                            )
+                            if symbol not in allowed_symbols:
+                                continue
+                            selection_result = _selection_result_for_side(
+                                symbol=symbol,
+                                allowed_side=allowed_side,
+                                by_side=(
+                                    bot_selection_state["selection_results_by_side"]
+                                    if bot_selection_state is not None
+                                    else selection_results_by_side
+                                ),
+                            )
+                        elif self.config.selection.enabled and symbol not in selected_symbols:
+                            continue
+                        snapshot = _with_selection_features(snapshot, selection_result)
+                        if bot_strategy_version in HISTORICAL_MATCH_STRATEGIES and self.pattern_matcher is not None:
+                            snapshot = _with_historical_match(snapshot, self.pattern_matcher)
+                        signal = strategy.generate_from_features(snapshot)
                     if signal is None:
                         continue
-                    if self.market_snapshot_cache is not None:
+                    if self.market_snapshot_cache is not None and snapshot is not None:
                         self.market_snapshot_cache.write_snapshot(
                             run_id=self.config.run_id,
                             phase="signal",
@@ -600,7 +689,12 @@ class FleetRunner:
                             exchange=routed_intent.exchange,
                         )
                         if routed_intent is not None
-                        else bot_ledger
+                        else bot_ledger.scoped(
+                            run_id=self.config.run_id,
+                            bot_id=bot.bot_id,
+                            variant_id=bot.variant.variant_id,
+                            exchange=self.config.execution.exchange,
+                        )
                     )
                     if "risk_unit_w_usdt" in (intent.decision_trace or {}):
                         intent_ledger.record_position_sizing_decision(intent, signal_id=signal_id)
@@ -1614,6 +1708,16 @@ def _bot_allowed_side(variant: Any) -> str:
     return "both"
 
 
+def _scalp_variant_matches_symbol(variant: Any, symbol: str) -> bool:
+    configured_symbol = str(getattr(variant, "symbol", "") or "")
+    return configured_symbol == "" or configured_symbol == symbol
+
+
+def _micro_scalp_variant_matches_symbol(variant: Any, symbol: str) -> bool:
+    configured_symbol = str(getattr(variant, "symbol", "") or "")
+    return configured_symbol == "" or configured_symbol == symbol
+
+
 def _selected_symbols_for_side(
     *,
     allowed_side: str,
@@ -1855,6 +1959,10 @@ def _bot_config_from_dict(row: dict[str, Any], strategy_version: str) -> BotConf
         variant = LangLangV1_1Variant(**row["variant"])
     elif bot_strategy_version == RulesLangLangV1Strategy.version:
         variant = LangLangV1Variant(**row["variant"])
+    elif bot_strategy_version == RulesFiveBarScalpStrategy.version:
+        variant = ScalpingVariant(**row["variant"])
+    elif bot_strategy_version in MICRO_SCALP_STRATEGIES:
+        variant = MicroScalpVariant(**row["variant"])
     else:
         variant = StrategyVariant(**row["variant"])
     return BotConfig(

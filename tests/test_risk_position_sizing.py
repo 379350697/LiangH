@@ -1,7 +1,7 @@
 import unittest
 
 from langlang_trader.config import RiskConfig
-from langlang_trader.models import AccountSnapshot, LangLangSignal, MarketRegime, EntrySetup, Position, Side
+from langlang_trader.models import AccountSnapshot, LangLangSignal, MarketRegime, EntrySetup, Position, Side, Signal
 from langlang_trader.position_sizing import LangLangPositionSizer
 from langlang_trader.risk import RiskEngine
 
@@ -118,6 +118,30 @@ class RiskEnginePositionSizingTest(unittest.TestCase):
 
         self.assertIsNotNone(intent)
         self.assertIsNone(engine.last_rejection_reason)
+
+    def test_fixed_notional_mode_can_scale_probe_signals_down(self):
+        config = RiskConfig(max_position_usdt=100.0, default_leverage=3)
+        engine = RiskEngine(config)
+
+        intent = engine.intent_from_signal(
+            signal=Signal(
+                symbol="BTC-USDT-SWAP",
+                side=Side.LONG,
+                strength=0.8,
+                reason_codes=["probe"],
+                features={"position_size_multiplier": 0.25},
+                invalidation_price=95.0,
+                take_profit_hint=105.0,
+            ),
+            account=AccountSnapshot(equity_usdt=10_000, cash_usdt=10_000, margin_used_usdt=0),
+            latest_price=100.0,
+            open_positions=[],
+        )
+
+        self.assertIsNotNone(intent)
+        self.assertAlmostEqual(intent.qty, 0.25)
+        self.assertAlmostEqual(intent.decision_trace["position_size_multiplier"], 0.25)
+        self.assertAlmostEqual(intent.decision_trace["position_notional_usdt"], 25.0)
 
     def test_risk_engine_limits_open_symbol_count(self):
         config = RiskConfig(max_open_symbols=2)

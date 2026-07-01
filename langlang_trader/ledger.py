@@ -257,6 +257,30 @@ class Ledger:
                     historical_match_score real
                 );
 
+                create table if not exists shadow_pair_events (
+                    id integer primary key autoincrement,
+                    run_id text not null default 'default',
+                    bot_id text not null default 'default',
+                    variant_id text not null default 'rules_v01_default',
+                    exchange text not null default 'okx',
+                    created_at text not null,
+                    symbol text not null,
+                    strategy_version text not null,
+                    strategy_tree_variant_id text not null,
+                    strategy_tree_parent_id text not null,
+                    strategy_tree_path_json text not null default '[]',
+                    perp_side text not null,
+                    hedge_side text not null,
+                    entry_price real not null,
+                    basis_bps real not null,
+                    funding_rate real not null,
+                    stop_basis_bps real not null,
+                    take_profit_basis_bps real not null,
+                    time_stop_seconds integer not null,
+                    status text not null default 'paper_shadow',
+                    payload_json text not null default '{}'
+                );
+
                 create table if not exists trade_lifecycle (
                     trade_id text primary key,
                     run_id text not null default 'default',
@@ -628,6 +652,43 @@ class Ledger:
                     json.dumps(to_jsonable(trace.get("position_sizing_reason_codes", [])), ensure_ascii=False, sort_keys=True),
                     json.dumps(to_jsonable(trace), ensure_ascii=False, sort_keys=True),
                     *_intent_context_tuple_without_trace(intent),
+                ),
+            )
+            return int(cur.lastrowid)
+
+    def record_shadow_pair_event(self, event: Any) -> int:
+        payload = event.to_dict() if hasattr(event, "to_dict") else dict(getattr(event, "__dict__", {}))
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                insert into shadow_pair_events (
+                    run_id, bot_id, variant_id, exchange, created_at, symbol, strategy_version,
+                    strategy_tree_variant_id, strategy_tree_parent_id, strategy_tree_path_json,
+                    perp_side, hedge_side, entry_price, basis_bps, funding_rate, stop_basis_bps,
+                    take_profit_basis_bps, time_stop_seconds, status, payload_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    self.run_id,
+                    self.bot_id,
+                    getattr(event, "variant_id"),
+                    self.exchange,
+                    getattr(event, "created_at", utc_now_iso()),
+                    getattr(event, "symbol"),
+                    getattr(event, "strategy_version"),
+                    getattr(event, "strategy_tree_variant_id"),
+                    getattr(event, "strategy_tree_parent_id"),
+                    json.dumps(to_jsonable(getattr(event, "strategy_tree_path", [])), ensure_ascii=False, sort_keys=True),
+                    getattr(event, "perp_side"),
+                    getattr(event, "hedge_side"),
+                    float(getattr(event, "entry_price", 0.0)),
+                    float(getattr(event, "basis_bps")),
+                    float(getattr(event, "funding_rate")),
+                    float(getattr(event, "stop_basis_bps")),
+                    float(getattr(event, "take_profit_basis_bps")),
+                    int(getattr(event, "time_stop_seconds")),
+                    "paper_shadow",
+                    json.dumps(to_jsonable(payload), ensure_ascii=False, sort_keys=True),
                 ),
             )
             return int(cur.lastrowid)
@@ -1582,6 +1643,7 @@ class Ledger:
             "risk_events",
             "raw_exchange_payloads",
             "position_sizing_decisions",
+            "shadow_pair_events",
             "trade_lifecycle",
             "trade_events",
         }

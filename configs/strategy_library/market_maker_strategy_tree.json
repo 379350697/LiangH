@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "family_id": "market_making",
+  "strategy_version": "market_maker_v1",
+  "status": "paper_scaffold",
+  "description": "Independent paper-only market maker and scalper scaffold for one Binance USD-M major symbol per bot.",
+  "root": {
+    "strategy_tree_parent_id": "market_maker_v1_root",
+    "family_id": "market_making",
+    "lane": "independent_market_maker"
+  },
+  "variants": [
+    {
+      "variant_id": "mm_v1_reference_passive_btcusdt",
+      "strategy_tree_variant_id": "mm_v1_reference_passive_btcusdt",
+      "strategy_tree_parent_id": "market_maker_v1_root",
+      "strategy_tree_path": [
+        "market_making",
+        "market_maker_v1",
+        "reference_passive",
+        "btcusdt"
+      ],
+      "symbol": "BTCUSDT",
+      "venue": "binance_usdm",
+      "mode": "paper",
+      "notes": "Reference passive maker exists only to exercise the scaffold. It is not a production strategy."
+    },
+    {
+      "variant_id": "mm_v1_reference_passive_ethusdt",
+      "strategy_tree_variant_id": "mm_v1_reference_passive_ethusdt",
+      "strategy_tree_parent_id": "market_maker_v1_root",
+      "strategy_tree_path": [
+        "market_making",
+        "market_maker_v1",
+        "reference_passive",
+        "ethusdt"
+      ],
+      "symbol": "ETHUSDT",
+      "venue": "binance_usdm",
+      "mode": "paper",
+      "notes": "Reference passive maker exists only to exercise the ETH market-data scaffold. It is not a production strategy."
+    },
+    {
+      "variant_id": "scalp_maker_ofi_btc_v1",
+      "strategy_tree_variant_id": "scalp_maker_ofi_btc_v1",
+      "strategy_tree_parent_id": "scalp_passive_maker_ofi_v1",
+      "strategy_tree_path": [
+        "scalping",
+        "scalp_passive_maker_ofi_v1",
+        "scalp_maker_ofi_btc_v1"
+      ],
+      "symbol": "BTCUSDT",
+      "venue": "binance_usdm",
+      "mode": "paper",
+      "notes": "Paper-only passive maker OFI scalp mirror registered in the canonical scalping tree."
+    },
+    {
+      "variant_id": "scalp_maker_ofi_eth_v1",
+      "strategy_tree_variant_id": "scalp_maker_ofi_eth_v1",
+      "strategy_tree_parent_id": "scalp_passive_maker_ofi_v1",
+      "strategy_tree_path": [
+        "scalping",
+        "scalp_passive_maker_ofi_v1",
+        "scalp_maker_ofi_eth_v1"
+      ],
+      "symbol": "ETHUSDT",
+      "venue": "binance_usdm",
+      "mode": "paper",
+      "notes": "Paper-only passive maker OFI scalp mirror registered in the canonical scalping tree."
+    },
+    {
+      "variant_id": "scalp_maker_ofi_doge_v1",
+      "strategy_tree_variant_id": "scalp_maker_ofi_doge_v1",
+      "strategy_tree_parent_id": "scalp_passive_maker_ofi_v1",
+      "strategy_tree_path": [
+        "scalping",
+        "scalp_passive_maker_ofi_v1",
+        "scalp_maker_ofi_doge_v1"
+      ],
+      "symbol": "DOGEUSDT",
+      "venue": "binance_usdm",
+      "mode": "paper",
+      "notes": "Paper-only passive maker OFI scalp mirror registered in the canonical scalping tree for batch5."
+    },
+    {
+      "variant_id": "scalp_maker_ofi_hype_v1",
+      "strategy_tree_variant_id": "scalp_maker_ofi_hype_v1",
+      "strategy_tree_parent_id": "scalp_passive_maker_ofi_v1",
+      "strategy_tree_path": [
+        "scalping",
+        "scalp_passive_maker_ofi_v1",
+        "scalp_maker_ofi_hype_v1"
+      ],
+      "symbol": "HYPEUSDT",
+      "venue": "binance_usdm",
+      "mode": "paper",
+      "notes": "Paper-only passive maker OFI scalp mirror registered in the canonical scalping tree for batch5."
+    },
+    {
+      "variant_id": "scalp_maker_ofi_xrp_v1",
+      "strategy_tree_variant_id": "scalp_maker_ofi_xrp_v1",
+      "strategy_tree_parent_id": "scalp_passive_maker_ofi_v1",
+      "strategy_tree_path": [
+        "scalping",
+        "scalp_passive_maker_ofi_v1",
+        "scalp_maker_ofi_xrp_v1"
+      ],
+      "symbol": "XRPUSDT",
+      "venue": "binance_usdm",
+      "mode": "paper",
+      "notes": "Paper-only passive maker OFI scalp mirror registered in the canonical scalping tree for batch5."
+    },
+    {
+      "variant_id": "scalp_maker_ofi_bnb_v1",
+      "strategy_tree_variant_id": "scalp_maker_ofi_bnb_v1",
+      "strategy_tree_parent_id": "scalp_passive_maker_ofi_v1",
+      "strategy_tree_path": [
+        "scalping",
+        "scalp_passive_maker_ofi_v1",
+        "scalp_maker_ofi_bnb_v1"
+      ],
+      "symbol": "BNBUSDT",
+      "venue": "binance_usdm",
+      "mode": "paper",
+      "notes": "Paper-only passive maker OFI scalp mirror registered in the canonical scalping tree for batch5."
+    }
+  ]
+}

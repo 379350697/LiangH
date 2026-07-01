@@ -73,7 +73,10 @@ class RiskEngine:
             )
             return None
         leverage = self.config.default_leverage
-        decision_trace = getattr(signal, "decision_trace", {}) or {}
+        decision_trace = {
+            **_decision_trace_from_signal_features(signal),
+            **(getattr(signal, "decision_trace", {}) or {}),
+        }
         if self.position_sizer is not None and self.config.position_sizing_mode == "langlang_w_unit":
             size_decision = self.position_sizer.size(
                 signal=signal,
@@ -95,6 +98,13 @@ class RiskEngine:
                     abs(position.qty * position.avg_price) for position in open_positions
                 )
                 notional = min(notional, remaining_notional)
+            multiplier = _position_size_multiplier(signal)
+            notional *= multiplier
+            decision_trace = {
+                **decision_trace,
+                "position_size_multiplier": multiplier,
+                "position_notional_usdt": notional,
+            }
         if latest_price <= 0 or notional <= 0:
             self._reject("invalid_price_or_notional", latest_price=latest_price, notional=notional)
             return None
@@ -123,3 +133,30 @@ class RiskEngine:
 
 def _context_value(value):
     return value.value if hasattr(value, "value") else value
+
+
+def _position_size_multiplier(signal: Signal) -> float:
+    features = getattr(signal, "features", {}) or {}
+    raw = features.get("position_size_multiplier", 1.0)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 1.0
+    return min(1.0, max(0.0, value))
+
+
+def _decision_trace_from_signal_features(signal: Signal) -> dict[str, object]:
+    features = getattr(signal, "features", {}) or {}
+    trace: dict[str, object] = {}
+    for key in (
+        "strategy_tree_variant_id",
+        "strategy_tree_parent_id",
+        "strategy_tree_path",
+        "time_stop_bars",
+        "take_profit_r",
+        "strategy_kind",
+        "position_size_multiplier",
+    ):
+        if key in features:
+            trace[key] = features[key]
+    return trace
