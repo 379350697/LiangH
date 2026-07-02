@@ -1,0 +1,64 @@
+{
+  "batch_id": "scalp-suite-batch7-24bot-paper-v1",
+  "mode": "paper",
+  "total_bots": 24,
+  "symbols": [
+    "BTC-USDT-SWAP",
+    "ETH-USDT-SWAP",
+    "DOGE-USDT-SWAP",
+    "HYPE-USDT-SWAP",
+    "XRP-USDT-SWAP",
+    "BNB-USDT-SWAP"
+  ],
+  "strategy_count_per_symbol": 4,
+  "event_signal_bots": 18,
+  "inventory_maker_bots": 6,
+  "shadow_only_bots": 0,
+  "event_signal_fleet_config": "configs/fleet/scalp_suite_batch7_18bot_event_signal_paper.json",
+  "fleet_config": "configs/fleet/scalp_suite_batch7_18bot_event_signal_paper.json",
+  "market_maker_configs": [
+    "configs/market_maker/hft_inventory_mm_batch7_btcusdt.json",
+    "configs/market_maker/hft_inventory_mm_batch7_ethusdt.json",
+    "configs/market_maker/hft_inventory_mm_batch7_dogeusdt.json",
+    "configs/market_maker/hft_inventory_mm_batch7_hypeusdt.json",
+    "configs/market_maker/hft_inventory_mm_batch7_xrpusdt.json",
+    "configs/market_maker/hft_inventory_mm_batch7_bnbusdt.json"
+  ],
+  "ledger_dir": "output/fleet/scalp_suite_batch7_24bot",
+  "live_orders_enabled": false,
+  "event_driven": true,
+  "start_commands": [
+    "launchctl submit -l com.liangh.scalp.batch7.signal -- /bin/zsh /Users/wl/projects/LiangH/scripts/run_scalp_batch7_event_signal_fleet.sh",
+    "launchctl submit -l com.liangh.scalp.batch7.mm.<symbol> -- /bin/zsh /Users/wl/projects/LiangH/scripts/run_scalp_batch7_market_maker.sh /Users/wl/projects/LiangH/configs/market_maker/hft_inventory_mm_batch7_<symbol>.json"
+  ],
+  "strategy_tree_path": [
+    "scalping",
+    "batch7_hft_scalp"
+  ],
+  "exit_management": {
+    "mode": "full_tp_stop_loss",
+    "allowed_terminal_reasons": [
+      "take_profit_exit",
+      "stop_loss_exit",
+      "time_or_guard_exit"
+    ]
+  },
+  "reporting": {
+    "per_bot_fields": [
+      "opened_orders",
+      "take_profit_count",
+      "stop_loss_count",
+      "time_or_guard_exit_count",
+      "win_rate",
+      "equity_pnl_net",
+      "snapshot_sharpe",
+      "zero_open_reason",
+      "hft_event_count",
+      "average_hold_ms",
+      "spread_capture_bps",
+      "adverse_selection_bps",
+      "fill_ratio",
+      "stale_or_sequence_gap_guard_count"
+    ]
+  }
+}

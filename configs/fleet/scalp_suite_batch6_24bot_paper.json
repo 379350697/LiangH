@@ -1,7 +1,7 @@
 {
-  "run_id": "scalp-suite-batch5-30bot-paper-v1",
+  "run_id": "scalp-suite-batch6-30bot-paper-v1",
   "strategy_version": "scalp_ofi_microprice_directional_v1",
-  "ledger_path": "output/fleet/scalp_suite_batch5_30bot/signal_fleet.sqlite3",
+  "ledger_path": "output/fleet/scalp_suite_batch6_30bot/signal_fleet.sqlite3",
   "execution": {
     "mode": "paper",
     "exchange": "binance",
@@ -70,7 +70,7 @@
         "strategy_tree_parent_id": "scalp_ofi_microprice_directional_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_ofi_microprice_directional_v1",
           "scalp_ofi_micro_btc_5s_v1"
         ],
@@ -90,7 +90,7 @@
         "strategy_tree_parent_id": "scalp_funding_basis_delta_neutral_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_funding_basis_delta_neutral_v1",
           "scalp_funding_basis_btc_v1"
         ]
@@ -108,7 +108,7 @@
         "strategy_tree_parent_id": "scalp_vwap_mean_reversion_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_vwap_mean_reversion_v1",
           "scalp_vwap_mr_btc_15s_v1"
         ],
@@ -129,7 +129,7 @@
         "strategy_tree_parent_id": "scalp_volatility_breakout_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_volatility_breakout_v1",
           "scalp_vol_breakout_btc_5s_v1"
         ],
@@ -150,7 +150,7 @@
         "strategy_tree_parent_id": "scalp_ofi_microprice_directional_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_ofi_microprice_directional_v1",
           "scalp_ofi_micro_eth_5s_v1"
         ],
@@ -170,7 +170,7 @@
         "strategy_tree_parent_id": "scalp_funding_basis_delta_neutral_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_funding_basis_delta_neutral_v1",
           "scalp_funding_basis_eth_v1"
         ]
@@ -188,7 +188,7 @@
         "strategy_tree_parent_id": "scalp_vwap_mean_reversion_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_vwap_mean_reversion_v1",
           "scalp_vwap_mr_eth_15s_v1"
         ],
@@ -209,7 +209,7 @@
         "strategy_tree_parent_id": "scalp_volatility_breakout_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_volatility_breakout_v1",
           "scalp_vol_breakout_eth_5s_v1"
         ],
@@ -230,7 +230,7 @@
         "strategy_tree_parent_id": "scalp_ofi_microprice_directional_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_ofi_microprice_directional_v1",
           "scalp_ofi_micro_doge_5s_v1"
         ],
@@ -250,7 +250,7 @@
         "strategy_tree_parent_id": "scalp_funding_basis_delta_neutral_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_funding_basis_delta_neutral_v1",
           "scalp_funding_basis_doge_v1"
         ]
@@ -268,7 +268,7 @@
         "strategy_tree_parent_id": "scalp_vwap_mean_reversion_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_vwap_mean_reversion_v1",
           "scalp_vwap_mr_doge_15s_v1"
         ],
@@ -289,7 +289,7 @@
         "strategy_tree_parent_id": "scalp_volatility_breakout_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_volatility_breakout_v1",
           "scalp_vol_breakout_doge_5s_v1"
         ],
@@ -310,7 +310,7 @@
         "strategy_tree_parent_id": "scalp_ofi_microprice_directional_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_ofi_microprice_directional_v1",
           "scalp_ofi_micro_hype_5s_v1"
         ],
@@ -330,7 +330,7 @@
         "strategy_tree_parent_id": "scalp_funding_basis_delta_neutral_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_funding_basis_delta_neutral_v1",
           "scalp_funding_basis_hype_v1"
         ]
@@ -348,7 +348,7 @@
         "strategy_tree_parent_id": "scalp_vwap_mean_reversion_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_vwap_mean_reversion_v1",
           "scalp_vwap_mr_hype_15s_v1"
         ],
@@ -369,7 +369,7 @@
         "strategy_tree_parent_id": "scalp_volatility_breakout_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_volatility_breakout_v1",
           "scalp_vol_breakout_hype_5s_v1"
         ],
@@ -390,7 +390,7 @@
         "strategy_tree_parent_id": "scalp_ofi_microprice_directional_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_ofi_microprice_directional_v1",
           "scalp_ofi_micro_xrp_5s_v1"
         ],
@@ -410,7 +410,7 @@
         "strategy_tree_parent_id": "scalp_funding_basis_delta_neutral_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_funding_basis_delta_neutral_v1",
           "scalp_funding_basis_xrp_v1"
         ]
@@ -428,7 +428,7 @@
         "strategy_tree_parent_id": "scalp_vwap_mean_reversion_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_vwap_mean_reversion_v1",
           "scalp_vwap_mr_xrp_15s_v1"
         ],
@@ -449,7 +449,7 @@
         "strategy_tree_parent_id": "scalp_volatility_breakout_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_volatility_breakout_v1",
           "scalp_vol_breakout_xrp_5s_v1"
         ],
@@ -470,7 +470,7 @@
         "strategy_tree_parent_id": "scalp_ofi_microprice_directional_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_ofi_microprice_directional_v1",
           "scalp_ofi_micro_bnb_5s_v1"
         ],
@@ -490,7 +490,7 @@
         "strategy_tree_parent_id": "scalp_funding_basis_delta_neutral_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_funding_basis_delta_neutral_v1",
           "scalp_funding_basis_bnb_v1"
         ]
@@ -508,7 +508,7 @@
         "strategy_tree_parent_id": "scalp_vwap_mean_reversion_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_vwap_mean_reversion_v1",
           "scalp_vwap_mr_bnb_15s_v1"
         ],
@@ -529,7 +529,7 @@
         "strategy_tree_parent_id": "scalp_volatility_breakout_v1",
         "strategy_tree_path": [
           "scalping",
-          "batch5_partial_tp_trailing",
+          "batch6_full_tp_stop_loss",
           "scalp_volatility_breakout_v1",
           "scalp_vol_breakout_bnb_5s_v1"
         ],
@@ -539,6 +539,6 @@
     }
   ],
   "exit_management": {
-    "mode": "partial_tp_trailing"
+    "mode": "full_tp_stop_loss"
   }
 }

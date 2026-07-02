@@ -1,0 +1,38 @@
+{
+  "batch_id": "scalp-suite-batch6-30bot-paper-v1",
+  "mode": "paper",
+  "total_bots": 30,
+  "symbols": [
+    "BTC-USDT-SWAP",
+    "ETH-USDT-SWAP",
+    "DOGE-USDT-SWAP",
+    "HYPE-USDT-SWAP",
+    "XRP-USDT-SWAP",
+    "BNB-USDT-SWAP"
+  ],
+  "strategy_count_per_symbol": 5,
+  "signal_fleet_bots": 24,
+  "passive_maker_bots": 6,
+  "fleet_config": "configs/fleet/scalp_suite_batch6_24bot_paper.json",
+  "market_maker_configs": [
+    "configs/market_maker/scalp_passive_maker_ofi_batch6_btcusdt.json",
+    "configs/market_maker/scalp_passive_maker_ofi_batch6_ethusdt.json",
+    "configs/market_maker/scalp_passive_maker_ofi_batch6_dogeusdt.json",
+    "configs/market_maker/scalp_passive_maker_ofi_batch6_hypeusdt.json",
+    "configs/market_maker/scalp_passive_maker_ofi_batch6_xrpusdt.json",
+    "configs/market_maker/scalp_passive_maker_ofi_batch6_bnbusdt.json"
+  ],
+  "ledger_dir": "output/fleet/scalp_suite_batch6_30bot",
+  "live_orders_enabled": false,
+  "start_commands": [
+    "launchctl submit -l com.liangh.scalp.batch6.signal -- /bin/zsh /Users/wl/projects/LiangH/scripts/run_scalp_batch6_signal_fleet.sh",
+    "launchctl submit -l com.liangh.scalp.batch6.mm.<symbol> -- /bin/zsh /Users/wl/projects/LiangH/scripts/run_scalp_batch6_market_maker.sh /Users/wl/projects/LiangH/configs/market_maker/scalp_passive_maker_ofi_batch6_<symbol>.json"
+  ],
+  "strategy_tree_path": [
+    "scalping",
+    "batch6_full_tp_stop_loss"
+  ],
+  "exit_management": {
+    "mode": "full_tp_stop_loss"
+  }
+}

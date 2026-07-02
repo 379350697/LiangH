@@ -172,6 +172,78 @@ class StrategyLibraryTest(unittest.TestCase):
         self.assertTrue(all(row.factor_set["entry_mode"] == "breakout" for row in mainline))
         self.assertTrue(all(row.factor_set["order_flow_mode"] == "strong" for row in mainline))
 
+    def test_scalping_batch_exit_semantics_are_registered_as_traceable_variants(self):
+        library = StrategyLibrary.load(DEFAULT_REGISTRY_PATH)
+        batch5 = library.variant("scalping_batch5_partial_tp_trailing")
+        batch6 = library.variant("scalping_batch6_full_tp_stop_loss")
+
+        self.assertEqual(batch5.factor_set["exit_profile"], "partial_tp_trailing")
+        self.assertEqual(batch6.factor_set["exit_profile"], "full_tp_stop_loss")
+        self.assertEqual(library.lineage("scalping_batch6_full_tp_stop_loss"), [
+            "scalping_batch5_partial_tp_trailing",
+            "scalping_batch6_full_tp_stop_loss",
+        ])
+
+    def test_legacy_scalping_strategies_move_to_short_term_family(self):
+        library = StrategyLibrary.load(DEFAULT_REGISTRY_PATH)
+        legacy_strategy_ids = {
+            "five_bar_fractal_scalp",
+            "scalp_passive_maker_ofi",
+            "scalp_ofi_microprice_directional",
+            "scalp_funding_basis_delta_neutral",
+            "scalp_vwap_mean_reversion",
+            "scalp_volatility_breakout",
+            "scalping_exit_semantics",
+        }
+        hft_strategy_ids = {
+            "hft_inventory_aware_passive_mm",
+            "hft_queue_imbalance_one_tick",
+            "hft_sweep_replenishment_reversion",
+            "hft_lead_lag_fair_value",
+        }
+
+        self.assertEqual(library.families["short_term"].name, "短线策略族")
+        self.assertEqual({library.strategies[row].family_id for row in legacy_strategy_ids}, {"short_term"})
+        self.assertEqual(
+            {row.strategy_id for row in library.strategies.values() if row.family_id == "scalping"},
+            hft_strategy_ids,
+        )
+
+    def test_batch7_hft_scalping_variants_are_traceable_by_strategy_and_symbol(self):
+        library = StrategyLibrary.load(DEFAULT_REGISTRY_PATH)
+        batch7 = [
+            row
+            for row in library.variants.values()
+            if row.lineage_group == "batch7_hft_scalp"
+        ]
+
+        self.assertEqual(len(batch7), 24)
+        self.assertEqual({row.factor_set["batch"] for row in batch7}, {"batch7"})
+        self.assertEqual(
+            {library.strategies[row.strategy_id].family_id for row in batch7},
+            {"scalping"},
+        )
+        self.assertEqual(
+            {row.factor_set["symbol"] for row in batch7},
+            {
+                "BTC-USDT-SWAP",
+                "ETH-USDT-SWAP",
+                "DOGE-USDT-SWAP",
+                "HYPE-USDT-SWAP",
+                "XRP-USDT-SWAP",
+                "BNB-USDT-SWAP",
+            },
+        )
+        self.assertEqual(
+            {row.strategy_id for row in batch7},
+            {
+                "hft_inventory_aware_passive_mm",
+                "hft_queue_imbalance_one_tick",
+                "hft_sweep_replenishment_reversion",
+                "hft_lead_lag_fair_value",
+            },
+        )
+
     def test_ingests_leaderboard_runs_and_compares_factor_deltas(self):
         with tempfile.TemporaryDirectory() as tmp:
             registry_path = os.path.join(tmp, "registry.json")

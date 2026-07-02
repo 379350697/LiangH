@@ -20,6 +20,11 @@ class RoutingConfig:
 
 
 @dataclass(frozen=True)
+class ExitManagementConfig:
+    mode: str = "partial_tp_trailing"
+
+
+@dataclass(frozen=True)
 class PaperConfig:
     initial_equity_usdt: float = 10_000.0
     fee_bps: float = 5.0
@@ -97,6 +102,7 @@ class AppConfig:
     universe: UniverseConfig = field(default_factory=UniverseConfig)
     selection: SymbolSelectionConfig = field(default_factory=SymbolSelectionConfig)
     routing: RoutingConfig = field(default_factory=RoutingConfig)
+    exit_management: ExitManagementConfig = field(default_factory=ExitManagementConfig)
     ledger_path: str = "runtime/langlang_trader.sqlite3"
     strategy_version: str = "rules_v01"
 
@@ -133,6 +139,7 @@ def load_config(path: str | Path) -> AppConfig:
         universe=_from_dict(UniverseConfig, raw.get("universe")),
         selection=_from_dict(SymbolSelectionConfig, raw.get("selection")),
         routing=_from_dict(RoutingConfig, raw.get("routing")),
+        exit_management=_from_dict(ExitManagementConfig, raw.get("exit_management")),
         ledger_path=raw.get("ledger_path", AppConfig().ledger_path),
         strategy_version=raw.get("strategy_version", AppConfig().strategy_version),
     )

@@ -1,9 +1,9 @@
 {
-  "run_id": "scalp-passive-maker-ofi-batch5-xrpusdt",
-  "bot_id": "scalp-maker-ofi-batch5-xrpusdt",
+  "run_id": "scalp-passive-maker-ofi-batch6-btcusdt",
+  "bot_id": "scalp-maker-ofi-batch6-btcusdt",
   "mode": "paper",
   "venue": "binance_usdm",
-  "symbol": "XRPUSDT",
+  "symbol": "BTCUSDT",
   "allowed_symbols": [
     "BTCUSDT",
     "ETHUSDT",
@@ -12,7 +12,7 @@
     "XRPUSDT",
     "BNBUSDT"
   ],
-  "ledger_path": "output/fleet/scalp_suite_batch5_30bot/maker_xrpusdt.sqlite3",
+  "ledger_path": "output/fleet/scalp_suite_batch6_30bot/maker_btcusdt.sqlite3",
   "execution": {
     "allow_live_orders": false,
     "primary_gateway": "paper"
@@ -32,7 +32,7 @@
     "queue_fill_ratio": 1.0
   },
   "risk": {
-    "max_inventory_base": 500.0,
+    "max_inventory_base": 0.02,
     "max_notional_usdt": 500.0,
     "stale_feed_ms": 1500,
     "max_loop_lag_ms": 200,
@@ -40,7 +40,7 @@
   },
   "strategy": {
     "strategy_version": "scalp_passive_maker_ofi_v1",
-    "variant_id": "scalp_maker_ofi_xrp_v1",
+    "variant_id": "scalp_maker_ofi_btc_v1",
     "quote_size_usdt": 100.0,
     "quote_spread_bps": 4.0,
     "order_ttl_ms": 1000,
@@ -52,13 +52,13 @@
     "max_inventory_hold_ms": 30000
   },
   "strategy_tree": {
-    "strategy_tree_variant_id": "scalp_maker_ofi_xrp_v1",
+    "strategy_tree_variant_id": "scalp_maker_ofi_btc_v1",
     "strategy_tree_parent_id": "scalp_passive_maker_ofi_v1",
     "strategy_tree_path": [
       "scalping",
-      "batch5_partial_tp_trailing",
+      "batch6_full_tp_stop_loss",
       "scalp_passive_maker_ofi_v1",
-      "scalp_maker_ofi_xrp_v1"
+      "scalp_maker_ofi_btc_v1"
     ]
   }
 }

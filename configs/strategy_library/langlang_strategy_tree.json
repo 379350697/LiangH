@@ -11,13 +11,23 @@
       ]
     },
     {
+      "family_id": "short_term",
+      "name": "短线策略族",
+      "source_basis": [
+        "legacy_scalping_tree",
+        "second_level_candle_fractal",
+        "low_frequency_paper_scalp_suite",
+        "batch5_batch6_exit_semantics"
+      ]
+    },
+    {
       "family_id": "scalping",
       "name": "剥头皮策略族",
       "source_basis": [
-        "user_research_plan",
-        "second_level_candle_fractal",
-        "order_flow_and_l2_confirmation",
-        "paper_only_scalp_suite"
+        "user_hft_scalping_reclassification",
+        "event_driven_l2_order_book",
+        "trade_flow_websocket",
+        "batch7_hft_paper_suite"
       ]
     }
   ],
@@ -78,7 +88,7 @@
     },
     {
       "strategy_id": "five_bar_fractal_scalp",
-      "family_id": "scalping",
+      "family_id": "short_term",
       "strategy_version": "five_bar_fractal_scalp_v1",
       "status": "paper_candidate",
       "hypothesis": "用 1s/5s/15s 小周期 5-bar 分型识别顺大周期回撤失败后的拐点，等待局部突破入场，并用订单流、盘口、spread 和结构止损过滤假拐点。",
@@ -93,7 +103,7 @@
     },
     {
       "strategy_id": "scalp_passive_maker_ofi",
-      "family_id": "scalping",
+      "family_id": "short_term",
       "strategy_version": "scalp_passive_maker_ofi_v1",
       "status": "paper_candidate",
       "hypothesis": "用 Binance USD-M L2 热盘口做 post-only 被动报价，只在队列不逆风、库存未接近上限、spread 足以覆盖手续费和撤单成本时挂单。",
@@ -107,7 +117,7 @@
     },
     {
       "strategy_id": "scalp_ofi_microprice_directional",
-      "family_id": "scalping",
+      "family_id": "short_term",
       "strategy_version": "scalp_ofi_microprice_directional_v1",
       "status": "paper_candidate",
       "hypothesis": "用订单簿不平衡和 microprice 偏移捕捉极短线方向延续，只有预测边际大于手续费、点差和滑点时入场。",
@@ -121,7 +131,7 @@
     },
     {
       "strategy_id": "scalp_funding_basis_delta_neutral",
-      "family_id": "scalping",
+      "family_id": "short_term",
       "strategy_version": "scalp_funding_basis_delta_neutral_v1",
       "status": "paper_candidate",
       "hypothesis": "只记录影子双腿基差/资金费率计划，不伪造单腿订单；当 mark/index 基差和资金费率同向足以覆盖成本时观察收敛。",
@@ -135,7 +145,7 @@
     },
     {
       "strategy_id": "scalp_vwap_mean_reversion",
-      "family_id": "scalping",
+      "family_id": "short_term",
       "strategy_version": "scalp_vwap_mean_reversion_v1",
       "status": "paper_candidate",
       "hypothesis": "在 spread 可控的主流币上，交易短周期价格相对滚动 VWAP 的过度偏离回归，使用固定 bps 硬止损和时间止损限制尾部亏损。",
@@ -149,7 +159,7 @@
     },
     {
       "strategy_id": "scalp_volatility_breakout",
-      "family_id": "scalping",
+      "family_id": "short_term",
       "strategy_version": "scalp_volatility_breakout_v1",
       "status": "paper_candidate",
       "hypothesis": "在短周期收缩后，只交易放量突破，要求突破距离覆盖费用并用固定 bps 硬止损防止假突破。",
@@ -158,6 +168,74 @@
         "hard_stop_loss_required_on_every_intent",
         "time_stop_required",
         "strategy_tree_trace_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "strategy_id": "scalping_exit_semantics",
+      "family_id": "short_term",
+      "strategy_version": "scalping_exit_semantics_v1",
+      "status": "paper_running",
+      "hypothesis": "同一组剥头皮信号在不同退出语义下做纸盘对照，分离信号质量和止盈止损结构的收益归因。",
+      "promotion_rules": [
+        "paper_only_until_batch_comparison_has_enough_closed_trades",
+        "exit_reason_buckets_must_separate_take_profit_stop_loss_trailing_and_guard",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "strategy_id": "hft_inventory_aware_passive_mm",
+      "family_id": "scalping",
+      "strategy_version": "hft_inventory_aware_passive_mm_v1",
+      "status": "paper_candidate",
+      "hypothesis": "用 L2 热盘口做库存感知被动报价，只在 spread、队列和库存方向同时允许时挂 post-only 单，逆风时优先减库存。",
+      "promotion_rules": [
+        "paper_only_until_maker_fill_quality_is_positive",
+        "event_driven_l2_required",
+        "inventory_stop_loss_must_be_recorded",
+        "strategy_tree_trace_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "strategy_id": "hft_queue_imbalance_one_tick",
+      "family_id": "scalping",
+      "strategy_version": "hft_queue_imbalance_one_tick_v1",
+      "status": "paper_candidate",
+      "hypothesis": "用盘口一档队列失衡捕捉一跳短线延续，只在预期边际能覆盖手续费、点差和滑点时全仓 TP/SL 出场。",
+      "promotion_rules": [
+        "paper_only_until_cost_adjusted_expectancy_positive",
+        "event_driven_l2_required",
+        "full_position_take_profit_required",
+        "full_position_stop_loss_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "strategy_id": "hft_sweep_replenishment_reversion",
+      "family_id": "scalping",
+      "strategy_version": "hft_sweep_replenishment_reversion_v1",
+      "status": "paper_candidate",
+      "hypothesis": "识别大额扫单后的被扫侧补单失败，交易极短线回归，使用毫秒级时间止损和全仓 TP/SL。",
+      "promotion_rules": [
+        "paper_only_until_sweep_bucket_expectancy_positive",
+        "trade_flow_websocket_required",
+        "full_position_take_profit_required",
+        "full_position_stop_loss_required",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "strategy_id": "hft_lead_lag_fair_value",
+      "family_id": "scalping",
+      "strategy_version": "hft_lead_lag_fair_value_v1",
+      "status": "paper_candidate",
+      "hypothesis": "用 BTC/ETH 等领先标的的瞬时公允价变化交易滞后标的，限定毫秒级持仓窗口并用全仓 TP/SL 收口。",
+      "promotion_rules": [
+        "paper_only_until_lead_lag_bucket_expectancy_positive",
+        "multi_symbol_websocket_required",
+        "full_position_take_profit_required",
+        "full_position_stop_loss_required",
         "no_live_without_separate_authorization"
       ]
     }
@@ -6243,6 +6321,111 @@
         "time_stop_required",
         "no_live_without_separate_authorization"
       ]
-    }
+    },
+    {
+      "variant_id": "scalping_batch5_partial_tp_trailing",
+      "display_name": "Batch5 Partial TP + Runner TP/Trailing Scalp",
+      "lineage_group": "scalping_exit_semantics",
+      "strategy_id": "scalping_exit_semantics",
+      "parent_id": null,
+      "strategy_version": "scalping_exit_semantics_v1",
+      "status": "paper_running",
+      "hypothesis": "第五批继续保留半仓止盈和追踪退出历史语义，但补齐剩余半仓的明确 runner TP。",
+      "factor_set": {
+        "batch": "batch5",
+        "exit_profile": "partial_tp_trailing",
+        "first_target": "partial_take_profit_50pct",
+        "second_target": "runner_take_profit_remaining_50pct",
+        "fallback_exit": "mfe_trailing_exit"
+      },
+      "changed_factors": [
+        "runner_take_profit_for_remaining_half"
+      ],
+      "core_logic": [
+        "partial_take_profit",
+        "runner_take_profit",
+        "mfe_trailing_exit",
+        "hard_stop_loss"
+      ],
+      "source_basis": [
+        "user_batch5_exit_semantics_decision",
+        "configs/fleet/scalp_suite_batch5_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "mode": "paper",
+        "live_orders_enabled": false
+      },
+      "iteration_notes": "第五批 30 bot 历史变体；保留已有订单统计口径，后续新增订单能区分半仓 TP、runner TP、追踪退出和止损。",
+      "promotion_rules": [
+        "paper_only",
+        "runner_take_profit_exit_must_be_journaled",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {
+      "variant_id": "scalping_batch6_full_tp_stop_loss",
+      "display_name": "Batch6 Full TP / Full SL Scalp",
+      "lineage_group": "scalping_exit_semantics",
+      "strategy_id": "scalping_exit_semantics",
+      "parent_id": "scalping_batch5_partial_tp_trailing",
+      "strategy_version": "scalping_exit_semantics_v1",
+      "status": "paper_candidate",
+      "hypothesis": "第六批用真正剥头皮语义做对照：触达目标全仓止盈，触达止损全仓止损，不做默认半仓止盈。",
+      "factor_set": {
+        "batch": "batch6",
+        "exit_profile": "full_tp_stop_loss",
+        "target": "take_profit_exit_full_position",
+        "stop": "stop_loss_exit_full_position",
+        "partial_take_profit": false
+      },
+      "changed_factors": [
+        "disable_partial_take_profit",
+        "full_position_take_profit"
+      ],
+      "core_logic": [
+        "take_profit_exit",
+        "stop_loss_exit",
+        "time_or_guard_exit"
+      ],
+      "source_basis": [
+        "user_batch6_full_tp_decision",
+        "configs/fleet/scalp_suite_batch6_24bot_paper.json"
+      ],
+      "risk_profile": {
+        "mode": "paper",
+        "live_orders_enabled": false
+      },
+      "iteration_notes": "第六批 30 bot 对照变体；信号族和币种矩阵沿用第五批，退出语义切换为全仓 TP/SL。",
+      "promotion_rules": [
+        "paper_only",
+        "partial_take_profit_exit_must_be_zero",
+        "take_profit_exit_must_not_be_recorded_as_mfe_trailing_exit",
+        "no_live_without_separate_authorization"
+      ]
+    },
+    {"variant_id":"hft_inventory_mm_btcusdt_v1","display_name":"Batch7 BTC-USDT-SWAP Inventory-Aware Passive MM","lineage_group":"batch7_hft_scalp","strategy_id":"hft_inventory_aware_passive_mm","parent_id":null,"strategy_version":"hft_inventory_aware_passive_mm_v1","status":"paper_candidate","hypothesis":"Event-driven passive maker quotes only when spread, OFI and inventory state support positive spread capture.","factor_set":{"batch":"batch7","symbol":"BTC-USDT-SWAP","exchange_symbol":"BTCUSDT","strategy_kind":"inventory_aware_passive_mm","event_driven":true,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["post_only_passive_quotes","inventory_skew","adverse_ofi_guard","inventory_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_inventory_mm_ethusdt_v1","display_name":"Batch7 ETH-USDT-SWAP Inventory-Aware Passive MM","lineage_group":"batch7_hft_scalp","strategy_id":"hft_inventory_aware_passive_mm","parent_id":null,"strategy_version":"hft_inventory_aware_passive_mm_v1","status":"paper_candidate","hypothesis":"Event-driven passive maker quotes only when spread, OFI and inventory state support positive spread capture.","factor_set":{"batch":"batch7","symbol":"ETH-USDT-SWAP","exchange_symbol":"ETHUSDT","strategy_kind":"inventory_aware_passive_mm","event_driven":true,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["post_only_passive_quotes","inventory_skew","adverse_ofi_guard","inventory_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_inventory_mm_dogeusdt_v1","display_name":"Batch7 DOGE-USDT-SWAP Inventory-Aware Passive MM","lineage_group":"batch7_hft_scalp","strategy_id":"hft_inventory_aware_passive_mm","parent_id":null,"strategy_version":"hft_inventory_aware_passive_mm_v1","status":"paper_candidate","hypothesis":"Event-driven passive maker quotes only when spread, OFI and inventory state support positive spread capture.","factor_set":{"batch":"batch7","symbol":"DOGE-USDT-SWAP","exchange_symbol":"DOGEUSDT","strategy_kind":"inventory_aware_passive_mm","event_driven":true,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["post_only_passive_quotes","inventory_skew","adverse_ofi_guard","inventory_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_inventory_mm_hypeusdt_v1","display_name":"Batch7 HYPE-USDT-SWAP Inventory-Aware Passive MM","lineage_group":"batch7_hft_scalp","strategy_id":"hft_inventory_aware_passive_mm","parent_id":null,"strategy_version":"hft_inventory_aware_passive_mm_v1","status":"paper_candidate","hypothesis":"Event-driven passive maker quotes only when spread, OFI and inventory state support positive spread capture.","factor_set":{"batch":"batch7","symbol":"HYPE-USDT-SWAP","exchange_symbol":"HYPEUSDT","strategy_kind":"inventory_aware_passive_mm","event_driven":true,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["post_only_passive_quotes","inventory_skew","adverse_ofi_guard","inventory_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_inventory_mm_xrpusdt_v1","display_name":"Batch7 XRP-USDT-SWAP Inventory-Aware Passive MM","lineage_group":"batch7_hft_scalp","strategy_id":"hft_inventory_aware_passive_mm","parent_id":null,"strategy_version":"hft_inventory_aware_passive_mm_v1","status":"paper_candidate","hypothesis":"Event-driven passive maker quotes only when spread, OFI and inventory state support positive spread capture.","factor_set":{"batch":"batch7","symbol":"XRP-USDT-SWAP","exchange_symbol":"XRPUSDT","strategy_kind":"inventory_aware_passive_mm","event_driven":true,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["post_only_passive_quotes","inventory_skew","adverse_ofi_guard","inventory_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_inventory_mm_bnbusdt_v1","display_name":"Batch7 BNB-USDT-SWAP Inventory-Aware Passive MM","lineage_group":"batch7_hft_scalp","strategy_id":"hft_inventory_aware_passive_mm","parent_id":null,"strategy_version":"hft_inventory_aware_passive_mm_v1","status":"paper_candidate","hypothesis":"Event-driven passive maker quotes only when spread, OFI and inventory state support positive spread capture.","factor_set":{"batch":"batch7","symbol":"BNB-USDT-SWAP","exchange_symbol":"BNBUSDT","strategy_kind":"inventory_aware_passive_mm","event_driven":true,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["post_only_passive_quotes","inventory_skew","adverse_ofi_guard","inventory_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_queue_imbalance_btcusdt_v1","display_name":"Batch7 BTC-USDT-SWAP Queue Imbalance One-Tick","lineage_group":"batch7_hft_scalp","strategy_id":"hft_queue_imbalance_one_tick","parent_id":null,"strategy_version":"hft_queue_imbalance_one_tick_v1","status":"paper_candidate","hypothesis":"Enter for one-tick continuation when near-touch queue imbalance is strong enough and exit by full TP, SL or millisecond time guard.","factor_set":{"batch":"batch7","symbol":"BTC-USDT-SWAP","exchange_symbol":"BTCUSDT","strategy_kind":"queue_imbalance_one_tick","event_driven":true,"min_queue_imbalance":0.6,"take_profit_bps":3.5,"stop_bps":2.5,"time_stop_ms":3000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["queue_imbalance_entry","one_tick_take_profit","hard_stop_loss","time_or_guard_exit"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_queue_imbalance_ethusdt_v1","display_name":"Batch7 ETH-USDT-SWAP Queue Imbalance One-Tick","lineage_group":"batch7_hft_scalp","strategy_id":"hft_queue_imbalance_one_tick","parent_id":null,"strategy_version":"hft_queue_imbalance_one_tick_v1","status":"paper_candidate","hypothesis":"Enter for one-tick continuation when near-touch queue imbalance is strong enough and exit by full TP, SL or millisecond time guard.","factor_set":{"batch":"batch7","symbol":"ETH-USDT-SWAP","exchange_symbol":"ETHUSDT","strategy_kind":"queue_imbalance_one_tick","event_driven":true,"min_queue_imbalance":0.6,"take_profit_bps":3.5,"stop_bps":2.5,"time_stop_ms":3000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["queue_imbalance_entry","one_tick_take_profit","hard_stop_loss","time_or_guard_exit"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_queue_imbalance_dogeusdt_v1","display_name":"Batch7 DOGE-USDT-SWAP Queue Imbalance One-Tick","lineage_group":"batch7_hft_scalp","strategy_id":"hft_queue_imbalance_one_tick","parent_id":null,"strategy_version":"hft_queue_imbalance_one_tick_v1","status":"paper_candidate","hypothesis":"Enter for one-tick continuation when near-touch queue imbalance is strong enough and exit by full TP, SL or millisecond time guard.","factor_set":{"batch":"batch7","symbol":"DOGE-USDT-SWAP","exchange_symbol":"DOGEUSDT","strategy_kind":"queue_imbalance_one_tick","event_driven":true,"min_queue_imbalance":0.6,"take_profit_bps":3.5,"stop_bps":2.5,"time_stop_ms":3000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["queue_imbalance_entry","one_tick_take_profit","hard_stop_loss","time_or_guard_exit"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_queue_imbalance_hypeusdt_v1","display_name":"Batch7 HYPE-USDT-SWAP Queue Imbalance One-Tick","lineage_group":"batch7_hft_scalp","strategy_id":"hft_queue_imbalance_one_tick","parent_id":null,"strategy_version":"hft_queue_imbalance_one_tick_v1","status":"paper_candidate","hypothesis":"Enter for one-tick continuation when near-touch queue imbalance is strong enough and exit by full TP, SL or millisecond time guard.","factor_set":{"batch":"batch7","symbol":"HYPE-USDT-SWAP","exchange_symbol":"HYPEUSDT","strategy_kind":"queue_imbalance_one_tick","event_driven":true,"min_queue_imbalance":0.6,"take_profit_bps":3.5,"stop_bps":2.5,"time_stop_ms":3000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["queue_imbalance_entry","one_tick_take_profit","hard_stop_loss","time_or_guard_exit"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_queue_imbalance_xrpusdt_v1","display_name":"Batch7 XRP-USDT-SWAP Queue Imbalance One-Tick","lineage_group":"batch7_hft_scalp","strategy_id":"hft_queue_imbalance_one_tick","parent_id":null,"strategy_version":"hft_queue_imbalance_one_tick_v1","status":"paper_candidate","hypothesis":"Enter for one-tick continuation when near-touch queue imbalance is strong enough and exit by full TP, SL or millisecond time guard.","factor_set":{"batch":"batch7","symbol":"XRP-USDT-SWAP","exchange_symbol":"XRPUSDT","strategy_kind":"queue_imbalance_one_tick","event_driven":true,"min_queue_imbalance":0.6,"take_profit_bps":3.5,"stop_bps":2.5,"time_stop_ms":3000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["queue_imbalance_entry","one_tick_take_profit","hard_stop_loss","time_or_guard_exit"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_queue_imbalance_bnbusdt_v1","display_name":"Batch7 BNB-USDT-SWAP Queue Imbalance One-Tick","lineage_group":"batch7_hft_scalp","strategy_id":"hft_queue_imbalance_one_tick","parent_id":null,"strategy_version":"hft_queue_imbalance_one_tick_v1","status":"paper_candidate","hypothesis":"Enter for one-tick continuation when near-touch queue imbalance is strong enough and exit by full TP, SL or millisecond time guard.","factor_set":{"batch":"batch7","symbol":"BNB-USDT-SWAP","exchange_symbol":"BNBUSDT","strategy_kind":"queue_imbalance_one_tick","event_driven":true,"min_queue_imbalance":0.6,"take_profit_bps":3.5,"stop_bps":2.5,"time_stop_ms":3000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["queue_imbalance_entry","one_tick_take_profit","hard_stop_loss","time_or_guard_exit"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_sweep_replenishment_btcusdt_v1","display_name":"Batch7 BTC-USDT-SWAP Sweep Replenishment Reversion","lineage_group":"batch7_hft_scalp","strategy_id":"hft_sweep_replenishment_reversion","parent_id":null,"strategy_version":"hft_sweep_replenishment_reversion_v1","status":"paper_candidate","hypothesis":"After an aggressive sweep, fade the move only when near-touch replenishment fails and exit by full TP, SL or guard.","factor_set":{"batch":"batch7","symbol":"BTC-USDT-SWAP","exchange_symbol":"BTCUSDT","strategy_kind":"sweep_replenishment_reversion","event_driven":true,"min_sweep_notional_usdt":20000,"replenishment_ratio":0.45,"sweep_window_ms":750,"take_profit_bps":4.0,"stop_bps":3.0,"time_stop_ms":5000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["aggressive_sweep_detection","failed_replenishment_filter","full_take_profit","hard_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_sweep_replenishment_ethusdt_v1","display_name":"Batch7 ETH-USDT-SWAP Sweep Replenishment Reversion","lineage_group":"batch7_hft_scalp","strategy_id":"hft_sweep_replenishment_reversion","parent_id":null,"strategy_version":"hft_sweep_replenishment_reversion_v1","status":"paper_candidate","hypothesis":"After an aggressive sweep, fade the move only when near-touch replenishment fails and exit by full TP, SL or guard.","factor_set":{"batch":"batch7","symbol":"ETH-USDT-SWAP","exchange_symbol":"ETHUSDT","strategy_kind":"sweep_replenishment_reversion","event_driven":true,"min_sweep_notional_usdt":20000,"replenishment_ratio":0.45,"sweep_window_ms":750,"take_profit_bps":4.0,"stop_bps":3.0,"time_stop_ms":5000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["aggressive_sweep_detection","failed_replenishment_filter","full_take_profit","hard_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_sweep_replenishment_dogeusdt_v1","display_name":"Batch7 DOGE-USDT-SWAP Sweep Replenishment Reversion","lineage_group":"batch7_hft_scalp","strategy_id":"hft_sweep_replenishment_reversion","parent_id":null,"strategy_version":"hft_sweep_replenishment_reversion_v1","status":"paper_candidate","hypothesis":"After an aggressive sweep, fade the move only when near-touch replenishment fails and exit by full TP, SL or guard.","factor_set":{"batch":"batch7","symbol":"DOGE-USDT-SWAP","exchange_symbol":"DOGEUSDT","strategy_kind":"sweep_replenishment_reversion","event_driven":true,"min_sweep_notional_usdt":20000,"replenishment_ratio":0.45,"sweep_window_ms":750,"take_profit_bps":4.0,"stop_bps":3.0,"time_stop_ms":5000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["aggressive_sweep_detection","failed_replenishment_filter","full_take_profit","hard_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_sweep_replenishment_hypeusdt_v1","display_name":"Batch7 HYPE-USDT-SWAP Sweep Replenishment Reversion","lineage_group":"batch7_hft_scalp","strategy_id":"hft_sweep_replenishment_reversion","parent_id":null,"strategy_version":"hft_sweep_replenishment_reversion_v1","status":"paper_candidate","hypothesis":"After an aggressive sweep, fade the move only when near-touch replenishment fails and exit by full TP, SL or guard.","factor_set":{"batch":"batch7","symbol":"HYPE-USDT-SWAP","exchange_symbol":"HYPEUSDT","strategy_kind":"sweep_replenishment_reversion","event_driven":true,"min_sweep_notional_usdt":20000,"replenishment_ratio":0.45,"sweep_window_ms":750,"take_profit_bps":4.0,"stop_bps":3.0,"time_stop_ms":5000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["aggressive_sweep_detection","failed_replenishment_filter","full_take_profit","hard_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_sweep_replenishment_xrpusdt_v1","display_name":"Batch7 XRP-USDT-SWAP Sweep Replenishment Reversion","lineage_group":"batch7_hft_scalp","strategy_id":"hft_sweep_replenishment_reversion","parent_id":null,"strategy_version":"hft_sweep_replenishment_reversion_v1","status":"paper_candidate","hypothesis":"After an aggressive sweep, fade the move only when near-touch replenishment fails and exit by full TP, SL or guard.","factor_set":{"batch":"batch7","symbol":"XRP-USDT-SWAP","exchange_symbol":"XRPUSDT","strategy_kind":"sweep_replenishment_reversion","event_driven":true,"min_sweep_notional_usdt":20000,"replenishment_ratio":0.45,"sweep_window_ms":750,"take_profit_bps":4.0,"stop_bps":3.0,"time_stop_ms":5000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["aggressive_sweep_detection","failed_replenishment_filter","full_take_profit","hard_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_sweep_replenishment_bnbusdt_v1","display_name":"Batch7 BNB-USDT-SWAP Sweep Replenishment Reversion","lineage_group":"batch7_hft_scalp","strategy_id":"hft_sweep_replenishment_reversion","parent_id":null,"strategy_version":"hft_sweep_replenishment_reversion_v1","status":"paper_candidate","hypothesis":"After an aggressive sweep, fade the move only when near-touch replenishment fails and exit by full TP, SL or guard.","factor_set":{"batch":"batch7","symbol":"BNB-USDT-SWAP","exchange_symbol":"BNBUSDT","strategy_kind":"sweep_replenishment_reversion","event_driven":true,"min_sweep_notional_usdt":20000,"replenishment_ratio":0.45,"sweep_window_ms":750,"take_profit_bps":4.0,"stop_bps":3.0,"time_stop_ms":5000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["aggressive_sweep_detection","failed_replenishment_filter","full_take_profit","hard_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_lead_lag_btcusdt_v1","display_name":"Batch7 BTC-USDT-SWAP Lead-Lag Fair Value","lineage_group":"batch7_hft_scalp","strategy_id":"hft_lead_lag_fair_value","parent_id":null,"strategy_version":"hft_lead_lag_fair_value_v1","status":"paper_candidate","hypothesis":"Use lead-market movement and lagged local fair-value divergence to enter short-lived convergence trades.","factor_set":{"batch":"batch7","symbol":"BTC-USDT-SWAP","exchange_symbol":"BTCUSDT","lead_exchange_symbol":"ETHUSDT","strategy_kind":"lead_lag_fair_value","event_driven":true,"min_lead_move_bps":6.0,"min_lag_divergence_bps":3.0,"take_profit_bps":3.5,"stop_bps":2.5,"time_stop_ms":4000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["lead_market_move","lag_fair_value_divergence","full_take_profit","hard_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_lead_lag_ethusdt_v1","display_name":"Batch7 ETH-USDT-SWAP Lead-Lag Fair Value","lineage_group":"batch7_hft_scalp","strategy_id":"hft_lead_lag_fair_value","parent_id":null,"strategy_version":"hft_lead_lag_fair_value_v1","status":"paper_candidate","hypothesis":"Use lead-market movement and lagged local fair-value divergence to enter short-lived convergence trades.","factor_set":{"batch":"batch7","symbol":"ETH-USDT-SWAP","exchange_symbol":"ETHUSDT","lead_exchange_symbol":"BTCUSDT","strategy_kind":"lead_lag_fair_value","event_driven":true,"min_lead_move_bps":6.0,"min_lag_divergence_bps":3.0,"take_profit_bps":3.5,"stop_bps":2.5,"time_stop_ms":4000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["lead_market_move","lag_fair_value_divergence","full_take_profit","hard_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_lead_lag_dogeusdt_v1","display_name":"Batch7 DOGE-USDT-SWAP Lead-Lag Fair Value","lineage_group":"batch7_hft_scalp","strategy_id":"hft_lead_lag_fair_value","parent_id":null,"strategy_version":"hft_lead_lag_fair_value_v1","status":"paper_candidate","hypothesis":"Use lead-market movement and lagged local fair-value divergence to enter short-lived convergence trades.","factor_set":{"batch":"batch7","symbol":"DOGE-USDT-SWAP","exchange_symbol":"DOGEUSDT","lead_exchange_symbol":"BTCUSDT","strategy_kind":"lead_lag_fair_value","event_driven":true,"min_lead_move_bps":6.0,"min_lag_divergence_bps":3.0,"take_profit_bps":3.5,"stop_bps":2.5,"time_stop_ms":4000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["lead_market_move","lag_fair_value_divergence","full_take_profit","hard_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_lead_lag_hypeusdt_v1","display_name":"Batch7 HYPE-USDT-SWAP Lead-Lag Fair Value","lineage_group":"batch7_hft_scalp","strategy_id":"hft_lead_lag_fair_value","parent_id":null,"strategy_version":"hft_lead_lag_fair_value_v1","status":"paper_candidate","hypothesis":"Use lead-market movement and lagged local fair-value divergence to enter short-lived convergence trades.","factor_set":{"batch":"batch7","symbol":"HYPE-USDT-SWAP","exchange_symbol":"HYPEUSDT","lead_exchange_symbol":"BTCUSDT","strategy_kind":"lead_lag_fair_value","event_driven":true,"min_lead_move_bps":6.0,"min_lag_divergence_bps":3.0,"take_profit_bps":3.5,"stop_bps":2.5,"time_stop_ms":4000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["lead_market_move","lag_fair_value_divergence","full_take_profit","hard_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_lead_lag_xrpusdt_v1","display_name":"Batch7 XRP-USDT-SWAP Lead-Lag Fair Value","lineage_group":"batch7_hft_scalp","strategy_id":"hft_lead_lag_fair_value","parent_id":null,"strategy_version":"hft_lead_lag_fair_value_v1","status":"paper_candidate","hypothesis":"Use lead-market movement and lagged local fair-value divergence to enter short-lived convergence trades.","factor_set":{"batch":"batch7","symbol":"XRP-USDT-SWAP","exchange_symbol":"XRPUSDT","lead_exchange_symbol":"BTCUSDT","strategy_kind":"lead_lag_fair_value","event_driven":true,"min_lead_move_bps":6.0,"min_lag_divergence_bps":3.0,"take_profit_bps":3.5,"stop_bps":2.5,"time_stop_ms":4000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["lead_market_move","lag_fair_value_divergence","full_take_profit","hard_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]},
+    {"variant_id":"hft_lead_lag_bnbusdt_v1","display_name":"Batch7 BNB-USDT-SWAP Lead-Lag Fair Value","lineage_group":"batch7_hft_scalp","strategy_id":"hft_lead_lag_fair_value","parent_id":null,"strategy_version":"hft_lead_lag_fair_value_v1","status":"paper_candidate","hypothesis":"Use lead-market movement and lagged local fair-value divergence to enter short-lived convergence trades.","factor_set":{"batch":"batch7","symbol":"BNB-USDT-SWAP","exchange_symbol":"BNBUSDT","lead_exchange_symbol":"BTCUSDT","strategy_kind":"lead_lag_fair_value","event_driven":true,"min_lead_move_bps":6.0,"min_lag_divergence_bps":3.0,"take_profit_bps":3.5,"stop_bps":2.5,"time_stop_ms":4000,"exit_profile":"full_tp_stop_loss"},"changed_factors":["websocket_event_driven","batch7_hft_exit_semantics"],"core_logic":["lead_market_move","lag_fair_value_divergence","full_take_profit","hard_stop_loss"],"source_basis":["user_batch7_hft_scalping_decision","configs/scalping/scalp_suite_batch7_24bot_manifest.json"],"risk_profile":{"mode":"paper","paper_only":true,"live_orders_enabled":false,"terminal_exit_reasons":["take_profit_exit","stop_loss_exit","time_or_guard_exit"]},"promotion_rules":["paper_only","full_position_take_profit_required","full_position_stop_loss_required","no_live_without_separate_authorization"]}
   ]
 }

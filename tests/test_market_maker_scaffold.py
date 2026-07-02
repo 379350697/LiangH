@@ -20,7 +20,11 @@ from liangh_trader.market_maker.live_executor import LiveExecutorSafetyError, as
 from liangh_trader.market_maker.models import BookTick, InventoryState, OrderTruthEvent, QuoteIntent, TopBookTick, TradeTick
 from liangh_trader.market_maker.paper_executor import MarketMakerPaperExecutor
 from liangh_trader.market_maker.runner import MarketMakerRunner
-from liangh_trader.market_maker.strategy import OfiInventorySkewMakerStrategy, ReferencePassiveMakerStrategy
+from liangh_trader.market_maker.strategy import (
+    InventoryAwarePassiveMakerStrategy,
+    OfiInventorySkewMakerStrategy,
+    ReferencePassiveMakerStrategy,
+)
 
 
 def write_config(tmp: str, **overrides) -> str:
@@ -123,6 +127,55 @@ class MarketMakerCliTimingTest(unittest.TestCase):
 
         self.assertEqual(_event_dispatch_lag_ms(event, now_ns=10_500_000), 0.5)
         self.assertEqual(_event_dispatch_lag_ms(event, now_ns=9_000_000), 0.0)
+
+
+class InventoryAwareMakerStrategyTest(unittest.TestCase):
+    def test_inventory_aware_hft_maker_only_quotes_inventory_reducing_side_when_adverse(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_config(
+                tmp,
+                strategy={
+                    "strategy_version": "hft_inventory_aware_passive_mm_v1",
+                    "variant_id": "hft_inventory_mm_btc_v1",
+                    "quote_size_usdt": 100.0,
+                    "quote_spread_bps": 4.0,
+                    "order_ttl_ms": 500,
+                    "quote_interval_ms": 100,
+                    "min_quote_edge_bps": 1.0,
+                    "min_ofi_abs": 0.20,
+                    "inventory_stop_bps": 20.0,
+                    "adverse_ofi_ticks": 2,
+                    "max_inventory_hold_ms": 10_000,
+                },
+                strategy_tree={
+                    "strategy_tree_variant_id": "hft_inventory_mm_btc_v1",
+                    "strategy_tree_parent_id": "hft_inventory_aware_passive_mm_v1",
+                    "strategy_tree_path": [
+                        "scalping",
+                        "batch7_hft_scalp",
+                        "hft_inventory_aware_passive_mm",
+                        "hft_inventory_mm_btc_v1",
+                    ],
+                },
+            )
+            config = load_market_maker_config(path)
+            strategy = InventoryAwarePassiveMakerStrategy(config)
+            book = BookTick(
+                symbol="BTCUSDT",
+                event_time_ms=1_700_000_000_000,
+                receive_time_ns=1_000_000,
+                best_bid=99.99,
+                best_bid_qty=5.0,
+                best_ask=100.01,
+                best_ask_qty=50.0,
+                update_id=1,
+            )
+            inventory = InventoryState(symbol="BTCUSDT", base_qty=0.018, avg_price=100.0)
+
+            quotes = strategy.generate_quotes(book, inventory, now_ns=2_000_000)
+
+            self.assertEqual([quote.side for quote in quotes], ["sell"])
+            self.assertEqual(quotes[0].strategy_tree_path[:2], ["scalping", "batch7_hft_scalp"])
 
 
 class BinanceOrderBookTest(unittest.TestCase):

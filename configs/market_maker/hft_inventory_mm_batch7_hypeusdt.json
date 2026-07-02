@@ -1,0 +1,52 @@
+{
+  "run_id": "hft-inventory-mm-batch7-hypeusdt",
+  "bot_id": "batch7_hft_inventory_mm_hype_paper",
+  "mode": "paper",
+  "venue": "binance_usdm",
+  "symbol": "HYPEUSDT",
+  "allowed_symbols": ["BTCUSDT", "ETHUSDT", "DOGEUSDT", "HYPEUSDT", "XRPUSDT", "BNBUSDT"],
+  "ledger_path": "output/fleet/scalp_suite_batch7_24bot/maker_hypeusdt.sqlite3",
+  "execution": {
+    "allow_live_orders": false,
+    "primary_gateway": "paper"
+  },
+  "signals": {
+    "use_book_ticker": true,
+    "use_trade_flow": true
+  },
+  "limits": {
+    "max_order_ops_per_minute": 720,
+    "max_order_ops_per_10s": 144
+  },
+  "paper": {
+    "initial_quote_usdt": 10000.0,
+    "maker_fee_bps": 2.0,
+    "taker_fee_bps": 5.0,
+    "queue_fill_ratio": 1.0
+  },
+  "risk": {
+    "max_inventory_base": 20.0,
+    "max_notional_usdt": 500.0,
+    "stale_feed_ms": 1500,
+    "max_loop_lag_ms": 200,
+    "max_spread_bps": 50.0
+  },
+  "strategy": {
+    "strategy_version": "hft_inventory_aware_passive_mm_v1",
+    "variant_id": "hft_inventory_mm_hype_v1",
+    "quote_size_usdt": 100.0,
+    "quote_spread_bps": 4.0,
+    "order_ttl_ms": 500,
+    "quote_interval_ms": 100,
+    "min_quote_edge_bps": 1.0,
+    "min_ofi_abs": 0.2,
+    "inventory_stop_bps": 20.0,
+    "adverse_ofi_ticks": 2,
+    "max_inventory_hold_ms": 10000
+  },
+  "strategy_tree": {
+    "strategy_tree_variant_id": "hft_inventory_mm_hype_v1",
+    "strategy_tree_parent_id": "hft_inventory_aware_passive_mm_v1",
+    "strategy_tree_path": ["scalping", "batch7_hft_scalp", "hft_inventory_aware_passive_mm", "hft_inventory_mm_hype_v1"]
+  }
+}

@@ -1887,12 +1887,12 @@ def _close_if_stop_hit_from_candle(
         return False
     if side is Side.LONG and candle.low <= stop_loss:
         current_prices[candle.symbol] = stop_loss
-        executor.close_position(candle.symbol, reason=f"stop_loss:{stop_loss}")
+        executor.close_position(candle.symbol, reason="stop_loss_exit")
         _finish_active_position(candle.symbol, active_positions, position_windows, current_day)
         return True
     elif side is Side.SHORT and candle.high >= stop_loss:
         current_prices[candle.symbol] = stop_loss
-        executor.close_position(candle.symbol, reason=f"stop_loss:{stop_loss}")
+        executor.close_position(candle.symbol, reason="stop_loss_exit")
         _finish_active_position(candle.symbol, active_positions, position_windows, current_day)
         return True
     return False

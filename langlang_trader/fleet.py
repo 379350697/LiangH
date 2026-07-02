@@ -8,6 +8,7 @@ from typing import Any
 
 from langlang_trader.config import (
     ExecutionConfig,
+    ExitManagementConfig,
     MarketDataConfig,
     PaperConfig,
     RiskConfig,
@@ -139,6 +140,7 @@ class FleetConfig:
     universe: UniverseConfig = field(default_factory=UniverseConfig)
     selection: SymbolSelectionConfig = field(default_factory=SymbolSelectionConfig)
     routing: RoutingConfig = field(default_factory=RoutingConfig)
+    exit_management: ExitManagementConfig = field(default_factory=ExitManagementConfig)
     ledger_path: str = "runtime/langlang_fleet.sqlite3"
     strategy_version: str = "rules_v01"
     historical_patterns_path: str = "output/langlang_distill/historical_patterns.csv"
@@ -154,6 +156,7 @@ class FleetConfig:
             "universe": asdict(self.universe),
             "selection": asdict(self.selection),
             "routing": asdict(self.routing),
+            "exit_management": asdict(self.exit_management),
             "ledger_path": self.ledger_path,
             "strategy_version": self.strategy_version,
             "historical_patterns_path": self.historical_patterns_path,
@@ -176,6 +179,7 @@ def fleet_config_from_dict(raw: dict[str, Any]) -> FleetConfig:
         universe=UniverseConfig(**raw.get("universe", {})),
         selection=SymbolSelectionConfig(**raw.get("selection", {})),
         routing=RoutingConfig(**raw.get("routing", {})),
+        exit_management=ExitManagementConfig(**raw.get("exit_management", {})),
         ledger_path=raw.get("ledger_path", FleetConfig(run_id=raw["run_id"]).ledger_path),
         strategy_version=raw.get("strategy_version", "rules_v01"),
         historical_patterns_path=raw.get(
@@ -1060,6 +1064,7 @@ class FleetRunner:
                 mfe_usdt=exit_state["mfe_usdt"],
                 partial_taken=exit_state["partial_taken"],
                 take_profit_plan=exit_state["take_profit_plan"],
+                exit_profile=self.config.exit_management.mode,
                 features=features,
                 fee_bps=self.config.paper.fee_bps,
                 slippage_bps=self.config.paper.slippage_bps,
@@ -1137,16 +1142,17 @@ class FleetRunner:
                 return True
             return False
         if decision.action is ExitActionType.CLOSE_POSITION:
+            exit_reason = decision.exit_reason or _close_exit_reason_from_codes(decision.reason_codes)
             result = self._place_reduce_only_exit(
                 executor=executor,
                 position=position,
                 qty=position.qty,
-                reason="mfe_trailing_exit",
+                reason=exit_reason,
                 decision_trace=decision.decision_trace,
                 features=features,
             )
             event_ledger.record_risk_event(
-                "mfe_trailing_exit",
+                exit_reason,
                 {
                     "status": result.status,
                     "exchange_order_id": result.exchange_order_id,
@@ -1229,7 +1235,7 @@ class FleetRunner:
         )
         if not triggered:
             return False
-        result = executor.close_position(symbol, reason=f"stop_loss:{stop_loss}")
+        result = executor.close_position(symbol, reason="stop_loss_exit")
         event_ledger = ledger.scoped(
             run_id=ledger.run_id,
             bot_id=ledger.bot_id,
@@ -1910,6 +1916,13 @@ def _routable_symbols_for_executor(universe_snapshot: Any, executor: str) -> set
                 routable.add(row.symbol)
         return routable
     return reference_symbols | set(getattr(universe_snapshot, "symbols", []) or [])
+
+
+def _close_exit_reason_from_codes(reason_codes: list[str]) -> str:
+    for reason in ("take_profit_exit", "runner_take_profit_exit", "mfe_trailing_exit"):
+        if reason in reason_codes:
+            return reason
+    return "time_or_guard_exit"
 
 
 def _record_bot_account_snapshot(

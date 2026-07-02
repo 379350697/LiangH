@@ -114,7 +114,7 @@ class TradingRunner:
         )
         if not triggered:
             return False
-        result = self.executor.close_position(symbol, reason=f"stop_loss:{stop_loss}")
+        result = self.executor.close_position(symbol, reason="stop_loss_exit")
         self.ledger.record_risk_event(
             "stop_loss_exit",
             {

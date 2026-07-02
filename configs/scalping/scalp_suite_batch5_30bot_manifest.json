@@ -27,5 +27,12 @@
   "start_commands": [
     "launchctl submit -l com.liangh.scalp.batch5.signal -- /bin/zsh /Users/wl/projects/LiangH/scripts/run_scalp_batch5_signal_fleet.sh",
     "launchctl submit -l com.liangh.scalp.batch5.mm.<symbol> -- /bin/zsh /Users/wl/projects/LiangH/scripts/run_scalp_batch5_market_maker.sh /Users/wl/projects/LiangH/configs/market_maker/scalp_passive_maker_ofi_batch5_<symbol>.json"
-  ]
+  ],
+  "strategy_tree_path": [
+    "scalping",
+    "batch5_partial_tp_trailing"
+  ],
+  "exit_management": {
+    "mode": "partial_tp_trailing"
+  }
 }

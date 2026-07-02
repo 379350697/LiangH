@@ -1175,7 +1175,7 @@ class Ledger:
         if not exit_reason:
             return []
         if exit_reason.startswith("stop_loss"):
-            return ["stop_loss_hit"]
+            return ["stop_loss_exit"]
         return [exit_reason]
 
     def _append_trade_event(
@@ -1459,7 +1459,9 @@ class Ledger:
             entry_intent_id = trade["entry_intent_id"]
             if entry_intent_id is not None:
                 intent = conn.execute("select * from order_intents where id = ?", (entry_intent_id,)).fetchone()
-                take_profit_plan = self._json_from_row(intent, "take_profit_plan_json", {}) if intent is not None else {}
+                if intent is not None and intent["signal_id"] is not None:
+                    signal = conn.execute("select * from signals where id = ?", (intent["signal_id"],)).fetchone()
+                    take_profit_plan = self._json_from_row(signal, "take_profit_plan_json", {})
             current_stop = trade["current_stop_loss"]
             if current_stop is None:
                 current_stop = trade["initial_stop_loss"]

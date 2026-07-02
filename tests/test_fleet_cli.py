@@ -5,6 +5,7 @@ import unittest
 from langlang_trader.config import MarketDataConfig
 from langlang_trader.fleet import FleetConfig, load_fleet_config
 from langlang_trader.fleet_cli import config_with_symbol_override, market_data_for_config
+from langlang_trader.hft_scalping import load_hft_scalp_fleet_config
 from langlang_trader.market_data import BinanceRestMarketData
 from liangh_trader.market_maker.config import load_market_maker_config
 
@@ -133,6 +134,57 @@ class FleetCliTest(unittest.TestCase):
         )
         self.assertTrue(
             all(config.strategy.strategy_version == "scalp_passive_maker_ofi_v1" for config in maker_configs)
+        )
+
+    def test_scalp_suite_batch7_manifest_plans_4_by_6_hft_paper_bots(self):
+        with open("configs/scalping/scalp_suite_batch7_24bot_manifest.json", encoding="utf-8") as f:
+            manifest = json.load(f)
+
+        signal_fleet = load_hft_scalp_fleet_config(manifest["event_signal_fleet_config"])
+        maker_configs = [load_market_maker_config(path) for path in manifest["market_maker_configs"]]
+
+        self.assertEqual(manifest["batch_id"], "scalp-suite-batch7-24bot-paper-v1")
+        self.assertEqual(manifest["strategy_count_per_symbol"], 4)
+        self.assertEqual(manifest["total_bots"], 24)
+        self.assertEqual(manifest["event_signal_bots"], 18)
+        self.assertEqual(manifest["inventory_maker_bots"], 6)
+        self.assertEqual(len(signal_fleet.bots), 18)
+        self.assertEqual(len(maker_configs), 6)
+        self.assertEqual(len(signal_fleet.bots) + len(maker_configs), 24)
+        self.assertFalse(signal_fleet.allow_live_orders)
+        self.assertTrue(all(not config.execution.allow_live_orders for config in maker_configs))
+        self.assertEqual(
+            sorted(signal_fleet.symbols),
+            [
+                "BNB-USDT-SWAP",
+                "BTC-USDT-SWAP",
+                "DOGE-USDT-SWAP",
+                "ETH-USDT-SWAP",
+                "HYPE-USDT-SWAP",
+                "XRP-USDT-SWAP",
+            ],
+        )
+        self.assertEqual(set(Counter(bot.variant.symbol for bot in signal_fleet.bots).values()), {3})
+        self.assertEqual(
+            {bot.strategy_version for bot in signal_fleet.bots},
+            {
+                "hft_queue_imbalance_one_tick_v1",
+                "hft_sweep_replenishment_reversion_v1",
+                "hft_lead_lag_fair_value_v1",
+            },
+        )
+        self.assertEqual(
+            sorted(config.symbol for config in maker_configs),
+            ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "ETHUSDT", "HYPEUSDT", "XRPUSDT"],
+        )
+        self.assertTrue(
+            all(config.strategy.strategy_version == "hft_inventory_aware_passive_mm_v1" for config in maker_configs)
+        )
+        self.assertTrue(
+            all(
+                config.strategy_tree.strategy_tree_path[:2] == ["scalping", "batch7_hft_scalp"]
+                for config in maker_configs
+            )
         )
 
 

@@ -33,6 +33,7 @@ def context(**overrides):
         "mfe_usdt": 0.0,
         "partial_taken": False,
         "take_profit_plan": {"partial_r": 2.0, "partial_exit_fraction": 0.5, "runner_r": 4.0},
+        "exit_profile": "partial_tp_trailing",
         "features": {},
         "fee_bps": 5.0,
         "slippage_bps": 5.0,
@@ -59,6 +60,34 @@ class ExitManagementEngineTest(unittest.TestCase):
         self.assertGreater(decision.new_stop_loss, 100.0)
         self.assertIn("partial_take_profit", decision.reason_codes)
         self.assertIn("breakeven_stop_moved", decision.reason_codes)
+
+    def test_partial_profile_closes_runner_at_second_take_profit(self):
+        decision = ExitManagementEngine().evaluate(
+            context(
+                latest_price=140.1,
+                partial_taken=True,
+                mfe_usdt=390.0,
+                take_profit_plan={"partial_r": 2.0, "partial_exit_fraction": 0.5, "runner_r": 4.0},
+            )
+        )
+
+        self.assertEqual(decision.action, ExitActionType.CLOSE_POSITION)
+        self.assertEqual(decision.exit_reason, "runner_take_profit_exit")
+        self.assertIn("runner_take_profit_exit", decision.reason_codes)
+
+    def test_full_tp_profile_closes_entire_position_at_take_profit_without_partial(self):
+        decision = ExitManagementEngine().evaluate(
+            context(
+                latest_price=112.1,
+                exit_profile="full_tp_stop_loss",
+                take_profit_plan={"take_profit_r": 1.2, "partial_r": 2.0, "partial_exit_fraction": 0.5},
+            )
+        )
+
+        self.assertEqual(decision.action, ExitActionType.CLOSE_POSITION)
+        self.assertEqual(decision.exit_reason, "take_profit_exit")
+        self.assertIsNone(decision.reduce_qty)
+        self.assertIn("take_profit_exit", decision.reason_codes)
 
     def test_mfe_trailing_waits_until_giveback_exceeds_wide_threshold(self):
         engine = ExitManagementEngine()

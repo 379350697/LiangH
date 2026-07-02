@@ -1,0 +1,128 @@
+{
+  "run_id": "scalp-suite-batch7-24bot-paper-v1",
+  "ledger_path": "output/fleet/scalp_suite_batch7_24bot/event_signal_fleet.sqlite3",
+  "execution": {
+    "mode": "paper",
+    "exchange": "binance",
+    "executor": "event_driven_hft_paper",
+    "allow_live_orders": false
+  },
+  "paper": {
+    "initial_equity_usdt": 10000.0,
+    "fee_bps": 4.0,
+    "slippage_bps": 2.0
+  },
+  "risk": {
+    "max_open_positions": 18,
+    "max_open_symbols": 6,
+    "max_loop_lag_ms": 200.0
+  },
+  "symbols": [
+    "BTC-USDT-SWAP",
+    "ETH-USDT-SWAP",
+    "DOGE-USDT-SWAP",
+    "HYPE-USDT-SWAP",
+    "XRP-USDT-SWAP",
+    "BNB-USDT-SWAP"
+  ],
+  "exchange_symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "DOGEUSDT",
+    "HYPEUSDT",
+    "XRPUSDT",
+    "BNBUSDT"
+  ],
+  "strategy_tree_path": [
+    "scalping",
+    "batch7_hft_scalp"
+  ],
+  "symbol_matrix": [
+    {
+      "slug": "btc",
+      "symbol": "BTC-USDT-SWAP",
+      "exchange_symbol": "BTCUSDT",
+      "lead_exchange_symbol": "ETHUSDT"
+    },
+    {
+      "slug": "eth",
+      "symbol": "ETH-USDT-SWAP",
+      "exchange_symbol": "ETHUSDT",
+      "lead_exchange_symbol": "BTCUSDT"
+    },
+    {
+      "slug": "doge",
+      "symbol": "DOGE-USDT-SWAP",
+      "exchange_symbol": "DOGEUSDT",
+      "lead_exchange_symbol": "BTCUSDT"
+    },
+    {
+      "slug": "hype",
+      "symbol": "HYPE-USDT-SWAP",
+      "exchange_symbol": "HYPEUSDT",
+      "lead_exchange_symbol": "BTCUSDT"
+    },
+    {
+      "slug": "xrp",
+      "symbol": "XRP-USDT-SWAP",
+      "exchange_symbol": "XRPUSDT",
+      "lead_exchange_symbol": "BTCUSDT"
+    },
+    {
+      "slug": "bnb",
+      "symbol": "BNB-USDT-SWAP",
+      "exchange_symbol": "BNBUSDT",
+      "lead_exchange_symbol": "BTCUSDT"
+    }
+  ],
+  "bot_matrix": {
+    "expanded_bots": 18,
+    "strategies": [
+      {
+        "strategy_key": "hft_queue_imbalance_one_tick",
+        "strategy_version": "hft_queue_imbalance_one_tick_v1",
+        "variant_prefix": "hft_queue_imbalance",
+        "bot_prefix": "batch7_hft_queue_imbalance",
+        "strategy_tree_parent_id": "hft_queue_imbalance_one_tick_v1",
+        "parameters": {
+          "min_queue_imbalance": 0.6,
+          "take_profit_bps": 3.5,
+          "stop_bps": 2.5,
+          "time_stop_ms": 3000,
+          "position_size_usdt": 100.0
+        }
+      },
+      {
+        "strategy_key": "hft_sweep_replenishment_reversion",
+        "strategy_version": "hft_sweep_replenishment_reversion_v1",
+        "variant_prefix": "hft_sweep_replenishment",
+        "bot_prefix": "batch7_hft_sweep_replenishment",
+        "strategy_tree_parent_id": "hft_sweep_replenishment_reversion_v1",
+        "parameters": {
+          "min_sweep_notional_usdt": 20000.0,
+          "replenishment_ratio": 0.45,
+          "sweep_window_ms": 750,
+          "take_profit_bps": 4.0,
+          "stop_bps": 3.0,
+          "time_stop_ms": 5000,
+          "position_size_usdt": 100.0
+        }
+      },
+      {
+        "strategy_key": "hft_lead_lag_fair_value",
+        "strategy_version": "hft_lead_lag_fair_value_v1",
+        "variant_prefix": "hft_lead_lag",
+        "bot_prefix": "batch7_hft_lead_lag",
+        "strategy_tree_parent_id": "hft_lead_lag_fair_value_v1",
+        "parameters": {
+          "min_lead_move_bps": 6.0,
+          "min_lag_divergence_bps": 3.0,
+          "take_profit_bps": 3.5,
+          "stop_bps": 2.5,
+          "time_stop_ms": 4000,
+          "position_size_usdt": 100.0
+        }
+      }
+    ]
+  }
+}

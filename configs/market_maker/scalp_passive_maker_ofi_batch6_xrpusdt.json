@@ -1,6 +1,6 @@
 {
-  "run_id": "scalp-passive-maker-ofi-batch5-xrpusdt",
-  "bot_id": "scalp-maker-ofi-batch5-xrpusdt",
+  "run_id": "scalp-passive-maker-ofi-batch6-xrpusdt",
+  "bot_id": "scalp-maker-ofi-batch6-xrpusdt",
   "mode": "paper",
   "venue": "binance_usdm",
   "symbol": "XRPUSDT",
@@ -12,7 +12,7 @@
     "XRPUSDT",
     "BNBUSDT"
   ],
-  "ledger_path": "output/fleet/scalp_suite_batch5_30bot/maker_xrpusdt.sqlite3",
+  "ledger_path": "output/fleet/scalp_suite_batch6_30bot/maker_xrpusdt.sqlite3",
   "execution": {
     "allow_live_orders": false,
     "primary_gateway": "paper"
@@ -56,7 +56,7 @@
     "strategy_tree_parent_id": "scalp_passive_maker_ofi_v1",
     "strategy_tree_path": [
       "scalping",
-      "batch5_partial_tp_trailing",
+      "batch6_full_tp_stop_loss",
       "scalp_passive_maker_ofi_v1",
       "scalp_maker_ofi_xrp_v1"
     ]

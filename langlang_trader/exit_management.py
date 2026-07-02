@@ -25,6 +25,7 @@ class ExitManagementContext:
     mfe_usdt: float
     partial_taken: bool
     take_profit_plan: dict[str, Any] = field(default_factory=dict)
+    exit_profile: str = "partial_tp_trailing"
     features: dict[str, Any] = field(default_factory=dict)
     fee_bps: float = 0.0
     slippage_bps: float = 0.0
@@ -35,6 +36,7 @@ class ExitManagementDecision:
     action: ExitActionType
     reason_codes: list[str] = field(default_factory=list)
     reason_summary: str = ""
+    exit_reason: str | None = None
     new_stop_loss: float | None = None
     reduce_qty: float | None = None
     data_quality_flags: list[str] = field(default_factory=list)
@@ -65,7 +67,8 @@ class ExitManagementEngine:
 
         side = context.position.side
         current_pnl = self._open_pnl(context)
-        current_r = current_pnl / context.initial_risk_usdt
+        current_r = self._price_r(context)
+        exit_profile = str(context.take_profit_plan.get("exit_profile") or context.exit_profile or "partial_tp_trailing")
         trace = {
             "latest_price": context.latest_price,
             "entry_price": context.entry_price,
@@ -75,7 +78,20 @@ class ExitManagementEngine:
             "current_pnl_usdt": current_pnl,
             "current_r": current_r,
             "mfe_usdt": context.mfe_usdt,
+            "exit_profile": exit_profile,
         }
+
+        if exit_profile == "full_tp_stop_loss":
+            take_profit_r = self._plan_float(context.take_profit_plan, "take_profit_r", 2.0)
+            if current_r >= take_profit_r > 0:
+                return ExitManagementDecision(
+                    action=ExitActionType.CLOSE_POSITION,
+                    reason_codes=["take_profit_exit"],
+                    reason_summary="take profit reached",
+                    exit_reason="take_profit_exit",
+                    decision_trace={**trace, "take_profit_r": take_profit_r},
+                )
+            return self._breakeven_or_hold(context, current_r=current_r, trace=trace)
 
         partial_r = float(context.take_profit_plan.get("partial_r", 2.0) or 2.0)
         partial_fraction = float(context.take_profit_plan.get("partial_exit_fraction", 0.5) or 0.5)
@@ -109,10 +125,30 @@ class ExitManagementEngine:
                 },
             )
 
+        runner_r = self._plan_float(context.take_profit_plan, "runner_r", 0.0)
+        if context.partial_taken and current_r >= runner_r > 0:
+            return ExitManagementDecision(
+                action=ExitActionType.CLOSE_POSITION,
+                reason_codes=["runner_take_profit_exit"],
+                reason_summary="runner take profit reached",
+                exit_reason="runner_take_profit_exit",
+                decision_trace={**trace, "runner_r": runner_r},
+            )
+
         trail_decision = self._mfe_trailing_decision(context, current_pnl=current_pnl, trace=trace)
         if trail_decision.action is not ExitActionType.HOLD:
             return trail_decision
 
+        return self._breakeven_or_hold(context, current_r=current_r, trace=trace)
+
+    def _breakeven_or_hold(
+        self,
+        context: ExitManagementContext,
+        *,
+        current_r: float,
+        trace: dict[str, Any],
+    ) -> ExitManagementDecision:
+        side = context.position.side
         if current_r >= self.breakeven_at_r:
             target_stop = self._fee_buffered_breakeven(context)
             current_stop = context.current_stop_loss
@@ -141,6 +177,22 @@ class ExitManagementEngine:
     def _open_pnl(context: ExitManagementContext) -> float:
         return (context.latest_price - context.entry_price) * context.position.qty * context.position.side.sign
 
+    @staticmethod
+    def _price_r(context: ExitManagementContext) -> float:
+        if context.latest_price is None or context.initial_stop_loss is None:
+            return 0.0
+        risk_per_unit = abs(context.entry_price - context.initial_stop_loss)
+        if risk_per_unit <= 0:
+            return 0.0
+        return (context.latest_price - context.entry_price) * context.position.side.sign / risk_per_unit
+
+    @staticmethod
+    def _plan_float(plan: dict[str, Any], key: str, default: float) -> float:
+        try:
+            return float(plan.get(key, default) or default)
+        except (TypeError, ValueError):
+            return default
+
     def _mfe_trailing_decision(
         self,
         context: ExitManagementContext,
@@ -165,6 +217,7 @@ class ExitManagementEngine:
             action=ExitActionType.CLOSE_POSITION,
             reason_codes=reason_codes,
             reason_summary="mfe giveback exit",
+            exit_reason="mfe_trailing_exit",
             decision_trace={
                 **trace,
                 "mfe_r": mfe_r,

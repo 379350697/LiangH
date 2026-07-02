@@ -20,6 +20,7 @@ class MicroScalpVariant:
     stop_bps: float = 12.0
     max_stop_bps: float = 30.0
     take_profit_r: float = 1.2
+    runner_take_profit_r: float = 2.4
     time_stop_bars: int = 10
     position_size_multiplier: float = 0.5
     min_ofi: float = 0.20
@@ -50,6 +51,8 @@ class MicroScalpSignal:
     take_profit_hint: float | None
     strategy_version: str
     decision_trace: dict[str, Any]
+    take_profit_plan: dict[str, Any] = field(default_factory=dict)
+    hold_plan: dict[str, Any] = field(default_factory=dict)
     filter_codes: list[str] = field(default_factory=lambda: ["no_failure_filter"])
     created_at: str = field(default_factory=utc_now_iso)
 
@@ -372,11 +375,13 @@ def _build_signal(
         "entry_price": entry,
         "time_stop_bars": variant.time_stop_bars,
         "take_profit_r": variant.take_profit_r,
+        "runner_take_profit_r": variant.runner_take_profit_r,
         "position_size_multiplier": variant.position_size_multiplier,
         "risk": {
             "strict_hard_stop_bps": stop_bps,
             "max_stop_bps": variant.max_stop_bps,
             "take_profit_r": variant.take_profit_r,
+            "runner_take_profit_r": variant.runner_take_profit_r,
             "time_stop_bars": variant.time_stop_bars,
             "max_spread_bps": variant.max_spread_bps,
             "total_cost_bps": variant.total_cost_bps,
@@ -389,9 +394,17 @@ def _build_signal(
         "strategy_kind": variant.strategy_kind,
         "time_stop_bars": variant.time_stop_bars,
         "take_profit_r": variant.take_profit_r,
+        "runner_take_profit_r": variant.runner_take_profit_r,
         "position_size_multiplier": variant.position_size_multiplier,
         "hard_stop_bps": stop_bps,
         "reason_codes": list(reason_codes),
+    }
+    take_profit_plan = {
+        "take_profit_r": variant.take_profit_r,
+        "partial_r": variant.take_profit_r,
+        "partial_exit_fraction": 0.5,
+        "runner_r": variant.runner_take_profit_r,
+        "time_stop_bars": variant.time_stop_bars,
     }
     strength = min(0.95, 0.55 + min(0.20, abs(stop_bps) / 100.0) + 0.10)
     return MicroScalpSignal(
@@ -402,6 +415,8 @@ def _build_signal(
         features=signal_features,
         invalidation_price=stop,
         take_profit_hint=take_profit,
+        take_profit_plan=take_profit_plan,
+        hold_plan={"time_stop_bars": variant.time_stop_bars},
         strategy_version=version,
         decision_trace=decision_trace,
     )

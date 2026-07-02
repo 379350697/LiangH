@@ -7,7 +7,15 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from langlang_trader.config import ExecutionConfig, MarketDataConfig, PaperConfig, RiskConfig, SymbolSelectionConfig, UniverseConfig
+from langlang_trader.config import (
+    ExecutionConfig,
+    ExitManagementConfig,
+    MarketDataConfig,
+    PaperConfig,
+    RiskConfig,
+    SymbolSelectionConfig,
+    UniverseConfig,
+)
 from langlang_trader.features import FeatureSnapshot
 from langlang_trader.fleet import BotConfig, FleetConfig, FleetRunner, _bot_allowed_side, _market_data_by_symbol, _selection_states_for_profiles, _with_selection_features, load_fleet_config
 from langlang_trader.ledger import Ledger
@@ -435,6 +443,227 @@ class FleetRunnerTest(unittest.TestCase):
             self.assertAlmostEqual(trade["open_qty"], 1.0)
             self.assertEqual(trade["partial_take_profit_taken"], 1)
             self.assertGreater(ledger.latest_stop_loss("TEST-USDT-SWAP"), 100.0)
+
+    def test_exit_management_runner_take_profit_closes_remaining_half_with_distinct_reason(self):
+        from langlang_trader.execution.paper import PaperExecutor
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(os.path.join(tmp, "fleet.sqlite3")).scoped(
+                run_id="exit-runner-run",
+                bot_id="bot-exit",
+                variant_id="variant-exit",
+            )
+            mark = {"price": 100.0}
+            executor = PaperExecutor(
+                ledger=ledger,
+                paper_config=PaperConfig(initial_equity_usdt=20_000, fee_bps=0, slippage_bps=0),
+                price_provider=lambda symbol: mark["price"],
+            )
+            signal = SimpleNamespace(
+                created_at="2026-01-01T00:00:00+00:00",
+                symbol="TEST-USDT-SWAP",
+                side=Side.LONG,
+                strength=1.0,
+                reason_codes=["unit_entry"],
+                features={},
+                invalidation_price=90.0,
+                take_profit_hint=140.0,
+                take_profit_plan={"partial_r": 2.0, "partial_exit_fraction": 0.5, "runner_r": 4.0},
+                hold_plan={},
+                filter_codes=[],
+                decision_trace={},
+            )
+            signal_id = ledger.record_signal(signal, "unit_scalp")
+            entry_intent = OrderIntent(
+                symbol="TEST-USDT-SWAP",
+                side=Side.LONG,
+                order_type="market",
+                qty=2.0,
+                leverage=3,
+                reduce_only=False,
+                entry_reason="unit_entry",
+                stop_loss=90.0,
+                max_slippage_bps=0.0,
+            )
+            ledger.record_order_intent(entry_intent, signal_id=signal_id)
+            executor.place_order(entry_intent)
+            runner = FleetRunner(
+                config=FleetConfig(
+                    run_id="exit-runner-run",
+                    execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_okx"),
+                    exit_management=ExitManagementConfig(mode="partial_tp_trailing"),
+                    ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                ),
+                market_data=StaticMarketData({}),
+                ledger=ledger,
+            )
+            cycle = {"orders": 0, "fills": 0, "stop_exits": 0, "risk_events": 0}
+
+            mark["price"] = 120.1
+            first = runner._manage_open_position_exit(
+                ledger=ledger,
+                executor=executor,
+                symbol="TEST-USDT-SWAP",
+                latest_price=120.1,
+                features={},
+                cycle=cycle,
+            )
+            mark["price"] = 140.1
+            second = runner._manage_open_position_exit(
+                ledger=ledger,
+                executor=executor,
+                symbol="TEST-USDT-SWAP",
+                latest_price=140.1,
+                features={},
+                cycle=cycle,
+            )
+
+            self.assertTrue(first)
+            self.assertTrue(second)
+            self.assertIsNone(ledger.get_position("TEST-USDT-SWAP"))
+            reduce_orders = [row for row in ledger.list_rows("orders") if row["reduce_only"] == 1]
+            self.assertEqual([row["exit_reason"] for row in reduce_orders], ["partial_take_profit", "runner_take_profit_exit"])
+            trade = ledger.list_rows("trade_lifecycle")[0]
+            self.assertEqual(trade["status"], "closed")
+            self.assertAlmostEqual(trade["open_qty"], 0.0)
+            self.assertEqual(trade["partial_take_profit_taken"], 1)
+            self.assertEqual(trade["exit_reason_summary"], "runner_take_profit_exit")
+            self.assertTrue(any(row["reason"] == "runner_take_profit_exit" for row in ledger.list_rows("risk_events")))
+
+    def test_full_tp_exit_profile_closes_entire_position_without_partial_order(self):
+        from langlang_trader.execution.paper import PaperExecutor
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(os.path.join(tmp, "fleet.sqlite3")).scoped(
+                run_id="exit-full-tp-run",
+                bot_id="bot-exit",
+                variant_id="variant-exit",
+            )
+            mark = {"price": 100.0}
+            executor = PaperExecutor(
+                ledger=ledger,
+                paper_config=PaperConfig(initial_equity_usdt=20_000, fee_bps=0, slippage_bps=0),
+                price_provider=lambda symbol: mark["price"],
+            )
+            signal = SimpleNamespace(
+                created_at="2026-01-01T00:00:00+00:00",
+                symbol="TEST-USDT-SWAP",
+                side=Side.LONG,
+                strength=1.0,
+                reason_codes=["unit_entry"],
+                features={},
+                invalidation_price=90.0,
+                take_profit_hint=112.0,
+                take_profit_plan={"take_profit_r": 1.2, "partial_r": 2.0, "partial_exit_fraction": 0.5, "runner_r": 4.0},
+                hold_plan={},
+                filter_codes=[],
+                decision_trace={},
+            )
+            signal_id = ledger.record_signal(signal, "unit_scalp")
+            entry_intent = OrderIntent(
+                symbol="TEST-USDT-SWAP",
+                side=Side.LONG,
+                order_type="market",
+                qty=2.0,
+                leverage=3,
+                reduce_only=False,
+                entry_reason="unit_entry",
+                stop_loss=90.0,
+                max_slippage_bps=0.0,
+            )
+            ledger.record_order_intent(entry_intent, signal_id=signal_id)
+            executor.place_order(entry_intent)
+            mark["price"] = 112.1
+            runner = FleetRunner(
+                config=FleetConfig(
+                    run_id="exit-full-tp-run",
+                    execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_okx"),
+                    exit_management=ExitManagementConfig(mode="full_tp_stop_loss"),
+                    ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                ),
+                market_data=StaticMarketData({}),
+                ledger=ledger,
+            )
+            cycle = {"orders": 0, "fills": 0, "stop_exits": 0, "risk_events": 0}
+
+            handled = runner._manage_open_position_exit(
+                ledger=ledger,
+                executor=executor,
+                symbol="TEST-USDT-SWAP",
+                latest_price=112.1,
+                features={},
+                cycle=cycle,
+            )
+
+            self.assertTrue(handled)
+            self.assertIsNone(ledger.get_position("TEST-USDT-SWAP"))
+            reduce_orders = [row for row in ledger.list_rows("orders") if row["reduce_only"] == 1]
+            self.assertEqual(len(reduce_orders), 1)
+            self.assertEqual(reduce_orders[0]["exit_reason"], "take_profit_exit")
+            trade = ledger.list_rows("trade_lifecycle")[0]
+            self.assertEqual(trade["status"], "closed")
+            self.assertAlmostEqual(trade["open_qty"], 0.0)
+            self.assertEqual(trade["partial_take_profit_taken"], 0)
+
+    def test_stop_loss_exit_closes_full_position_with_normalized_reason(self):
+        from langlang_trader.execution.paper import PaperExecutor
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(os.path.join(tmp, "fleet.sqlite3")).scoped(
+                run_id="exit-stop-run",
+                bot_id="bot-exit",
+                variant_id="variant-exit",
+            )
+            mark = {"price": 100.0}
+            executor = PaperExecutor(
+                ledger=ledger,
+                paper_config=PaperConfig(initial_equity_usdt=20_000, fee_bps=0, slippage_bps=0),
+                price_provider=lambda symbol: mark["price"],
+            )
+            executor.place_order(
+                OrderIntent(
+                    symbol="TEST-USDT-SWAP",
+                    side=Side.LONG,
+                    order_type="market",
+                    qty=2.0,
+                    leverage=3,
+                    reduce_only=False,
+                    entry_reason="unit_entry",
+                    stop_loss=90.0,
+                    max_slippage_bps=0.0,
+                )
+            )
+            runner = FleetRunner(
+                config=FleetConfig(
+                    run_id="exit-stop-run",
+                    execution=ExecutionConfig(mode="paper", exchange="okx", executor="paper_okx"),
+                    exit_management=ExitManagementConfig(mode="full_tp_stop_loss"),
+                    ledger_path=os.path.join(tmp, "fleet.sqlite3"),
+                ),
+                market_data=StaticMarketData({}),
+                ledger=ledger,
+            )
+            cycle = {"orders": 0, "fills": 0, "stop_exits": 0, "risk_events": 0}
+
+            mark["price"] = 89.9
+            handled = runner._close_if_stop_loss_hit(
+                ledger=ledger,
+                executor=executor,
+                symbol="TEST-USDT-SWAP",
+                latest_price=89.9,
+                cycle=cycle,
+            )
+
+            self.assertTrue(handled)
+            self.assertIsNone(ledger.get_position("TEST-USDT-SWAP"))
+            reduce_orders = [row for row in ledger.list_rows("orders") if row["reduce_only"] == 1]
+            self.assertEqual(len(reduce_orders), 1)
+            self.assertEqual(reduce_orders[0]["exit_reason"], "stop_loss_exit")
+            trade = ledger.list_rows("trade_lifecycle")[0]
+            self.assertEqual(trade["status"], "closed")
+            self.assertAlmostEqual(trade["open_qty"], 0.0)
+            self.assertEqual(json.loads(trade["exit_reason_codes_json"]), ["stop_loss_exit"])
+            self.assertTrue(any(row["reason"] == "stop_loss_exit" for row in ledger.list_rows("risk_events")))
 
     def test_exit_management_one_r_moves_stop_and_records_trade_event(self):
         from langlang_trader.execution.paper import PaperExecutor
@@ -1789,6 +2018,23 @@ class FleetRunnerTest(unittest.TestCase):
         self.assertEqual(config.risk.max_open_symbols, 3)
         self.assertEqual(len(config.bots), 10)
         self.assertEqual({bot.strategy_version for bot in config.bots}, {"rules_langlang_native_final", "rules_langlang_enhanced_final"})
+
+    def test_batch5_and_batch6_configs_declare_distinct_exit_profiles_and_tree_roots(self):
+        batch5 = load_fleet_config("configs/fleet/scalp_suite_batch5_24bot_paper.json")
+        batch6 = load_fleet_config("configs/fleet/scalp_suite_batch6_24bot_paper.json")
+
+        self.assertEqual(batch5.exit_management.mode, "partial_tp_trailing")
+        self.assertEqual(batch6.exit_management.mode, "full_tp_stop_loss")
+        self.assertEqual(batch6.run_id, "scalp-suite-batch6-30bot-paper-v1")
+        self.assertEqual(batch6.ledger_path, "output/fleet/scalp_suite_batch6_30bot/signal_fleet.sqlite3")
+        self.assertEqual(len(batch5.bots), 24)
+        self.assertEqual(len(batch6.bots), 24)
+        self.assertTrue(
+            all(list(bot.variant.strategy_tree_path[0:2]) == ["scalping", "batch5_partial_tp_trailing"] for bot in batch5.bots)
+        )
+        self.assertTrue(
+            all(list(bot.variant.strategy_tree_path[0:2]) == ["scalping", "batch6_full_tp_stop_loss"] for bot in batch6.bots)
+        )
 
     def test_dual_board_selection_is_computed_per_bot_profile(self):
         snapshots = {

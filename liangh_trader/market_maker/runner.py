@@ -7,7 +7,7 @@ from .config import MarketMakerConfig
 from .ledger import MarketMakerLedger
 from .models import BookTick, LatencySample, TopBookTick, TradeTick
 from .paper_executor import MarketMakerPaperExecutor
-from .strategy import OfiInventorySkewMakerStrategy, ReferencePassiveMakerStrategy
+from .strategy import InventoryAwarePassiveMakerStrategy, OfiInventorySkewMakerStrategy, ReferencePassiveMakerStrategy
 
 
 class MarketMakerRunner:
@@ -234,6 +234,8 @@ class MarketMakerRunner:
 
 
 def _strategy_for_config(config: MarketMakerConfig):
+    if config.strategy.strategy_version == "hft_inventory_aware_passive_mm_v1":
+        return InventoryAwarePassiveMakerStrategy(config)
     if config.strategy.strategy_version == "scalp_passive_maker_ofi_v1":
         return OfiInventorySkewMakerStrategy(config)
     return ReferencePassiveMakerStrategy(config)

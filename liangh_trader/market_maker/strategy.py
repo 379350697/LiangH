@@ -128,6 +128,28 @@ class OfiInventorySkewMakerStrategy:
         return ["buy", "sell"]
 
 
+class InventoryAwarePassiveMakerStrategy(OfiInventorySkewMakerStrategy):
+    def _sides_for_inventory_and_ofi(self, book: BookTick, inventory: InventoryState) -> list[str]:
+        max_inventory = self.config.risk.max_inventory_base
+        skew_threshold = max_inventory * 0.75 if max_inventory > 0 else 0.0
+        imbalance = _queue_imbalance(book)
+        min_abs = abs(self.config.strategy.min_ofi_abs)
+
+        if inventory.base_qty >= skew_threshold > 0:
+            return ["sell"]
+        if inventory.base_qty <= -skew_threshold < 0:
+            return ["buy"]
+        if inventory.base_qty > 0 and imbalance <= -min_abs:
+            return ["sell"]
+        if inventory.base_qty < 0 and imbalance >= min_abs:
+            return ["buy"]
+        if imbalance >= min_abs:
+            return ["buy"]
+        if imbalance <= -min_abs:
+            return ["sell"]
+        return ["buy", "sell"]
+
+
 def reference_passive_maker(config: MarketMakerConfig) -> ReferencePassiveMakerStrategy:
     return ReferencePassiveMakerStrategy(config)
 
