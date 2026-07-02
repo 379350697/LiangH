@@ -131,6 +131,23 @@ class FactorScore:
 
 
 @dataclass(frozen=True)
+class FactorExperimentConfig:
+    run_id: str
+    min_samples: int = 30
+    n_splits: int = 5
+    embargo_ns: int = 250_000_000
+    artifact_dir: str | Path | None = None
+
+
+@dataclass(frozen=True)
+class FactorExperimentResult:
+    run_id: str
+    scores: tuple[FactorScore, ...]
+    report: dict[str, Any]
+    artifact_path: str
+
+
+@dataclass(frozen=True)
 class WalkForwardSplit:
     train_samples: tuple[FactorResearchSample, ...]
     validation_samples: tuple[FactorResearchSample, ...]
@@ -279,6 +296,41 @@ class FactorResearchStore:
     def record_labels(self, labels: Sequence[ForwardLabel]) -> None:
         with self.connect() as conn:
             for label in labels:
+                existing = conn.execute(
+                    "select id from factor_labels where sample_id = ? and horizon_ns = ? order by id",
+                    (label.sample_id, label.horizon_ns),
+                ).fetchall()
+                values = (
+                    label.label_start_ns,
+                    label.label_end_ns,
+                    label.forward_return_bps,
+                    label.net_taker_pnl_bps,
+                    label.mfe_bps,
+                    label.mae_bps,
+                    int(label.hit_take_profit),
+                    int(label.hit_stop_loss),
+                )
+                if existing:
+                    keep_id = int(existing[0]["id"])
+                    conn.execute(
+                        """
+                        update factor_labels set
+                            label_start_ns=?,
+                            label_end_ns=?,
+                            forward_return_bps=?,
+                            net_taker_pnl_bps=?,
+                            mfe_bps=?,
+                            mae_bps=?,
+                            hit_take_profit=?,
+                            hit_stop_loss=?
+                        where id=?
+                        """,
+                        (*values, keep_id),
+                    )
+                    duplicate_ids = [int(row["id"]) for row in existing[1:]]
+                    if duplicate_ids:
+                        conn.executemany("delete from factor_labels where id = ?", [(row_id,) for row_id in duplicate_ids])
+                    continue
                 conn.execute(
                     """
                     insert into factor_labels (
@@ -290,14 +342,7 @@ class FactorResearchStore:
                     (
                         label.sample_id,
                         label.horizon_ns,
-                        label.label_start_ns,
-                        label.label_end_ns,
-                        label.forward_return_bps,
-                        label.net_taker_pnl_bps,
-                        label.mfe_bps,
-                        label.mae_bps,
-                        int(label.hit_take_profit),
-                        int(label.hit_stop_loss),
+                        *values,
                     ),
                 )
 
@@ -326,6 +371,93 @@ class FactorResearchStore:
                         _json(list(score.flags)),
                     ),
                 )
+
+    def record_experiment_run(
+        self,
+        *,
+        run_id: str,
+        config: dict[str, Any],
+        status: str,
+        summary: dict[str, Any],
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                insert into factor_experiment_runs (
+                    run_id, created_at_ns, config_json, status, summary_json
+                ) values (?, ?, ?, ?, ?)
+                on conflict(run_id) do update set
+                    created_at_ns=excluded.created_at_ns,
+                    config_json=excluded.config_json,
+                    status=excluded.status,
+                    summary_json=excluded.summary_json
+                """,
+                (run_id, time.monotonic_ns(), _json(config), status, _json(summary)),
+            )
+
+    def record_artifact(
+        self,
+        *,
+        run_id: str,
+        artifact_type: str,
+        path: str,
+        payload: dict[str, Any],
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                insert into factor_experiment_artifacts (
+                    run_id, created_at_ns, artifact_type, path, payload_json
+                ) values (?, ?, ?, ?, ?)
+                """,
+                (run_id, time.monotonic_ns(), artifact_type, path, _json(payload)),
+            )
+
+    def latest_experiment_summary(self) -> dict[str, Any]:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                select run_id, created_at_ns, status, summary_json
+                from factor_experiment_runs
+                order by created_at_ns desc
+                limit 1
+                """
+            ).fetchone()
+        if row is None:
+            return {}
+        summary = json.loads(row["summary_json"])
+        summary["run_id"] = str(row["run_id"])
+        summary["status"] = str(row["status"])
+        summary["created_at_ns"] = int(row["created_at_ns"])
+        return summary
+
+    def latest_artifact(self, *, run_id: str = "", artifact_type: str = "") -> dict[str, Any]:
+        where: list[str] = []
+        params: list[Any] = []
+        if run_id:
+            where.append("run_id = ?")
+            params.append(run_id)
+        if artifact_type:
+            where.append("artifact_type = ?")
+            params.append(artifact_type)
+        query = """
+            select run_id, artifact_type, path, payload_json, created_at_ns
+            from factor_experiment_artifacts
+        """
+        if where:
+            query += " where " + " and ".join(where)
+        query += " order by created_at_ns desc limit 1"
+        with self.connect() as conn:
+            row = conn.execute(query, params).fetchone()
+        if row is None:
+            return {}
+        return {
+            "run_id": str(row["run_id"]),
+            "artifact_type": str(row["artifact_type"]),
+            "path": str(row["path"]),
+            "payload": json.loads(row["payload_json"]),
+            "created_at_ns": int(row["created_at_ns"]),
+        }
 
     def list_samples(self) -> list[FactorResearchSample]:
         with self.connect() as conn:
@@ -435,7 +567,8 @@ class FactorResearchStore:
                     mfe_bps real not null,
                     mae_bps real not null,
                     hit_take_profit integer not null,
-                    hit_stop_loss integer not null
+                    hit_stop_loss integer not null,
+                    unique(sample_id, horizon_ns)
                 );
                 create table if not exists factor_scores (
                     id integer primary key autoincrement,
@@ -450,6 +583,21 @@ class FactorResearchStore:
                     hit_rate real not null,
                     decision text not null,
                     flags_json text not null
+                );
+                create table if not exists factor_experiment_runs (
+                    run_id text primary key,
+                    created_at_ns integer not null,
+                    config_json text not null,
+                    status text not null,
+                    summary_json text not null
+                );
+                create table if not exists factor_experiment_artifacts (
+                    id integer primary key autoincrement,
+                    run_id text not null,
+                    created_at_ns integer not null,
+                    artifact_type text not null,
+                    path text not null,
+                    payload_json text not null
                 );
                 """
             )
@@ -535,6 +683,8 @@ def audit_lookahead(
         leaks = 0
         if not factor.usable_at_decision:
             flags.add("not_usable_at_decision")
+        if any(_looks_like_future_field(field) for field in factor.input_fields):
+            flags.add("future_field_name")
         for sample in samples:
             if factor.factor_id not in sample.features:
                 continue
@@ -545,7 +695,7 @@ def audit_lookahead(
                 leaks += 1
             if factor.max_lag_ns > 0 and sample.decision_time_ns - feature_time_ns > factor.max_lag_ns:
                 flags.add("feature_lag_exceeds_contract")
-        decision = "leak_suspect" if leaks or "not_usable_at_decision" in flags else "ok"
+        decision = "leak_suspect" if leaks or "not_usable_at_decision" in flags or "future_field_name" in flags else "ok"
         results[factor.factor_id] = LookaheadAuditResult(
             factor_id=factor.factor_id,
             decision=decision,
@@ -705,6 +855,256 @@ def score_factors(
     return results
 
 
+def run_factor_experiment(
+    store: FactorResearchStore,
+    registry: Sequence[FactorDefinition],
+    config: FactorExperimentConfig,
+) -> FactorExperimentResult:
+    store.register_factors(registry)
+    samples = store.list_samples()
+    labels = store.list_labels()
+    audit = audit_lookahead(samples, registry)
+    scores = score_factors(samples, labels, registry, audit_results=audit, min_samples=config.min_samples)
+    splits = purged_walk_forward_splits(
+        samples,
+        labels,
+        n_splits=config.n_splits,
+        embargo_ns=config.embargo_ns,
+    ) if config.n_splits > 0 else []
+    report = build_factor_experiment_report(
+        samples,
+        labels,
+        registry,
+        scores,
+        audit_results=audit,
+        splits=splits,
+        run_id=config.run_id,
+    )
+    artifact_dir = Path(config.artifact_dir) if config.artifact_dir is not None else store.path.parent / "factor_research_artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = artifact_dir / f"{config.run_id}.factor_report.json"
+    artifact_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+
+    store.record_scores(config.run_id, scores)
+    summary = _experiment_summary(report)
+    store.record_experiment_run(
+        run_id=config.run_id,
+        config={
+            "min_samples": config.min_samples,
+            "n_splits": config.n_splits,
+            "embargo_ns": config.embargo_ns,
+            "artifact_dir": str(artifact_dir),
+        },
+        status="ok",
+        summary=summary,
+    )
+    store.record_artifact(
+        run_id=config.run_id,
+        artifact_type="factor_report",
+        path=str(artifact_path),
+        payload=report,
+    )
+    return FactorExperimentResult(
+        run_id=config.run_id,
+        scores=tuple(scores),
+        report=report,
+        artifact_path=str(artifact_path),
+    )
+
+
+def build_factor_experiment_report(
+    samples: Sequence[FactorResearchSample],
+    labels: Sequence[ForwardLabel],
+    registry: Sequence[FactorDefinition],
+    scores: Sequence[FactorScore],
+    *,
+    audit_results: dict[str, LookaheadAuditResult] | None = None,
+    splits: Sequence[WalkForwardSplit] = (),
+    run_id: str = "",
+) -> dict[str, Any]:
+    label_by_sample = _first_label_by_sample(labels)
+    score_by_factor = {score.factor_id: score for score in scores}
+    factor_ids = [factor.factor_id for factor in registry]
+    oos = _oos_factor_metrics(samples, label_by_sample, factor_ids, splits)
+    correlation_pairs = _factor_correlation_pairs(samples, factor_ids)
+    conclusions: dict[str, dict[str, Any]] = {}
+    for factor in registry:
+        score = score_by_factor.get(factor.factor_id)
+        audit = (audit_results or {}).get(factor.factor_id)
+        factor_samples = [sample for sample in samples if factor.factor_id in sample.features and sample.sample_id in label_by_sample]
+        recommended_threshold = None
+        if score is not None and factor_samples and score.decision not in {"leak_suspect", "insufficient_sample"}:
+            values = [sample.features[factor.factor_id] for sample in factor_samples]
+            recommended_threshold = _recommended_threshold(values, score.ic)
+        oos_metrics = oos.get(factor.factor_id, {})
+        decision = score.decision if score is not None else "insufficient_sample"
+        flags = set(score.flags if score is not None else ())
+        if audit is not None:
+            flags.update(audit.flags)
+        if decision in {"keep", "watch"} and oos_metrics.get("split_count", 0) > 0 and oos_metrics.get("mean_net_bps", 0.0) <= 0:
+            decision = "watch" if score and abs(score.ic) >= 0.15 else "drop"
+        if decision == "watch" and splits and oos_metrics.get("split_count", 0) == 0:
+            decision = "drop"
+        conclusions[factor.factor_id] = {
+            "decision": decision,
+            "sample_count": score.sample_count if score is not None else 0,
+            "ic": score.ic if score is not None else 0.0,
+            "rank_ic": score.rank_ic if score is not None else 0.0,
+            "mean_net_taker_pnl_bps": score.mean_net_taker_pnl_bps if score is not None else 0.0,
+            "top_bin_net_taker_pnl_bps": score.top_bin_net_taker_pnl_bps if score is not None else 0.0,
+            "oos_mean_net_bps": oos_metrics.get("mean_net_bps", 0.0),
+            "oos_positive_split_rate": oos_metrics.get("positive_split_rate", 0.0),
+            "recommended_threshold": recommended_threshold,
+            "threshold_candidates": _threshold_candidate_rows(
+                factor.factor_id,
+                factor_samples,
+                label_by_sample,
+                score.ic if score else 0.0,
+            ) if factor_samples and decision in {"keep", "watch"} else [],
+            "flags": sorted(flags),
+            "stability": _factor_stability_by_symbol(factor.factor_id, factor_samples, label_by_sample, score.ic if score else 0.0),
+        }
+    return {
+        "run_id": run_id,
+        "generated_at_ns": time.monotonic_ns(),
+        "sample_count": len(samples),
+        "label_count": len(labels),
+        "factor_count": len(registry),
+        "walk_forward": {
+            "split_count": len(splits),
+            "purged": True,
+        },
+        "factor_conclusions": conclusions,
+        "correlation_pairs": correlation_pairs,
+        "interference_matrix": _interference_matrix(correlation_pairs, conclusions),
+        "ablation": _ablation_summary(conclusions),
+    }
+
+
+def generate_research_candidate_config(
+    *,
+    active_config_path: str | Path,
+    output_dir: str | Path,
+    run_id: str,
+    report: dict[str, Any],
+) -> Path:
+    active = Path(active_config_path)
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    conclusions = report.get("factor_conclusions", {})
+    threshold_candidates: dict[str, float] = {}
+    blocked: list[str] = []
+    evidence: dict[str, Any] = {}
+    for factor_id, row in sorted(conclusions.items()):
+        decision = str(row.get("decision", ""))
+        if decision == "leak_suspect":
+            blocked.append(factor_id)
+            continue
+        if decision not in {"keep", "watch"}:
+            continue
+        threshold = row.get("recommended_threshold")
+        if threshold is None:
+            continue
+        threshold_candidates[factor_id] = float(threshold)
+        evidence[factor_id] = {
+            "decision": decision,
+            "ic": float(row.get("ic", 0.0)),
+            "oos_mean_net_bps": float(row.get("oos_mean_net_bps", 0.0)),
+            "sample_count": int(row.get("sample_count", 0)),
+            "threshold_candidates": row.get("threshold_candidates", []),
+        }
+    payload = {
+        "shadow_only": True,
+        "run_id": run_id,
+        "source_config": str(active),
+        "generated_at_ns": time.monotonic_ns(),
+        "promotion_gate": {
+            "requires_manual_approval": True,
+            "requires_shadow_positive_oos": True,
+            "requires_no_leak_suspect": True,
+        },
+        "factor_threshold_candidates": threshold_candidates,
+        "blocked_factors": blocked,
+        "evidence": evidence,
+        "active_config_snapshot": json.loads(active.read_text(encoding="utf-8")),
+    }
+    path = output / f"{active.stem}.{run_id}.research.candidate.json"
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def build_daily_research_summary(
+    store: FactorResearchStore,
+    registry: Sequence[FactorDefinition],
+    *,
+    maker_fills: Sequence[MakerFillInput] = (),
+    maker_ledger_paths: Sequence[str | Path] = (),
+) -> dict[str, Any]:
+    latest = store.latest_experiment_summary()
+    artifact = store.latest_artifact(run_id=str(latest.get("run_id", "")), artifact_type="factor_report") if latest else {}
+    report = artifact.get("payload", {}) if artifact else {}
+    conclusions = report.get("factor_conclusions", {})
+    if not conclusions:
+        samples = store.list_samples()
+        labels = store.list_labels()
+        scores = score_factors(samples, labels, registry, audit_results=audit_lookahead(samples, registry), min_samples=1)
+        report = build_factor_experiment_report(samples, labels, registry, scores)
+        conclusions = report.get("factor_conclusions", {})
+    status_counts = {status: 0 for status in ("keep", "watch", "drop", "leak_suspect", "insufficient_sample")}
+    for row in conclusions.values():
+        status = str(row.get("decision", "insufficient_sample"))
+        status_counts[status] = status_counts.get(status, 0) + 1
+    fills = list(maker_fills)
+    for path in maker_ledger_paths:
+        fills.extend(load_maker_fills_from_ledger(path))
+    maker_pnl = decompose_maker_pnl(fills)
+    return {
+        "status": "ok",
+        "latest_experiment": latest,
+        "sample_count": len(store.list_samples()),
+        "label_count": len(store.list_labels()),
+        "factor_count": len(registry),
+        "factor_status_counts": status_counts,
+        "maker_pnl": asdict(maker_pnl),
+    }
+
+
+def load_maker_fills_from_ledger(path: str | Path) -> list[MakerFillInput]:
+    ledger_path = Path(path)
+    if not ledger_path.exists():
+        return []
+    conn = sqlite3.connect(str(ledger_path), timeout=_SQLITE_BUSY_TIMEOUT_SECONDS)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            select fill_id, order_id, symbol, side, price, qty, fee_usdt, liquidity,
+                   event_time_ms, receive_time_ns
+            from mm_fills
+            order by receive_time_ns, id
+            """
+        ).fetchall()
+    except sqlite3.DatabaseError:
+        return []
+    finally:
+        conn.close()
+    return [
+        MakerFillInput(
+            fill_id=str(row["fill_id"]),
+            order_id=str(row["order_id"]),
+            symbol=str(row["symbol"]),
+            side=str(row["side"]),
+            price=float(row["price"]),
+            qty=float(row["qty"]),
+            fee_usdt=float(row["fee_usdt"]),
+            liquidity=str(row["liquidity"]),
+            event_time_ms=int(row["event_time_ms"]),
+            receive_time_ns=int(row["receive_time_ns"]),
+        )
+        for row in rows
+    ]
+
+
 def decompose_maker_pnl(fills: Sequence[MakerFillInput]) -> MakerPnlDecomposition:
     position_qty = 0.0
     avg_price = 0.0
@@ -807,16 +1207,47 @@ def main(argv: list[str] | None = None) -> int:
     _add_common_batch7_args(score_parser)
     score_parser.add_argument("--min-samples", type=int, default=30)
 
+    experiment_parser = actions.add_parser("experiment")
+    _add_common_batch7_args(experiment_parser)
+    experiment_parser.add_argument("--run-id", default="")
+    experiment_parser.add_argument("--artifact-dir", default="")
+    experiment_parser.add_argument("--min-samples", type=int, default=30)
+    experiment_parser.add_argument("--n-splits", type=int, default=5)
+    experiment_parser.add_argument("--embargo-ms", type=float, default=250.0)
+
     shadow_parser = actions.add_parser("shadow-generate")
     _add_common_batch7_args(shadow_parser)
     shadow_parser.add_argument("--active-config", default=str(DEFAULT_BATCH7_EVENT_SIGNAL_CONFIG))
     shadow_parser.add_argument("--output-dir", default="")
     shadow_parser.add_argument("--run-id", default="latest")
 
+    candidate_parser = actions.add_parser("candidate-generate")
+    _add_common_batch7_args(candidate_parser)
+    candidate_parser.add_argument("--active-config", default=str(DEFAULT_BATCH7_EVENT_SIGNAL_CONFIG))
+    candidate_parser.add_argument("--output-dir", default="")
+    candidate_parser.add_argument("--run-id", default="latest")
+
     report_parser = actions.add_parser("report")
     _add_common_batch7_args(report_parser)
     report_parser.add_argument("--latest", action="store_true")
     report_parser.add_argument("--run-id", default="")
+
+    summary_parser = actions.add_parser("daily-summary")
+    _add_common_batch7_args(summary_parser)
+    summary_parser.add_argument("--maker-ledger", action="append", default=[])
+
+    pipeline_parser = actions.add_parser("pipeline-run")
+    _add_common_batch7_args(pipeline_parser)
+    pipeline_parser.add_argument("--active-config", default=str(DEFAULT_BATCH7_EVENT_SIGNAL_CONFIG))
+    pipeline_parser.add_argument("--output-dir", default="")
+    pipeline_parser.add_argument("--artifact-dir", default="")
+    pipeline_parser.add_argument("--run-id", default="")
+    pipeline_parser.add_argument("--horizons", default="250ms,1s,3s,5s")
+    pipeline_parser.add_argument("--round-trip-fee-bps", type=float, default=8.0)
+    pipeline_parser.add_argument("--min-samples", type=int, default=30)
+    pipeline_parser.add_argument("--n-splits", type=int, default=5)
+    pipeline_parser.add_argument("--embargo-ms", type=float, default=250.0)
+    pipeline_parser.add_argument("--maker-ledger", action="append", default=[])
 
     args = parser.parse_args(argv)
     if args.scope != "batch7":
@@ -864,6 +1295,31 @@ def main(argv: list[str] | None = None) -> int:
         _print_json({"status": "ok", "run_id": run_id, "scores": [_score_to_json(score) for score in scores]})
         return 0
 
+    if args.action == "experiment":
+        run_id = args.run_id or f"experiment-{time.strftime('%Y%m%dT%H%M%S')}"
+        artifact_dir = args.artifact_dir or "output/fleet/scalp_suite_batch7_24bot/factor_research_artifacts"
+        result = run_factor_experiment(
+            store,
+            registry,
+            FactorExperimentConfig(
+                run_id=run_id,
+                min_samples=args.min_samples,
+                n_splits=args.n_splits,
+                embargo_ns=int(args.embargo_ms * 1_000_000),
+                artifact_dir=artifact_dir,
+            ),
+        )
+        _print_json(
+            {
+                "status": "ok",
+                "run_id": result.run_id,
+                "artifact_path": result.artifact_path,
+                "factor_status_counts": _experiment_summary(result.report)["factor_status_counts"],
+                "walk_forward": result.report.get("walk_forward", {}),
+            }
+        )
+        return 0
+
     if args.action == "shadow-generate":
         output_dir = Path(args.output_dir) if args.output_dir else Path(args.active_config).parent
         labels = store.list_labels()
@@ -882,6 +1338,36 @@ def main(argv: list[str] | None = None) -> int:
         _print_json({"status": "ok", "candidate_config": str(candidate), "shadow_only": True})
         return 0
 
+    if args.action == "candidate-generate":
+        output_dir = Path(args.output_dir) if args.output_dir else Path(args.active_config).parent
+        artifact = store.latest_artifact(
+            run_id="" if args.run_id == "latest" else args.run_id,
+            artifact_type="factor_report",
+        )
+        report = artifact.get("payload")
+        candidate_run_id = str(artifact.get("run_id", args.run_id))
+        if not report:
+            result = run_factor_experiment(
+                store,
+                registry,
+                FactorExperimentConfig(
+                    run_id=f"candidate-source-{time.strftime('%Y%m%dT%H%M%S')}",
+                    min_samples=1,
+                    n_splits=0,
+                    artifact_dir=output_dir,
+                ),
+            )
+            report = result.report
+            candidate_run_id = result.run_id
+        candidate = generate_research_candidate_config(
+            active_config_path=args.active_config,
+            output_dir=output_dir,
+            run_id=candidate_run_id,
+            report=report,
+        )
+        _print_json({"status": "ok", "candidate_config": str(candidate), "shadow_only": True})
+        return 0
+
     if args.action == "report":
         _print_json(
             {
@@ -893,6 +1379,53 @@ def main(argv: list[str] | None = None) -> int:
                 "label_count": len(store.list_labels()),
                 "latest": bool(args.latest),
                 "run_id": args.run_id,
+                "latest_experiment": store.latest_experiment_summary(),
+            }
+        )
+        return 0
+
+    if args.action == "daily-summary":
+        summary = build_daily_research_summary(store, registry, maker_ledger_paths=args.maker_ledger)
+        _print_json(summary)
+        return 0
+
+    if args.action == "pipeline-run":
+        run_id = args.run_id or f"pipeline-{time.strftime('%Y%m%dT%H%M%S')}"
+        output_dir = Path(args.output_dir) if args.output_dir else Path(args.active_config).parent
+        artifact_dir = args.artifact_dir or str(output_dir / "factor_research_artifacts")
+        labels = build_forward_labels(
+            store.list_samples(),
+            store.list_observations(),
+            horizons_ns=_parse_horizons(args.horizons),
+            round_trip_fee_bps=args.round_trip_fee_bps,
+        )
+        store.record_labels(labels)
+        result = run_factor_experiment(
+            store,
+            registry,
+            FactorExperimentConfig(
+                run_id=run_id,
+                min_samples=args.min_samples,
+                n_splits=args.n_splits,
+                embargo_ns=int(args.embargo_ms * 1_000_000),
+                artifact_dir=artifact_dir,
+            ),
+        )
+        candidate = generate_research_candidate_config(
+            active_config_path=args.active_config,
+            output_dir=output_dir,
+            run_id=run_id,
+            report=result.report,
+        )
+        summary = build_daily_research_summary(store, registry, maker_ledger_paths=args.maker_ledger)
+        _print_json(
+            {
+                "status": "ok",
+                "run_id": run_id,
+                "label_count": len(labels),
+                "artifact_path": result.artifact_path,
+                "candidate_config": str(candidate),
+                "summary": summary,
             }
         )
         return 0
@@ -961,6 +1494,219 @@ def _score_to_json(score: FactorScore) -> dict[str, Any]:
     row = asdict(score)
     row["flags"] = list(score.flags)
     return row
+
+
+def _experiment_summary(report: dict[str, Any]) -> dict[str, Any]:
+    conclusions = report.get("factor_conclusions", {})
+    status_counts: dict[str, int] = {}
+    for row in conclusions.values():
+        status = str(row.get("decision", "insufficient_sample"))
+        status_counts[status] = status_counts.get(status, 0) + 1
+    return {
+        "sample_count": int(report.get("sample_count", 0)),
+        "label_count": int(report.get("label_count", 0)),
+        "factor_count": int(report.get("factor_count", 0)),
+        "walk_forward": report.get("walk_forward", {}),
+        "factor_status_counts": status_counts,
+    }
+
+
+def _first_label_by_sample(labels: Sequence[ForwardLabel]) -> dict[str, ForwardLabel]:
+    label_by_sample: dict[str, ForwardLabel] = {}
+    for label in labels:
+        label_by_sample.setdefault(label.sample_id, label)
+    return label_by_sample
+
+
+def _oos_factor_metrics(
+    samples: Sequence[FactorResearchSample],
+    label_by_sample: dict[str, ForwardLabel],
+    factor_ids: Sequence[str],
+    splits: Sequence[WalkForwardSplit],
+) -> dict[str, dict[str, float]]:
+    if not splits:
+        return {}
+    metrics: dict[str, dict[str, float]] = {}
+    for factor_id in factor_ids:
+        split_means: list[float] = []
+        for split in splits:
+            train_pairs = _factor_pairs(split.train_samples, label_by_sample, factor_id)
+            validation_pairs = _factor_pairs(split.validation_samples, label_by_sample, factor_id)
+            if len(train_pairs) < 2 or not validation_pairs:
+                continue
+            train_values = [pair[0] for pair in train_pairs]
+            train_targets = [pair[1] for pair in train_pairs]
+            direction = _pearson(train_values, train_targets)
+            split_means.append(_top_bin_mean([pair[0] for pair in validation_pairs], [pair[1] for pair in validation_pairs], direction))
+        if split_means:
+            metrics[factor_id] = {
+                "mean_net_bps": sum(split_means) / len(split_means),
+                "positive_split_rate": sum(1 for value in split_means if value > 0) / len(split_means),
+                "split_count": float(len(split_means)),
+            }
+    return metrics
+
+
+def _factor_pairs(
+    samples: Sequence[FactorResearchSample],
+    label_by_sample: dict[str, ForwardLabel],
+    factor_id: str,
+) -> list[tuple[float, float]]:
+    return [
+        (float(sample.features[factor_id]), label_by_sample[sample.sample_id].net_taker_pnl_bps)
+        for sample in samples
+        if factor_id in sample.features and sample.sample_id in label_by_sample
+    ]
+
+
+def _factor_correlation_pairs(samples: Sequence[FactorResearchSample], factor_ids: Sequence[str]) -> list[dict[str, Any]]:
+    pairs: list[dict[str, Any]] = []
+    for left_index, left in enumerate(factor_ids):
+        for right in factor_ids[left_index + 1:]:
+            joined = [
+                (float(sample.features[left]), float(sample.features[right]))
+                for sample in samples
+                if left in sample.features and right in sample.features
+            ]
+            if len(joined) < 3:
+                continue
+            corr = _pearson([item[0] for item in joined], [item[1] for item in joined])
+            if abs(corr) >= 0.80:
+                pairs.append({"left": left, "right": right, "correlation": corr, "sample_count": len(joined)})
+    pairs.sort(key=lambda item: abs(float(item["correlation"])), reverse=True)
+    return pairs
+
+
+def _interference_matrix(correlation_pairs: Sequence[dict[str, Any]], conclusions: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    matrix: dict[str, dict[str, Any]] = {}
+    for pair in correlation_pairs:
+        left = str(pair["left"])
+        right = str(pair["right"])
+        key = f"{left}|{right}"
+        left_decision = conclusions.get(left, {}).get("decision", "insufficient_sample")
+        right_decision = conclusions.get(right, {}).get("decision", "insufficient_sample")
+        matrix[key] = {
+            "correlation": float(pair["correlation"]),
+            "left_decision": left_decision,
+            "right_decision": right_decision,
+            "action": "prefer_stronger_oos" if left_decision == right_decision else "keep_non_dropped_side",
+        }
+    return matrix
+
+
+def _ablation_summary(conclusions: dict[str, dict[str, Any]]) -> dict[str, dict[str, float]]:
+    kept_values = [
+        float(row.get("oos_mean_net_bps", row.get("top_bin_net_taker_pnl_bps", 0.0)))
+        for row in conclusions.values()
+        if row.get("decision") in {"keep", "watch"}
+    ]
+    baseline = sum(kept_values) / len(kept_values) if kept_values else 0.0
+    rows: dict[str, dict[str, float]] = {}
+    for factor_id, row in conclusions.items():
+        contribution = float(row.get("oos_mean_net_bps", row.get("top_bin_net_taker_pnl_bps", 0.0)))
+        if row.get("decision") not in {"keep", "watch"}:
+            contribution = 0.0
+        rows[factor_id] = {
+            "baseline_oos_mean_net_bps": baseline,
+            "without_factor_oos_mean_net_bps": baseline - contribution,
+            "delta_oos_mean_net_bps": contribution,
+        }
+    return rows
+
+
+def _factor_stability_by_symbol(
+    factor_id: str,
+    samples: Sequence[FactorResearchSample],
+    label_by_sample: dict[str, ForwardLabel],
+    ic: float,
+) -> dict[str, Any]:
+    by_symbol: dict[str, list[tuple[float, float]]] = {}
+    for sample in samples:
+        if sample.sample_id not in label_by_sample:
+            continue
+        by_symbol.setdefault(sample.symbol, []).append((sample.features[factor_id], label_by_sample[sample.sample_id].net_taker_pnl_bps))
+    symbol_rows: dict[str, dict[str, float]] = {}
+    for symbol, pairs in by_symbol.items():
+        if not pairs:
+            continue
+        values = [pair[0] for pair in pairs]
+        targets = [pair[1] for pair in pairs]
+        symbol_rows[symbol] = {
+            "sample_count": float(len(pairs)),
+            "top_bin_net_bps": _top_bin_mean(values, targets, ic),
+        }
+    positive = sum(1 for row in symbol_rows.values() if row["top_bin_net_bps"] > 0)
+    return {
+        "symbol_count": len(symbol_rows),
+        "positive_symbol_count": positive,
+        "positive_symbol_rate": positive / len(symbol_rows) if symbol_rows else 0.0,
+        "by_symbol": symbol_rows,
+    }
+
+
+def _recommended_threshold(values: Sequence[float], ic: float) -> float:
+    if not values:
+        return 0.0
+    quantile = 0.75 if ic >= 0 else 0.25
+    return _quantile(sorted(values), quantile)
+
+
+def _threshold_candidate_rows(
+    factor_id: str,
+    samples: Sequence[FactorResearchSample],
+    label_by_sample: dict[str, ForwardLabel],
+    ic: float,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    values = sorted(float(sample.features[factor_id]) for sample in samples if sample.sample_id in label_by_sample)
+    if not values:
+        return rows
+    quantiles = (0.60, 0.75, 0.90) if ic >= 0 else (0.40, 0.25, 0.10)
+    for quantile in quantiles:
+        threshold = _quantile(values, quantile)
+        selected = [
+            label_by_sample[sample.sample_id].net_taker_pnl_bps
+            for sample in samples
+            if sample.sample_id in label_by_sample
+            and (
+                float(sample.features[factor_id]) >= threshold
+                if ic >= 0
+                else float(sample.features[factor_id]) <= threshold
+            )
+        ]
+        if not selected:
+            continue
+        rows.append(
+            {
+                "quantile": quantile,
+                "threshold": threshold,
+                "sample_count": len(selected),
+                "mean_net_bps": sum(selected) / len(selected),
+                "hit_rate": sum(1 for value in selected if value > 0) / len(selected),
+            }
+        )
+    rows.sort(key=lambda item: (float(item["mean_net_bps"]), int(item["sample_count"])), reverse=True)
+    return rows
+
+
+def _looks_like_future_field(field: str) -> bool:
+    token = field.lower()
+    future_tokens = ("future", "forward", "label", "target", "next_", "post_decision")
+    return any(part in token for part in future_tokens)
+
+
+def _quantile(sorted_values: Sequence[float], quantile: float) -> float:
+    if not sorted_values:
+        return 0.0
+    if len(sorted_values) == 1:
+        return float(sorted_values[0])
+    index = (len(sorted_values) - 1) * min(max(quantile, 0.0), 1.0)
+    lower = int(math.floor(index))
+    upper = int(math.ceil(index))
+    if lower == upper:
+        return float(sorted_values[lower])
+    weight = index - lower
+    return float(sorted_values[lower] * (1.0 - weight) + sorted_values[upper] * weight)
 
 
 def _first_observation_at_or_after(rows: Sequence[MarketObservation], receive_time_ns: int) -> MarketObservation | None:

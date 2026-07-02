@@ -9,17 +9,22 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 from langlang_trader.factor_research import (
+    FactorExperimentConfig,
     FactorDefinition,
     FactorResearchStore,
     FactorResearchSample,
+    ForwardLabel,
     MakerFillInput,
     MarketObservation,
     audit_lookahead,
     batch7_factor_registry,
+    build_daily_research_summary,
     build_forward_labels,
     decompose_maker_pnl,
+    generate_research_candidate_config,
     main,
     purged_walk_forward_splits,
+    run_factor_experiment,
     score_factors,
     write_shadow_candidate_config,
 )
@@ -330,6 +335,233 @@ class Batch7FactorResearchTest(unittest.TestCase):
             self.assertTrue(payload["shadow_only"])
             self.assertEqual(payload["source_config"], str(active))
             self.assertEqual(payload["kept_factors"], ["true.alpha"])
+
+    def test_experiment_runner_records_oos_artifact_and_factor_conclusions(self):
+        registry = [
+            FactorDefinition("true.alpha", "test", ("batch7", "unit"), ("true",), 0, True, "unit"),
+            FactorDefinition("noise.alpha", "test", ("batch7", "unit"), ("noise",), 0, True, "unit"),
+            FactorDefinition("future.alpha", "test", ("batch7", "unit"), ("future",), 0, True, "unit"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            store = FactorResearchStore(os.path.join(tmp, "research.sqlite3"))
+            store.register_factors(registry)
+            for i in range(64):
+                decision_time_ns = 1_000_000 + i * 100_000
+                true_value = float(i % 16)
+                signed_net = true_value - 4.0
+                sample = _sample(
+                    f"s{i}",
+                    decision_time_ns=decision_time_ns,
+                    features={
+                        "true.alpha": true_value,
+                        "noise.alpha": 1.0 if i % 2 else -1.0,
+                        "future.alpha": signed_net,
+                    },
+                    feature_times_ns={
+                        "true.alpha": decision_time_ns - 10,
+                        "noise.alpha": decision_time_ns - 10,
+                        "future.alpha": decision_time_ns + 1,
+                    },
+                )
+                store.record_sample(sample)
+                store.record_labels(
+                    [
+                        ForwardLabel(
+                            sample_id=sample.sample_id,
+                            horizon_ns=50_000,
+                            label_start_ns=decision_time_ns,
+                            label_end_ns=decision_time_ns + 50_000,
+                            forward_return_bps=signed_net,
+                            net_taker_pnl_bps=signed_net,
+                            mfe_bps=max(0.0, signed_net),
+                            mae_bps=min(0.0, signed_net),
+                            hit_take_profit=signed_net >= 10.0,
+                            hit_stop_loss=signed_net <= -2.5,
+                        )
+                    ]
+                )
+
+            result = run_factor_experiment(
+                store,
+                registry,
+                FactorExperimentConfig(
+                    run_id="exp-unit",
+                    min_samples=20,
+                    n_splits=3,
+                    embargo_ns=10_000,
+                    artifact_dir=os.path.join(tmp, "artifacts"),
+                ),
+            )
+
+            self.assertEqual(result.run_id, "exp-unit")
+            self.assertTrue(Path(result.artifact_path).exists())
+            conclusions = result.report["factor_conclusions"]
+            self.assertIn(conclusions["true.alpha"]["decision"], {"keep", "watch"})
+            self.assertEqual(conclusions["noise.alpha"]["decision"], "drop")
+            self.assertEqual(conclusions["future.alpha"]["decision"], "leak_suspect")
+            self.assertGreater(result.report["walk_forward"]["split_count"], 0)
+            latest = store.latest_experiment_summary()
+            self.assertEqual(latest["run_id"], "exp-unit")
+
+    def test_candidate_generation_uses_only_clean_oos_factors_and_preserves_active_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            active = Path(tmp) / "active.json"
+            active_payload = {
+                "run_id": "active",
+                "bot_matrix": {
+                    "strategies": [
+                        {
+                            "strategy_key": "hft_queue_imbalance_one_tick",
+                            "parameters": {"min_queue_imbalance": 0.6, "take_profit_bps": 10.0},
+                        }
+                    ]
+                },
+            }
+            active.write_text(json.dumps(active_payload), encoding="utf-8")
+            report = {
+                "factor_conclusions": {
+                    "hft.queue_imbalance": {
+                        "decision": "keep",
+                        "recommended_threshold": 0.72,
+                        "oos_mean_net_bps": 3.5,
+                    },
+                    "hft.spread_bps": {"decision": "drop", "recommended_threshold": 1.0},
+                    "future.alpha": {"decision": "leak_suspect", "recommended_threshold": 9.0},
+                }
+            }
+
+            candidate = generate_research_candidate_config(
+                active_config_path=active,
+                output_dir=Path(tmp),
+                run_id="exp-unit",
+                report=report,
+            )
+
+            self.assertEqual(json.loads(active.read_text(encoding="utf-8")), active_payload)
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+            self.assertTrue(payload["shadow_only"])
+            self.assertTrue(payload["promotion_gate"]["requires_manual_approval"])
+            self.assertEqual(payload["factor_threshold_candidates"], {"hft.queue_imbalance": 0.72})
+            self.assertEqual(payload["blocked_factors"], ["future.alpha"])
+
+    def test_daily_summary_combines_factor_status_and_maker_pnl_breakdown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = FactorResearchStore(os.path.join(tmp, "research.sqlite3"))
+            registry = [
+                FactorDefinition("true.alpha", "test", ("batch7", "unit"), ("true",), 0, True, "unit"),
+            ]
+            store.register_factors(registry)
+            sample = _sample("s1", decision_time_ns=1_000, features={"true.alpha": 1.0})
+            store.record_sample(sample)
+            store.record_labels(
+                [
+                    ForwardLabel(
+                        sample_id="s1",
+                        horizon_ns=250,
+                        label_start_ns=1_000,
+                        label_end_ns=1_250,
+                        forward_return_bps=5.0,
+                        net_taker_pnl_bps=3.0,
+                        mfe_bps=5.0,
+                        mae_bps=0.0,
+                        hit_take_profit=False,
+                        hit_stop_loss=False,
+                    )
+                ]
+            )
+            run_factor_experiment(
+                store,
+                registry,
+                FactorExperimentConfig(run_id="exp-summary", min_samples=1, n_splits=0, artifact_dir=os.path.join(tmp, "artifacts")),
+            )
+            fills = [
+                MakerFillInput("f1", "o1", "BTCUSDT", "buy", 100.0, 1.0, 0.02, "maker", 1_000, 1_000),
+                MakerFillInput("f2", "o2", "BTCUSDT", "sell", 100.05, 1.0, 0.02, "maker", 1_100, 1_100),
+            ]
+
+            summary = build_daily_research_summary(store, registry, maker_fills=fills)
+
+            self.assertEqual(summary["latest_experiment"]["run_id"], "exp-summary")
+            self.assertEqual(summary["factor_status_counts"]["insufficient_sample"], 0)
+            self.assertAlmostEqual(summary["maker_pnl"]["price_pnl_usdt"], 0.05, places=8)
+            self.assertAlmostEqual(summary["maker_pnl"]["fees_usdt"], 0.04, places=8)
+            self.assertAlmostEqual(summary["maker_pnl"]["net_pnl_usdt"], 0.01, places=8)
+
+    def test_cli_experiment_and_candidate_commands_emit_json_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            research_db = os.path.join(tmp, "research.sqlite3")
+            store = FactorResearchStore(research_db)
+            store.register_factors(batch7_factor_registry())
+            for i in range(12):
+                decision_time_ns = 1_000 + i * 100
+                sample = _sample(
+                    f"s{i}",
+                    decision_time_ns=decision_time_ns,
+                    features={"hft.queue_imbalance": float(i), "hft.spread_bps": float(12 - i)},
+                )
+                store.record_sample(sample)
+                store.record_labels(
+                    [
+                        ForwardLabel(
+                            sample_id=sample.sample_id,
+                            horizon_ns=250,
+                            label_start_ns=decision_time_ns,
+                            label_end_ns=decision_time_ns + 250,
+                            forward_return_bps=float(i),
+                            net_taker_pnl_bps=float(i),
+                            mfe_bps=float(i),
+                            mae_bps=0.0,
+                            hit_take_profit=False,
+                            hit_stop_loss=False,
+                        )
+                    ]
+                )
+            active = Path(tmp) / "active.json"
+            active.write_text(json.dumps({"bot_matrix": {"strategies": []}}), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code = main(
+                    [
+                        "batch7",
+                        "experiment",
+                        "--research-db",
+                        research_db,
+                        "--run-id",
+                        "cli-exp",
+                        "--artifact-dir",
+                        os.path.join(tmp, "artifacts"),
+                        "--min-samples",
+                        "5",
+                    ]
+                )
+
+            self.assertEqual(code, 0)
+            experiment = json.loads(output.getvalue())
+            self.assertEqual(experiment["run_id"], "cli-exp")
+            self.assertTrue(Path(experiment["artifact_path"]).exists())
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code = main(
+                    [
+                        "batch7",
+                        "candidate-generate",
+                        "--research-db",
+                        research_db,
+                        "--active-config",
+                        str(active),
+                        "--output-dir",
+                        tmp,
+                        "--run-id",
+                        "cli-exp",
+                    ]
+                )
+
+            self.assertEqual(code, 0)
+            candidate = json.loads(output.getvalue())
+            self.assertTrue(candidate["shadow_only"])
+            self.assertTrue(candidate["candidate_config"].endswith(".candidate.json"))
 
     def test_cli_batch7_audit_and_report_return_json(self):
         with tempfile.TemporaryDirectory() as tmp:
