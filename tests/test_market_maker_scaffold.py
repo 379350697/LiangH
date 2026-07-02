@@ -20,7 +20,15 @@ from liangh_trader.market_maker.exchange_interfaces import MarketSignalState, Ra
 from liangh_trader.market_maker.hybrid_runtime import HybridMarketMakerRuntime
 from liangh_trader.market_maker.ledger import MarketMakerLedger
 from liangh_trader.market_maker.live_executor import LiveExecutorSafetyError, assert_live_orders_enabled
-from liangh_trader.market_maker.models import BookTick, InventoryState, OrderTruthEvent, QuoteIntent, TopBookTick, TradeTick
+from liangh_trader.market_maker.models import (
+    BookTick,
+    InventoryState,
+    LimitOrderState,
+    OrderTruthEvent,
+    QuoteIntent,
+    TopBookTick,
+    TradeTick,
+)
 from liangh_trader.market_maker.paper_executor import MarketMakerPaperExecutor
 from liangh_trader.market_maker.runner import MarketMakerRunner
 from liangh_trader.market_maker.strategy import (
@@ -515,6 +523,35 @@ class MarketMakerStrategyTest(unittest.TestCase):
 
 
 class MarketMakerPaperExecutorTest(unittest.TestCase):
+    @staticmethod
+    def _book() -> BookTick:
+        return BookTick(
+            symbol="BTCUSDT",
+            event_time_ms=1_000,
+            receive_time_ns=1_000_000,
+            best_bid=99.0,
+            best_bid_qty=5.0,
+            best_ask=101.0,
+            best_ask_qty=5.0,
+            update_id=1,
+        )
+
+    @staticmethod
+    def _quote(created_at_ns: int = 1_100_000) -> QuoteIntent:
+        return QuoteIntent(
+            symbol="BTCUSDT",
+            side="buy",
+            price=98.5,
+            qty=0.5,
+            created_at_ns=created_at_ns,
+            ttl_ms=1000,
+            post_only=True,
+            strategy_version="market_maker_v1",
+            strategy_tree_variant_id="mm_v1_reference_passive_btcusdt",
+            strategy_tree_parent_id="market_maker_v1_root",
+            strategy_tree_path=["market_making", "market_maker_v1", "reference_passive"],
+        )
+
     def test_post_only_limit_order_fills_from_trade_tick_and_records_strategy_tree(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = load_market_maker_config(write_config(tmp))
@@ -564,6 +601,57 @@ class MarketMakerPaperExecutorTest(unittest.TestCase):
             fill_rows = ledger.list_rows("mm_fills")
             self.assertEqual(fill_rows[0]["strategy_tree_variant_id"], "mm_v1_reference_passive_btcusdt")
             self.assertEqual(fill_rows[0]["liquidity"], "maker")
+
+    def test_order_ids_continue_after_restart_and_current_order_state_uses_latest_row(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_market_maker_config(write_config(tmp))
+            ledger = MarketMakerLedger(config.ledger_path, context=config.ledger_context)
+            first = MarketMakerPaperExecutor(config=config, ledger=ledger)
+            first_order = first.place_quotes([self._quote(1_100_000)], book=self._book())[0]
+            first.cancel_order(first_order.order_id, reason="unit_cancel")
+
+            restarted = MarketMakerPaperExecutor(config=config, ledger=ledger)
+            second_order = restarted.place_quotes([self._quote(2_100_000)], book=self._book())[0]
+
+            self.assertNotEqual(first_order.order_id, second_order.order_id)
+            self.assertEqual(ledger.current_order_status_counts()["open"], 1)
+            self.assertEqual(ledger.current_order_status_counts().get("canceled", 0), 1)
+
+    def test_current_order_state_is_scoped_by_full_order_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_a = load_market_maker_config(write_config(tmp, bot_id="bot-a"))
+            config_b = load_market_maker_config(write_config(tmp, bot_id="bot-b"))
+            ledger_a = MarketMakerLedger(config_a.ledger_path, context=config_a.ledger_context)
+            ledger_b = MarketMakerLedger(config_b.ledger_path, context=config_b.ledger_context)
+            order = LimitOrderState(
+                order_id="mm-1",
+                quote_id="q-1",
+                symbol="BTCUSDT",
+                side="buy",
+                price=99.0,
+                qty=1.0,
+                remaining_qty=1.0,
+                status="open",
+                post_only=True,
+                created_at_ns=1_000,
+                updated_at_ns=1_000,
+                expires_at_ns=2_000,
+                strategy_version=config_a.strategy.strategy_version,
+                strategy_tree_variant_id=config_a.strategy_tree.strategy_tree_variant_id,
+                strategy_tree_parent_id=config_a.strategy_tree.strategy_tree_parent_id,
+                strategy_tree_path=list(config_a.strategy_tree.strategy_tree_path),
+            )
+
+            ledger_a.record_order_state(order, reason="open_a")
+            ledger_a.record_order_state(
+                LimitOrderState(**{**order.__dict__, "status": "canceled", "remaining_qty": 0.0, "updated_at_ns": 1_500}),
+                reason="cancel_a",
+            )
+            ledger_b.record_order_state(order, reason="open_b")
+
+            counts = ledger_a.current_order_status_counts()
+            self.assertEqual(counts["open"], 1)
+            self.assertEqual(counts["canceled"], 1)
 
     def test_post_only_crossing_quote_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

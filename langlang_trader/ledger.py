@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime
 import json
 import sqlite3
@@ -866,7 +867,24 @@ class Ledger:
         now: str,
     ) -> str:
         with self.connect() as conn:
-            existing = None if self._force_new_trade_lifecycle(intent) else self._open_trade_row(conn, intent.symbol)
+            if not self._force_new_trade_lifecycle(intent):
+                reverse_trade_id = self._handle_reverse_entry_fill(
+                    conn,
+                    intent=intent,
+                    order_id=order_id,
+                    fill_id=fill_id,
+                    price=price,
+                    fee=fee,
+                    raw_payload=raw_payload,
+                    now=now,
+                )
+                if reverse_trade_id is not None:
+                    return reverse_trade_id
+            existing = (
+                None
+                if self._force_new_trade_lifecycle(intent)
+                else self._open_trade_row(conn, intent.symbol, side=intent.side)
+            )
             if existing is not None:
                 trade_id = existing["trade_id"]
                 new_qty = float(existing["qty"]) + intent.qty
@@ -985,10 +1003,11 @@ class Ledger:
     ) -> str | None:
         with self.connect() as conn:
             entry_trade_id = self._trace_entry_trade_id(intent)
+            open_side = self._open_side_for_close_intent(intent)
             trade = (
                 self._open_trade_row_by_id(conn, entry_trade_id, intent.symbol)
                 if entry_trade_id is not None
-                else self._open_trade_row(conn, intent.symbol)
+                else self._open_trade_row(conn, intent.symbol, side=open_side)
             )
             if trade is None:
                 self._append_trade_event(
@@ -1012,103 +1031,269 @@ class Ledger:
                 )
                 return None
 
-            self._update_trade_excursion(conn, trade, mark_price=price, at=now)
-            refreshed = self._trade_row(conn, str(trade["trade_id"])) or trade
-            open_qty = float(refreshed["open_qty"])
-            if open_qty <= 0:
-                open_qty = float(refreshed["qty"])
-            closed_qty = min(open_qty, intent.qty)
-            gross_pnl = (price - float(refreshed["entry_price"])) * closed_qty * Side.from_value(refreshed["side"]).sign
-            total_fees = float(refreshed["total_fees"]) + fee
-            previous_gross = float(refreshed["gross_pnl_usdt"] or 0.0)
-            total_gross = previous_gross + gross_pnl
-            realized = total_gross - total_fees
-            hold_seconds = _seconds_between(str(refreshed["opened_at"]), now)
-            initial_risk = refreshed["initial_risk_usdt"]
-            r_multiple = None
-            if initial_risk is not None and float(initial_risk) > 0:
-                r_multiple = realized / float(initial_risk)
-            mfe = float(refreshed["mfe_usdt"])
-            mfe_capture = None
-            if mfe > 0:
-                mfe_capture = max(0.0, realized) / mfe
-            event_type = "close_fill" if intent.qty >= open_qty - 1e-12 else "partial_take_profit"
-            if event_type == "close_fill":
-                conn.execute(
-                    """
-                    update trade_lifecycle
-                    set status = 'closed',
-                        closed_at = ?,
-                        exit_order_id = ?,
-                        exit_fill_id = ?,
-                        exit_price = ?,
-                        open_qty = 0.0,
-                        exit_fee = exit_fee + ?,
-                        total_fees = ?,
-                        gross_pnl_usdt = ?,
-                        realized_pnl_usdt = ?,
-                        hold_duration_seconds = ?,
-                        r_multiple = ?,
-                        mfe_capture_ratio = ?,
-                        exit_reason_codes_json = ?,
-                        exit_reason_summary = ?,
-                        exit_decision_trace_json = ?,
-                        exit_feature_snapshot_json = ?
-                    where trade_id = ?
-                    """,
-                    (
-                        now,
-                        order_id,
-                        fill_id,
-                        price,
-                        fee,
-                        total_fees,
-                        total_gross,
-                        realized,
-                        hold_seconds,
-                        r_multiple,
-                        mfe_capture,
-                        json.dumps(to_jsonable(self._exit_reason_codes(intent.exit_reason)), ensure_ascii=False, sort_keys=True),
-                        intent.exit_reason,
-                        json.dumps(to_jsonable(intent.decision_trace), ensure_ascii=False, sort_keys=True),
-                        json.dumps(to_jsonable(intent.decision_trace.get("features", {})), ensure_ascii=False, sort_keys=True),
-                        refreshed["trade_id"],
-                    ),
-                )
-            else:
-                remaining_qty = max(0.0, open_qty - closed_qty)
-                conn.execute(
-                    """
-                    update trade_lifecycle
-                    set open_qty = ?,
-                        exit_fee = exit_fee + ?,
-                        total_fees = ?,
-                        gross_pnl_usdt = ?,
-                        realized_pnl_usdt = ?,
-                        partial_take_profit_taken = 1,
-                        partial_take_profit_taken_at = coalesce(partial_take_profit_taken_at, ?)
-                    where trade_id = ?
-                    """,
-                    (remaining_qty, fee, total_fees, total_gross, realized, now, refreshed["trade_id"]),
-                )
-            self._append_trade_event(
+            return self._apply_exit_trade_fill(
                 conn,
-                trade_id=refreshed["trade_id"],
-                event_type=event_type,
-                symbol=intent.symbol,
-                side=intent.side.value,
+                trade=trade,
+                intent=intent,
                 order_id=order_id,
                 fill_id=fill_id,
                 price=price,
-                qty=intent.qty,
                 fee=fee,
-                reason_codes=self._exit_reason_codes(intent.exit_reason),
-                reason_summary=intent.exit_reason,
-                decision_trace=intent.decision_trace,
-                feature_snapshot=intent.decision_trace.get("features", {}),
                 raw_payload=raw_payload,
+                now=now,
             )
-            return str(refreshed["trade_id"])
+
+    def _apply_exit_trade_fill(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        trade: sqlite3.Row,
+        intent: OrderIntent,
+        order_id: int,
+        fill_id: int,
+        price: float,
+        fee: float,
+        raw_payload: dict[str, Any],
+        now: str,
+    ) -> str:
+        self._update_trade_excursion(conn, trade, mark_price=price, at=now)
+        refreshed = self._trade_row(conn, str(trade["trade_id"])) or trade
+        open_qty = float(refreshed["open_qty"])
+        if open_qty <= 0:
+            open_qty = float(refreshed["qty"])
+        closed_qty = min(open_qty, intent.qty)
+        gross_pnl = (price - float(refreshed["entry_price"])) * closed_qty * Side.from_value(refreshed["side"]).sign
+        total_fees = float(refreshed["total_fees"]) + fee
+        previous_gross = float(refreshed["gross_pnl_usdt"] or 0.0)
+        total_gross = previous_gross + gross_pnl
+        realized = total_gross - total_fees
+        hold_seconds = _seconds_between(str(refreshed["opened_at"]), now)
+        initial_risk = refreshed["initial_risk_usdt"]
+        r_multiple = None
+        if initial_risk is not None and float(initial_risk) > 0:
+            r_multiple = realized / float(initial_risk)
+        mfe = float(refreshed["mfe_usdt"])
+        mfe_capture = None
+        if mfe > 0:
+            mfe_capture = max(0.0, realized) / mfe
+        event_type = "close_fill" if intent.qty >= open_qty - 1e-12 else "partial_take_profit"
+        if event_type == "close_fill":
+            conn.execute(
+                """
+                update trade_lifecycle
+                set status = 'closed',
+                    closed_at = ?,
+                    exit_order_id = ?,
+                    exit_fill_id = ?,
+                    exit_price = ?,
+                    open_qty = 0.0,
+                    exit_fee = exit_fee + ?,
+                    total_fees = ?,
+                    gross_pnl_usdt = ?,
+                    realized_pnl_usdt = ?,
+                    hold_duration_seconds = ?,
+                    r_multiple = ?,
+                    mfe_capture_ratio = ?,
+                    exit_reason_codes_json = ?,
+                    exit_reason_summary = ?,
+                    exit_decision_trace_json = ?,
+                    exit_feature_snapshot_json = ?
+                where trade_id = ?
+                """,
+                (
+                    now,
+                    order_id,
+                    fill_id,
+                    price,
+                    fee,
+                    total_fees,
+                    total_gross,
+                    realized,
+                    hold_seconds,
+                    r_multiple,
+                    mfe_capture,
+                    json.dumps(to_jsonable(self._exit_reason_codes(intent.exit_reason)), ensure_ascii=False, sort_keys=True),
+                    intent.exit_reason,
+                    json.dumps(to_jsonable(intent.decision_trace), ensure_ascii=False, sort_keys=True),
+                    json.dumps(to_jsonable(intent.decision_trace.get("features", {})), ensure_ascii=False, sort_keys=True),
+                    refreshed["trade_id"],
+                ),
+            )
+        else:
+            remaining_qty = max(0.0, open_qty - closed_qty)
+            conn.execute(
+                """
+                update trade_lifecycle
+                set open_qty = ?,
+                    exit_fee = exit_fee + ?,
+                    total_fees = ?,
+                    gross_pnl_usdt = ?,
+                    realized_pnl_usdt = ?,
+                    partial_take_profit_taken = 1,
+                    partial_take_profit_taken_at = coalesce(partial_take_profit_taken_at, ?)
+                where trade_id = ?
+                """,
+                (remaining_qty, fee, total_fees, total_gross, realized, now, refreshed["trade_id"]),
+            )
+        self._append_trade_event(
+            conn,
+            trade_id=refreshed["trade_id"],
+            event_type=event_type,
+            symbol=intent.symbol,
+            side=intent.side.value,
+            order_id=order_id,
+            fill_id=fill_id,
+            price=price,
+            qty=intent.qty,
+            fee=fee,
+            reason_codes=self._exit_reason_codes(intent.exit_reason),
+            reason_summary=intent.exit_reason,
+            decision_trace=intent.decision_trace,
+            feature_snapshot=intent.decision_trace.get("features", {}),
+            raw_payload=raw_payload,
+        )
+        return str(refreshed["trade_id"])
+
+    def _handle_reverse_entry_fill(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        intent: OrderIntent,
+        order_id: int,
+        fill_id: int,
+        price: float,
+        fee: float,
+        raw_payload: dict[str, Any],
+        now: str,
+    ) -> str | None:
+        position = self._position_row(conn, intent.symbol)
+        if position is None or str(position["side"]) == intent.side.value:
+            return None
+        open_trade = self._open_trade_row(conn, intent.symbol, side=position["side"])
+        if open_trade is None:
+            return None
+        position_qty = float(position["qty"])
+        closed_qty = min(position_qty, intent.qty)
+        close_fee = fee * (closed_qty / intent.qty) if intent.qty > 0 else 0.0
+        close_intent = replace(
+            intent,
+            qty=closed_qty,
+            reduce_only=True,
+            exit_reason="reverse_entry_close",
+            decision_trace={**intent.decision_trace, "reverse_entry_close": True},
+        )
+        closed_trade_id = self._apply_exit_trade_fill(
+            conn,
+            trade=open_trade,
+            intent=close_intent,
+            order_id=order_id,
+            fill_id=fill_id,
+            price=price,
+            fee=close_fee,
+            raw_payload=raw_payload,
+            now=now,
+        )
+        residual_qty = intent.qty - closed_qty
+        if residual_qty <= 1e-12:
+            return closed_trade_id
+        residual_intent = replace(
+            intent,
+            qty=residual_qty,
+            decision_trace={**intent.decision_trace, "reverse_entry_residual_qty": residual_qty},
+        )
+        return self._insert_entry_trade_fill(
+            conn,
+            intent=residual_intent,
+            order_id=order_id,
+            fill_id=fill_id,
+            price=price,
+            fee=fee - close_fee,
+            raw_payload=raw_payload,
+            now=now,
+        )
+
+    def _insert_entry_trade_fill(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        intent: OrderIntent,
+        order_id: int,
+        fill_id: int,
+        price: float,
+        fee: float,
+        raw_payload: dict[str, Any],
+        now: str,
+    ) -> str:
+        latest_intent = self._latest_order_intent_row(conn, intent)
+        intent_row = None if latest_intent is None else dict(latest_intent)
+        signal_row = self._signal_for_intent(conn, intent_row)
+        reason_codes = self._entry_reason_codes(intent, signal_row)
+        feature_snapshot = self._json_from_row(signal_row, "features_json", {})
+        decision_trace = self._json_from_row(signal_row, "decision_trace_json", intent.decision_trace)
+        signal_id = None if intent_row is None else intent_row.get("signal_id")
+        intent_id = None if intent_row is None else intent_row.get("id")
+        trade_id = f"{self.run_id}:{self.bot_id}:{self.exchange}:{intent.symbol}:{fill_id}"
+        initial_risk = None
+        if intent.stop_loss is not None:
+            initial_risk = abs(price - intent.stop_loss) * intent.qty
+        conn.execute(
+            """
+            insert into trade_lifecycle (
+                trade_id, run_id, bot_id, variant_id, exchange, symbol, side, status, opened_at,
+                entry_signal_id, entry_intent_id, entry_order_id, entry_fill_id, entry_price, qty, open_qty,
+                leverage, initial_stop_loss, current_stop_loss, initial_risk_usdt, entry_fee, total_fees,
+                entry_reason_codes_json, entry_reason_summary, entry_decision_trace_json,
+                entry_feature_snapshot_json, strategy_version, regime, setup, historical_match_score
+            ) values (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                trade_id,
+                *self._context_tuple(),
+                self.exchange,
+                intent.symbol,
+                intent.side.value,
+                now,
+                signal_id,
+                intent_id,
+                order_id,
+                fill_id,
+                price,
+                intent.qty,
+                intent.qty,
+                intent.leverage,
+                intent.stop_loss,
+                intent.stop_loss,
+                initial_risk,
+                fee,
+                fee,
+                json.dumps(to_jsonable(reason_codes), ensure_ascii=False, sort_keys=True),
+                intent.entry_reason,
+                json.dumps(to_jsonable(decision_trace), ensure_ascii=False, sort_keys=True),
+                json.dumps(to_jsonable(feature_snapshot), ensure_ascii=False, sort_keys=True),
+                intent.strategy_version,
+                _enum_value(intent.regime),
+                _enum_value(intent.setup),
+                intent.historical_match_score,
+            ),
+        )
+        self._append_trade_event(
+            conn,
+            trade_id=trade_id,
+            event_type="entry_fill",
+            symbol=intent.symbol,
+            side=intent.side.value,
+            order_id=order_id,
+            fill_id=fill_id,
+            price=price,
+            qty=intent.qty,
+            fee=fee,
+            reason_codes=reason_codes,
+            reason_summary=intent.entry_reason,
+            decision_trace=decision_trace,
+            feature_snapshot=feature_snapshot,
+            raw_payload=raw_payload,
+        )
+        return trade_id
 
     def _latest_order_intent_row(self, conn: sqlite3.Connection, intent: OrderIntent) -> sqlite3.Row | None:
         return conn.execute(
@@ -1142,7 +1327,36 @@ class Ledger:
         symbol: str,
         *,
         exchange: str | None = None,
+        side: Side | str | None = None,
     ) -> sqlite3.Row | None:
+        selected_exchange = exchange or self.exchange
+        selected_side = _enum_value(side)
+        if selected_side is None:
+            position = self._position_row(conn, symbol, exchange=selected_exchange)
+            if position is not None:
+                selected_side = str(position["side"])
+        side_filter = "" if selected_side is None else " and side = ?"
+        params: tuple[Any, ...] = (self.run_id, self.bot_id, selected_exchange, symbol)
+        if selected_side is not None:
+            params = (*params, selected_side)
+        return conn.execute(
+            f"""
+            select *
+            from trade_lifecycle
+            where run_id = ? and bot_id = ? and exchange = ? and symbol = ? and status = 'open'{side_filter}
+            order by opened_at desc
+            limit 1
+            """,
+            params,
+        ).fetchone()
+
+    def _open_trade_rows(
+        self,
+        conn: sqlite3.Connection,
+        symbol: str,
+        *,
+        exchange: str | None = None,
+    ) -> list[sqlite3.Row]:
         selected_exchange = exchange or self.exchange
         return conn.execute(
             """
@@ -1150,7 +1364,23 @@ class Ledger:
             from trade_lifecycle
             where run_id = ? and bot_id = ? and exchange = ? and symbol = ? and status = 'open'
             order by opened_at desc
-            limit 1
+            """,
+            (self.run_id, self.bot_id, selected_exchange, symbol),
+        ).fetchall()
+
+    def _position_row(
+        self,
+        conn: sqlite3.Connection,
+        symbol: str,
+        *,
+        exchange: str | None = None,
+    ) -> sqlite3.Row | None:
+        selected_exchange = exchange or self.exchange
+        return conn.execute(
+            """
+            select *
+            from positions
+            where run_id = ? and bot_id = ? and exchange = ? and symbol = ?
             """,
             (self.run_id, self.bot_id, selected_exchange, symbol),
         ).fetchone()
@@ -1193,6 +1423,10 @@ class Ledger:
             return None
         value = str(trade_id).strip()
         return value or None
+
+    @staticmethod
+    def _open_side_for_close_intent(intent: OrderIntent) -> Side:
+        return Side.SHORT if intent.side is Side.LONG else Side.LONG
 
     def _signal_for_intent(self, conn: sqlite3.Connection, intent_row: dict[str, Any] | None) -> sqlite3.Row | None:
         if intent_row is None or intent_row.get("signal_id") is None:
@@ -1289,6 +1523,51 @@ class Ledger:
         conn.execute(
             "update trade_lifecycle set data_quality_flags_json = ? where trade_id = ?",
             (json.dumps(merged, ensure_ascii=False, sort_keys=True), trade_id),
+        )
+
+    def _close_trade_for_reconciliation(
+        self,
+        conn: sqlite3.Connection,
+        trade: sqlite3.Row,
+        *,
+        now: str,
+        reason: str,
+        flags: list[str],
+    ) -> None:
+        trade_id = str(trade["trade_id"])
+        self._merge_trade_quality_flags(conn, trade_id, flags)
+        conn.execute(
+            """
+            update trade_lifecycle
+            set status = 'closed',
+                closed_at = ?,
+                exit_price = coalesce(exit_price, entry_price),
+                open_qty = 0.0,
+                exit_reason_codes_json = ?,
+                exit_reason_summary = ?,
+                exit_decision_trace_json = ?
+            where trade_id = ?
+            """,
+            (
+                now,
+                json.dumps([reason], ensure_ascii=False, sort_keys=True),
+                reason,
+                json.dumps({"source": "ledger_reconciliation"}, ensure_ascii=False, sort_keys=True),
+                trade_id,
+            ),
+        )
+        self._append_trade_event(
+            conn,
+            trade_id=trade_id,
+            event_type="ledger_reconciliation_close",
+            symbol=str(trade["symbol"]),
+            side=str(trade["side"]),
+            price=float(trade["entry_price"]),
+            qty=float(trade["open_qty"]),
+            reason_codes=[reason],
+            reason_summary=reason,
+            decision_trace={"source": "ledger_reconciliation"},
+            data_quality_flags=flags,
         )
 
     def _update_trade_excursion(
@@ -1522,6 +1801,57 @@ class Ledger:
                 "partial_taken": bool(int(trade["partial_take_profit_taken"] or 0)),
                 "take_profit_plan": take_profit_plan,
             }
+
+    def reconcile_open_trades_with_position(
+        self,
+        symbol: str,
+        *,
+        exchange: str | None = None,
+        reason: str = "ledger_reconciliation_close",
+    ) -> int:
+        selected_exchange = exchange or self.exchange
+        now = utc_now_iso()
+        actions = 0
+        with self.connect() as conn:
+            position = self._position_row(conn, symbol, exchange=selected_exchange)
+            open_rows = self._open_trade_rows(conn, symbol, exchange=selected_exchange)
+            keep_trade_id: str | None = None
+            if position is not None:
+                matching = [row for row in open_rows if row["side"] == position["side"]]
+                if matching:
+                    keep_trade_id = str(matching[0]["trade_id"])
+                    keep_open_qty = float(matching[0]["open_qty"])
+                    position_qty = float(position["qty"])
+                    if abs(keep_open_qty - position_qty) > max(1e-9, abs(position_qty) * 1e-4):
+                        conn.execute(
+                            "update trade_lifecycle set open_qty = ?, qty = max(qty, ?) where trade_id = ?",
+                            (position_qty, position_qty, keep_trade_id),
+                        )
+                        self._append_trade_event(
+                            conn,
+                            trade_id=keep_trade_id,
+                            event_type="ledger_reconciliation_adjust_open_qty",
+                            symbol=symbol,
+                            side=str(position["side"]),
+                            qty=position_qty,
+                            reason_codes=[reason],
+                            reason_summary="align open_qty with current position",
+                            data_quality_flags=["position_lifecycle_mismatch_reconciled"],
+                        )
+                        actions += 1
+            for row in open_rows:
+                trade_id = str(row["trade_id"])
+                if trade_id == keep_trade_id:
+                    continue
+                self._close_trade_for_reconciliation(
+                    conn,
+                    row,
+                    now=now,
+                    reason=reason,
+                    flags=["position_lifecycle_mismatch_reconciled"],
+                )
+                actions += 1
+        return actions
 
     def adopt_legacy_open_position(
         self,

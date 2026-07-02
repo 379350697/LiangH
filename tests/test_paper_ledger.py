@@ -358,6 +358,55 @@ class PaperLedgerTest(unittest.TestCase):
             self.assertEqual([event["reason"] for event in events], ["missing_mark_price_recovered"])
             self.assertEqual(events[0]["symbol"], "BIGTIME-USDT-SWAP")
 
+    def test_non_reduce_only_reverse_fill_closes_old_lifecycle_and_opens_residual_side(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(os.path.join(tmp, "paper.sqlite3"))
+            mark = {"price": 100.0}
+            executor = PaperExecutor(
+                ledger=ledger,
+                paper_config=PaperConfig(initial_equity_usdt=20_000, fee_bps=0, slippage_bps=0),
+                price_provider=lambda symbol: mark["price"],
+            )
+            executor.place_order(
+                OrderIntent(
+                    symbol="TEST-USDT-SWAP",
+                    side=Side.LONG,
+                    order_type="market",
+                    qty=1.0,
+                    leverage=3,
+                    reduce_only=False,
+                    entry_reason="initial_long",
+                    stop_loss=95.0,
+                    max_slippage_bps=0.0,
+                )
+            )
+
+            mark["price"] = 105.0
+            executor.place_order(
+                OrderIntent(
+                    symbol="TEST-USDT-SWAP",
+                    side=Side.SHORT,
+                    order_type="market",
+                    qty=1.5,
+                    leverage=3,
+                    reduce_only=False,
+                    entry_reason="reverse_short",
+                    stop_loss=110.0,
+                    max_slippage_bps=0.0,
+                )
+            )
+
+            trades = ledger.list_rows("trade_lifecycle")
+            closed_long = next(row for row in trades if row["side"] == "long")
+            open_short = next(row for row in trades if row["side"] == "short")
+            position = ledger.get_position("TEST-USDT-SWAP")
+            self.assertEqual(closed_long["status"], "closed")
+            self.assertAlmostEqual(closed_long["open_qty"], 0.0)
+            self.assertEqual(open_short["status"], "open")
+            self.assertAlmostEqual(open_short["open_qty"], 0.5)
+            self.assertEqual(position.side, Side.SHORT)
+            self.assertAlmostEqual(position.qty, 0.5)
+
 
 if __name__ == "__main__":
     unittest.main()

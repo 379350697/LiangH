@@ -17,8 +17,11 @@ class MarketMakerPaperExecutor:
             quote_usdt=config.paper.initial_quote_usdt,
         )
         self._orders: dict[str, LimitOrderState] = {}
-        self._order_seq = itertools.count(1)
-        self._fill_seq = itertools.count(1)
+        self._order_seq = itertools.count(ledger.max_numeric_suffix("mm_orders", "order_id", "mm-") + 1)
+        self._flatten_order_seq = itertools.count(
+            ledger.max_numeric_suffix("mm_fills", "order_id", "flatten-") + 1
+        )
+        self._fill_seq = itertools.count(ledger.max_numeric_suffix("mm_fills", "fill_id", "fill-") + 1)
 
     def open_orders(self) -> list[LimitOrderState]:
         return [
@@ -167,7 +170,7 @@ class MarketMakerPaperExecutor:
         self.inventory.fees_usdt += fee
         fill = FillEvent(
             fill_id=f"fill-{next(self._fill_seq)}",
-            order_id=f"flatten-{next(self._order_seq)}",
+            order_id=f"flatten-{next(self._flatten_order_seq)}",
             symbol=self.config.symbol,
             side=side,
             price=price,

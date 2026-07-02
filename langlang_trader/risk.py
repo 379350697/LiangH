@@ -108,6 +108,14 @@ class RiskEngine:
         if latest_price <= 0 or notional <= 0:
             self._reject("invalid_price_or_notional", latest_price=latest_price, notional=notional)
             return None
+        if not self._valid_stop_side(signal=signal, latest_price=latest_price):
+            self._reject(
+                "invalid_stop_loss_side",
+                side=signal.side.value,
+                latest_price=latest_price,
+                stop_loss=signal.invalidation_price,
+            )
+            return None
         qty = notional / latest_price
         return OrderIntent(
             symbol=signal.symbol,
@@ -129,6 +137,15 @@ class RiskEngine:
     def _reject(self, reason: str, **trace: object) -> None:
         self.last_rejection_reason = reason
         self.last_rejection_trace = dict(trace)
+
+    @staticmethod
+    def _valid_stop_side(*, signal: Signal, latest_price: float) -> bool:
+        stop = float(signal.invalidation_price)
+        if stop <= 0:
+            return False
+        if signal.side.value == "long":
+            return stop < latest_price
+        return stop > latest_price
 
 
 def _context_value(value):

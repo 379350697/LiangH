@@ -178,6 +178,50 @@ class RiskEnginePositionSizingTest(unittest.TestCase):
         self.assertEqual(engine.last_rejection_reason, "max_open_symbols")
         self.assertEqual(engine.last_rejection_trace["open_symbol_count"], 2)
 
+    def test_risk_engine_rejects_long_stop_above_latest_price(self):
+        engine = RiskEngine(RiskConfig(max_position_usdt=100.0))
+
+        intent = engine.intent_from_signal(
+            signal=Signal(
+                symbol="BTC-USDT-SWAP",
+                side=Side.LONG,
+                strength=0.8,
+                reason_codes=["bad_stop"],
+                features={},
+                invalidation_price=101.0,
+                take_profit_hint=105.0,
+            ),
+            account=AccountSnapshot(equity_usdt=10_000, cash_usdt=10_000, margin_used_usdt=0),
+            latest_price=100.0,
+            open_positions=[],
+        )
+
+        self.assertIsNone(intent)
+        self.assertEqual(engine.last_rejection_reason, "invalid_stop_loss_side")
+        self.assertEqual(engine.last_rejection_trace["side"], "long")
+
+    def test_risk_engine_rejects_short_stop_below_latest_price(self):
+        engine = RiskEngine(RiskConfig(max_position_usdt=100.0))
+
+        intent = engine.intent_from_signal(
+            signal=Signal(
+                symbol="BTC-USDT-SWAP",
+                side=Side.SHORT,
+                strength=0.8,
+                reason_codes=["bad_stop"],
+                features={},
+                invalidation_price=99.0,
+                take_profit_hint=95.0,
+            ),
+            account=AccountSnapshot(equity_usdt=10_000, cash_usdt=10_000, margin_used_usdt=0),
+            latest_price=100.0,
+            open_positions=[],
+        )
+
+        self.assertIsNone(intent)
+        self.assertEqual(engine.last_rejection_reason, "invalid_stop_loss_side")
+        self.assertEqual(engine.last_rejection_trace["side"], "short")
+
 
 if __name__ == "__main__":
     unittest.main()

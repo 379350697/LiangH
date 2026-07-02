@@ -174,14 +174,45 @@ class HftScalpingStrategyTest(unittest.TestCase):
             ledger = Ledger(ledger_path)
             lifecycle = ledger.list_rows("trade_lifecycle", run_id="unit-hft-batch7")
             self.assertEqual([row["status"] for row in lifecycle].count("closed"), 1)
-            self.assertEqual([row["status"] for row in lifecycle].count("open"), 1)
+            self.assertEqual([row["status"] for row in lifecycle].count("open"), 0)
             closed = [row for row in lifecycle if row["status"] == "closed"][0]
             self.assertEqual(closed["open_qty"], 0.0)
             self.assertEqual(json.loads(closed["exit_reason_codes_json"]), ["take_profit_exit"])
 
             trade_events = ledger.list_rows("trade_events", run_id="unit-hft-batch7")
+            self.assertEqual([row["event_type"] for row in trade_events].count("entry_fill"), 1)
             self.assertEqual([row["event_type"] for row in trade_events].count("add_fill"), 0)
             self.assertEqual([row["event_type"] for row in trade_events].count("partial_take_profit"), 0)
+
+    def test_paper_runner_after_restart_restores_open_position_and_does_not_duplicate_lifecycle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger_path = os.path.join(tmp, "hft.sqlite3")
+            variant = HftScalpVariant(
+                variant_id="hft_queue_imbalance_btc_v1",
+                symbol="BTC-USDT-SWAP",
+                exchange_symbol="BTCUSDT",
+                strategy_kind="queue_imbalance_one_tick",
+                take_profit_bps=10.0,
+                stop_bps=2.0,
+                position_size_usdt=100.0,
+            )
+            bot = ("batch7_hft_queue_imbalance_btc_paper", variant, RulesQueueImbalanceOneTickStrategy.version)
+            first_runner = HftScalpPaperRunner(
+                run_id="unit-hft-batch7",
+                ledger=Ledger(ledger_path),
+                bots=[bot],
+            )
+            first_runner.on_book(_book(now_ns=1_000_000_000))
+
+            restarted_runner = HftScalpPaperRunner(
+                run_id="unit-hft-batch7",
+                ledger=Ledger(ledger_path),
+                bots=[bot],
+            )
+            restarted_runner.on_book(_book(now_ns=2_000_000_000))
+
+            lifecycle = Ledger(ledger_path).list_rows("trade_lifecycle", run_id="unit-hft-batch7")
+            self.assertEqual([row["status"] for row in lifecycle].count("open"), 1)
 
     def test_config_rejects_event_signal_take_profit_below_round_trip_fee_floor(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -8,6 +8,13 @@ import time
 from pathlib import Path
 from typing import Any
 
+from langlang_trader.factor_research import (
+    FactorResearchSample,
+    FactorResearchStore,
+    batch7_factor_registry,
+    hft_candidate_features,
+    observation_from_book,
+)
 from langlang_trader.ledger import Ledger
 from langlang_trader.models import AccountSnapshot, OrderIntent, Position, Side, utc_now_iso
 from liangh_trader.market_maker.binance_ws import BinanceUsdmWebSocketMarketData
@@ -95,6 +102,8 @@ class HftScalpFleetConfig:
     fee_bps: float = HFT_DEFAULT_FEE_BPS
     slippage_bps: float = 2.0
     max_loop_lag_ms: float = 200.0
+    factor_research_enabled: bool = True
+    factor_research_db_path: str | None = None
 
 
 class RulesQueueImbalanceOneTickStrategy:
@@ -263,12 +272,16 @@ class HftScalpPaperRunner:
         initial_equity_usdt: float = 10_000.0,
         fee_bps: float = 4.0,
         exchange: str = "binance",
+        factor_research_store: FactorResearchStore | None = None,
     ) -> None:
         self.run_id = run_id
         self.ledger = ledger
         self.initial_equity_usdt = initial_equity_usdt
         self.fee_bps = fee_bps
         self.exchange = exchange
+        self.factor_research_store = factor_research_store
+        if self.factor_research_store is not None:
+            self.factor_research_store.register_factors(batch7_factor_registry())
         normalized_bots = [
             (bot_id, _variant_with_cost_floor(variant, fee_bps=fee_bps), strategy_version)
             for bot_id, variant, strategy_version in bots
@@ -281,6 +294,7 @@ class HftScalpPaperRunner:
         self._bot_versions = {bot_id: strategy_version for bot_id, _, strategy_version in normalized_bots}
         self._open_positions: dict[str, _OpenHftPosition] = {}
         self._realized_pnl_by_bot: dict[str, float] = {}
+        self._restore_open_positions()
 
     @classmethod
     def from_config(cls, config: HftScalpFleetConfig) -> "HftScalpPaperRunner":
@@ -291,6 +305,11 @@ class HftScalpPaperRunner:
             initial_equity_usdt=config.initial_equity_usdt,
             fee_bps=config.fee_bps,
             exchange="binance",
+            factor_research_store=(
+                FactorResearchStore(config.factor_research_db_path)
+                if config.factor_research_enabled and config.factor_research_db_path
+                else None
+            ),
         )
 
     def on_trade(self, tick: TradeTick) -> None:
@@ -299,6 +318,7 @@ class HftScalpPaperRunner:
                 strategy.on_trade(tick)
 
     def on_book(self, book: BookTick | TopBookTick, *, loop_lag_ms: float = 0.0) -> None:
+        self._record_factor_observation(book)
         closed_bot_ids: set[str] = set()
         for bot_id, position in list(self._open_positions.items()):
             if book.symbol == position.variant.exchange_symbol:
@@ -308,9 +328,59 @@ class HftScalpPaperRunner:
             if bot_id in closed_bot_ids or bot_id in self._open_positions or not hasattr(strategy, "on_book"):
                 continue
             signal = strategy.on_book(book)
+            self._record_factor_sample(bot_id, strategy, book, signal)
             if signal is None:
                 continue
             self._open_position(bot_id, signal, book.receive_time_ns)
+
+    def _record_factor_observation(self, book: BookTick | TopBookTick) -> None:
+        if self.factor_research_store is None:
+            return
+        self.factor_research_store.record_observation(observation_from_book(book))
+
+    def _record_factor_sample(
+        self,
+        bot_id: str,
+        strategy: Any,
+        book: BookTick | TopBookTick,
+        signal: HftScalpSignal | None,
+    ) -> None:
+        if self.factor_research_store is None:
+            return
+        variant = self._bot_variants[bot_id]
+        if not _book_is_research_candidate(variant, book):
+            return
+        decision_time_ns = max(time.monotonic_ns(), int(book.receive_time_ns))
+        features = hft_candidate_features(variant, book, signal=signal, strategy=strategy)
+        event_seq = int(book.update_id or book.receive_time_ns)
+        sample = FactorResearchSample(
+            sample_id=f"{self.run_id}:{bot_id}:{book.symbol}:{book.receive_time_ns}:{event_seq}",
+            run_id=self.run_id,
+            bot_id=bot_id,
+            strategy_tree_id=variant.strategy_tree_variant_id or variant.variant_id,
+            symbol=book.symbol,
+            venue=getattr(book, "venue", "binance_usdm"),
+            event_seq=event_seq,
+            exchange_event_time_ms=book.event_time_ms,
+            receive_time_ns=book.receive_time_ns,
+            decision_time_ns=decision_time_ns,
+            sample_type="hft_book_decision",
+            fired=signal is not None,
+            side=signal.side.value if signal is not None else "",
+            mid_price=float(book.mid_price or 0.0),
+            features=features,
+            feature_times_ns={key: int(book.receive_time_ns) for key in features},
+            data_quality_flags=tuple(
+                flag
+                for flag, active in {
+                    "stale_book": book.stale,
+                    "sequence_gap": book.sequence_gap,
+                    "not_hot_book": book.book_status != "hot",
+                }.items()
+                if active
+            ),
+        )
+        self.factor_research_store.record_sample(sample)
 
     def _open_position(self, bot_id: str, signal: HftScalpSignal, now_ns: int) -> None:
         variant = self._bot_variants[bot_id]
@@ -482,6 +552,32 @@ class HftScalpPaperRunner:
             decision_trace=trace,
         )
 
+    def _restore_open_positions(self) -> None:
+        for bot_id, variant in self._bot_variants.items():
+            bot_ledger = self._bot_ledger(bot_id, variant)
+            bot_ledger.reconcile_open_trades_with_position(variant.symbol, exchange=self.exchange)
+            position = bot_ledger.get_position(variant.symbol, exchange=self.exchange)
+            if position is None:
+                continue
+            exit_state = bot_ledger.open_trade_exit_state(variant.symbol, exchange=self.exchange)
+            if exit_state is None:
+                continue
+            entry = float(exit_state["entry_price"])
+            side = position.side
+            self._open_positions[bot_id] = _OpenHftPosition(
+                bot_id=bot_id,
+                trade_id=str(exit_state["trade_id"]),
+                variant=variant,
+                strategy_version=self._bot_versions[bot_id],
+                side=side,
+                entry_price=entry,
+                qty=position.qty,
+                stop_loss=float(exit_state["current_stop_loss"]),
+                take_profit=_take_profit_price(entry, side, variant.take_profit_bps),
+                opened_at_ns=time.monotonic_ns(),
+                entry_fee=0.0,
+            )
+
     def _bot_ledger(self, bot_id: str, variant: HftScalpVariant) -> Ledger:
         return self.ledger.scoped(
             run_id=self.run_id,
@@ -497,6 +593,9 @@ def load_hft_scalp_fleet_config(path: str | Path) -> HftScalpFleetConfig:
     if not bot_rows and "bot_matrix" in raw:
         bot_rows = _expand_bot_matrix(raw)
     fee_bps = float(raw.get("paper", {}).get("fee_bps", HFT_DEFAULT_FEE_BPS))
+    ledger_path = str(raw["ledger_path"])
+    research = raw.get("factor_research", raw.get("research", {}))
+    research_db_path = research.get("db_path") or str(Path(ledger_path).with_name("batch7_factor_research.sqlite3"))
     bots = [
         HftScalpBotConfig(
             bot_id=str(row["bot_id"]),
@@ -507,7 +606,7 @@ def load_hft_scalp_fleet_config(path: str | Path) -> HftScalpFleetConfig:
     ]
     return HftScalpFleetConfig(
         run_id=str(raw["run_id"]),
-        ledger_path=str(raw["ledger_path"]),
+        ledger_path=ledger_path,
         symbols=[str(row) for row in raw.get("symbols", [])],
         exchange_symbols=[str(row) for row in raw.get("exchange_symbols", [])],
         bots=bots,
@@ -516,6 +615,8 @@ def load_hft_scalp_fleet_config(path: str | Path) -> HftScalpFleetConfig:
         fee_bps=fee_bps,
         slippage_bps=float(raw.get("paper", {}).get("slippage_bps", 2.0)),
         max_loop_lag_ms=float(raw.get("risk", {}).get("max_loop_lag_ms", 200.0)),
+        factor_research_enabled=bool(research.get("enabled", True)),
+        factor_research_db_path=research_db_path,
     )
 
 
@@ -699,6 +800,12 @@ def _tree_trace(variant: HftScalpVariant) -> dict[str, Any]:
 
 def _book_matches(variant: HftScalpVariant, book: BookTick | TopBookTick) -> bool:
     return book.symbol == variant.exchange_symbol
+
+
+def _book_is_research_candidate(variant: HftScalpVariant, book: BookTick | TopBookTick) -> bool:
+    if book.symbol == variant.exchange_symbol:
+        return True
+    return variant.strategy_kind == "lead_lag_fair_value" and book.symbol == variant.lead_exchange_symbol
 
 
 def _book_tradeable(book: BookTick | TopBookTick, variant: HftScalpVariant) -> bool:

@@ -6,7 +6,7 @@ import unittest
 from langlang_trader.config import PaperConfig
 from langlang_trader.execution.paper import PaperExecutor
 from langlang_trader.ledger import Ledger
-from langlang_trader.models import EntrySetup, LangLangSignal, MarketRegime, OrderIntent, Side
+from langlang_trader.models import EntrySetup, LangLangSignal, MarketRegime, OrderIntent, Position, Side
 
 
 def intent(symbol="BTC-USDT-SWAP") -> OrderIntent:
@@ -117,6 +117,99 @@ class FleetLedgerIsolationTest(unittest.TestCase):
                 "orthogonal_v1_low_position_wyckoff_long_a",
             )
             self.assertEqual(trade["entry_reason_summary"], "orthogonal_low_position_wyckoff_long")
+
+    def test_latest_stop_loss_uses_current_position_side_when_stale_opposite_trade_exists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(os.path.join(tmp, "fleet.sqlite3")).scoped(
+                run_id="side-run",
+                bot_id="side-bot",
+                variant_id="side-var",
+            )
+            executor = PaperExecutor(
+                ledger=ledger,
+                paper_config=PaperConfig(initial_equity_usdt=10_000, fee_bps=0, slippage_bps=0),
+                price_provider=lambda symbol: 100.0,
+            )
+            executor.place_order(intent("TEST-USDT-SWAP"))
+            ledger.record_trade_fill(
+                intent=OrderIntent(
+                    symbol="TEST-USDT-SWAP",
+                    side=Side.SHORT,
+                    order_type="market",
+                    qty=1.0,
+                    leverage=3,
+                    reduce_only=False,
+                    entry_reason="stale_short",
+                    stop_loss=110.0,
+                    max_slippage_bps=0.0,
+                    decision_trace={"exit_semantics": "full_tp_sl"},
+                ),
+                order_id=99,
+                fill_id=99,
+                price=100.0,
+                fee=0.0,
+            )
+            ledger.upsert_position(Position("TEST-USDT-SWAP", Side.LONG, 1.0, 100.0, 3))
+
+            self.assertAlmostEqual(ledger.latest_stop_loss("TEST-USDT-SWAP"), 90.0)
+            self.assertAlmostEqual(ledger.open_trade_exit_state("TEST-USDT-SWAP")["initial_stop_loss"], 90.0)
+
+    def test_reduce_only_close_matches_opposite_open_side_not_newest_symbol_trade(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Ledger(os.path.join(tmp, "fleet.sqlite3")).scoped(
+                run_id="close-side-run",
+                bot_id="side-bot",
+                variant_id="side-var",
+            )
+            executor = PaperExecutor(
+                ledger=ledger,
+                paper_config=PaperConfig(initial_equity_usdt=10_000, fee_bps=0, slippage_bps=0),
+                price_provider=lambda symbol: 100.0,
+            )
+            executor.place_order(intent("TEST-USDT-SWAP"))
+            ledger.record_trade_fill(
+                intent=OrderIntent(
+                    symbol="TEST-USDT-SWAP",
+                    side=Side.SHORT,
+                    order_type="market",
+                    qty=1.0,
+                    leverage=3,
+                    reduce_only=False,
+                    entry_reason="stale_short",
+                    stop_loss=110.0,
+                    max_slippage_bps=0.0,
+                    decision_trace={"exit_semantics": "full_tp_sl"},
+                ),
+                order_id=99,
+                fill_id=99,
+                price=100.0,
+                fee=0.0,
+            )
+
+            ledger.record_trade_fill(
+                intent=OrderIntent(
+                    symbol="TEST-USDT-SWAP",
+                    side=Side.SHORT,
+                    order_type="market",
+                    qty=1.0,
+                    leverage=3,
+                    reduce_only=True,
+                    entry_reason="close_long",
+                    stop_loss=None,
+                    max_slippage_bps=0.0,
+                    exit_reason="stop_loss_exit",
+                ),
+                order_id=100,
+                fill_id=100,
+                price=99.0,
+                fee=0.0,
+            )
+
+            rows = ledger.list_rows("trade_lifecycle")
+            long_trade = next(row for row in rows if row["side"] == "long")
+            short_trade = next(row for row in rows if row["side"] == "short")
+            self.assertEqual(long_trade["status"], "closed")
+            self.assertEqual(short_trade["status"], "open")
 
 
 if __name__ == "__main__":

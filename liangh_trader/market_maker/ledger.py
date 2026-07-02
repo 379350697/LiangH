@@ -85,6 +85,46 @@ class MarketMakerLedger:
             },
         )
 
+    def max_numeric_suffix(self, table: str, column: str, prefix: str) -> int:
+        if table not in {
+            "mm_quotes",
+            "mm_orders",
+            "mm_fills",
+            "mm_inventory_snapshots",
+            "mm_latency_events",
+            "mm_risk_events",
+            "mm_execution_requests",
+            "mm_order_truth_events",
+        }:
+            return 0
+        rows = self._conn.execute(
+            f"select {column} from {table} where {column} like ?",
+            (f"{prefix}%",),
+        ).fetchall()
+        max_value = 0
+        for row in rows:
+            value = str(row[column])
+            suffix = value.removeprefix(prefix)
+            if suffix.isdigit():
+                max_value = max(max_value, int(suffix))
+        return max_value
+
+    def current_order_status_counts(self) -> dict[str, int]:
+        rows = self._conn.execute(
+            """
+            with latest as (
+                select run_id, bot_id, venue, symbol, order_id, max(id) as max_id
+                from mm_orders
+                group by run_id, bot_id, venue, symbol, order_id
+            )
+            select status, count(*) as count
+            from mm_orders orders
+            join latest on orders.id = latest.max_id
+            group by status
+            """
+        ).fetchall()
+        return {str(row["status"]): int(row["count"]) for row in rows}
+
     def record_fill(self, fill: FillEvent) -> None:
         self._insert(
             "mm_fills",
