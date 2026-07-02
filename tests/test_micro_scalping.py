@@ -100,6 +100,25 @@ class MicroScalpingStrategyTest(unittest.TestCase):
         self.assertLess(signal.take_profit_hint, 101.0)
         self.assertEqual(signal.features["strategy_kind"], "vwap_mean_reversion")
 
+    def test_vwap_mean_reversion_rejects_strong_pre_signal_trend(self):
+        closes = [100.0, 100.12, 100.24, 100.36, 100.48, 100.60, 100.72, 101.20]
+        variant = MicroScalpVariant(
+            variant_id="scalp_vwap_mr_btc_15s_v1",
+            symbol="BTC-USDT-SWAP",
+            strategy_kind="vwap_mean_reversion",
+            bar="15s",
+            vwap_deviation_bps=20.0,
+            stop_bps=14.0,
+        )
+
+        signal = RulesVwapMeanReversionScalpStrategy(variant).generate_from_market_data(
+            symbol="BTC-USDT-SWAP",
+            candles_by_bar={"15s": _candles(bar="15s", closes=closes)},
+            order_book=_book(bid_qty=5.0, ask_qty=40.0),
+        )
+
+        self.assertIsNone(signal)
+
     def test_volatility_breakout_enters_after_compression_and_volume_expansion(self):
         closes = [100.00, 100.01, 100.00, 100.02, 99.99, 100.01, 100.00, 100.45]
         rows = _candles(closes=closes)
@@ -133,6 +152,44 @@ class MicroScalpingStrategyTest(unittest.TestCase):
         self.assertEqual(signal.side.value, "long")
         self.assertLess(signal.invalidation_price, 100.45)
         self.assertEqual(signal.features["breakout_lookback_bars"], 6)
+        self.assertLessEqual(
+            signal.features["previous_range_bps"],
+            signal.features["compression_threshold_bps"],
+        )
+
+    def test_volatility_breakout_rejects_when_previous_window_is_not_compressed(self):
+        rows = [
+            Candle("BTC-USDT-SWAP", "5s", 1_700_000_000_000 + idx * 5_000, 100.0, 101.0, 99.0, 100.0, 1_000.0)
+            for idx in range(7)
+        ]
+        rows.append(
+            Candle(
+                "BTC-USDT-SWAP",
+                "5s",
+                1_700_000_035_000,
+                101.05,
+                101.50,
+                101.00,
+                101.40,
+                4_000.0,
+            )
+        )
+        variant = MicroScalpVariant(
+            variant_id="scalp_vol_breakout_btc_5s_v1",
+            symbol="BTC-USDT-SWAP",
+            strategy_kind="volatility_breakout",
+            breakout_lookback_bars=6,
+            min_volume_ratio=1.5,
+            stop_bps=16.0,
+        )
+
+        signal = RulesVolatilityBreakoutScalpStrategy(variant).generate_from_market_data(
+            symbol="BTC-USDT-SWAP",
+            candles_by_bar={"5s": rows},
+            order_book=_book(),
+        )
+
+        self.assertIsNone(signal)
 
     def test_funding_basis_shadow_strategy_records_pair_plan_without_single_leg_signal(self):
         variant = MicroScalpVariant(

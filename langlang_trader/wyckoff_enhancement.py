@@ -245,7 +245,7 @@ def _spring_reclaim_score(rows: list[Candle], wyckoff_range: WyckoffRange, reaso
     latest = rows[-1]
     spring_low = min(row.low for row in recent)
     reclaimed = latest.close >= wyckoff_range.low * 1.02 and latest.close >= wyckoff_range.mid * 0.98
-    swept = spring_low <= wyckoff_range.low * 0.94
+    swept = spring_low <= wyckoff_range.low * 0.97
     volume_confirmed = _recent_volume(rows, 3) >= wyckoff_range.avg_volume * 1.35 if wyckoff_range.avg_volume else False
     score = 0.0
     if swept:

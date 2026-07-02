@@ -326,7 +326,7 @@ def detect_five_bar_fractal(candles: list[Candle]) -> FiveBarFractal | None:
     lows = [row.low for row in rows]
     highs = [row.high for row in rows]
     center = rows[2]
-    if lows[2] == min(lows) and lows[3] > lows[2] and lows[4] > lows[3]:
+    if lows[0] > lows[1] > lows[2] and lows[2] < lows[3] < lows[4]:
         return FiveBarFractal(
             side=Side.LONG,
             center_ts=center.ts,
@@ -334,7 +334,7 @@ def detect_five_bar_fractal(candles: list[Candle]) -> FiveBarFractal | None:
             breakout_price=max(rows[3].high, rows[4].high),
             reason_code="bullish_5_bar_fractal",
         )
-    if highs[2] == max(highs) and highs[3] < highs[2] and highs[4] < highs[3]:
+    if highs[0] < highs[1] < highs[2] and highs[2] > highs[3] > highs[4]:
         return FiveBarFractal(
             side=Side.SHORT,
             center_ts=center.ts,

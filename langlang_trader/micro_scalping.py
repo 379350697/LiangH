@@ -26,7 +26,9 @@ class MicroScalpVariant:
     min_ofi: float = 0.20
     min_microprice_edge_bps: float = 1.0
     vwap_deviation_bps: float = 8.0
+    max_vwap_pre_signal_trend_bps: float = 25.0
     breakout_lookback_bars: int = 12
+    max_breakout_compression_bps: float = 35.0
     min_volume_ratio: float = 1.4
     min_basis_bps: float = 8.0
     pair_stop_bps: float = 12.0
@@ -157,6 +159,9 @@ class RulesVwapMeanReversionScalpStrategy:
         vwap = _vwap(rows[-self.variant.lookback_bars :])
         if latest <= 0 or vwap <= 0:
             return None
+        pre_signal_trend_bps = abs(_momentum_bps(rows[:-1]))
+        if pre_signal_trend_bps > self.variant.max_vwap_pre_signal_trend_bps:
+            return None
         deviation_bps = (latest / vwap - 1.0) * 10_000.0
         min_edge = max(self.variant.vwap_deviation_bps, self.variant.total_cost_bps * self.variant.min_edge_cost_multiple)
         if abs(deviation_bps) < min_edge:
@@ -172,6 +177,8 @@ class RulesVwapMeanReversionScalpStrategy:
             features={
                 "vwap": vwap,
                 "vwap_deviation_bps": deviation_bps,
+                "pre_signal_trend_bps": pre_signal_trend_bps,
+                "max_pre_signal_trend_bps": self.variant.max_vwap_pre_signal_trend_bps,
                 "order_book": book,
                 "market_metrics": market_metrics or {},
             },
@@ -205,6 +212,9 @@ class RulesVolatilityBreakoutScalpStrategy:
         previous = rows[-lookback - 1 : -1]
         upper = max(row.high for row in previous)
         lower = min(row.low for row in previous)
+        previous_range_bps = _range_bps(previous)
+        if previous_range_bps > self.variant.max_breakout_compression_bps:
+            return None
         avg_volume = fmean([row.volume for row in previous]) if previous else 0.0
         volume_ratio = latest.volume / avg_volume if avg_volume > 0 else 0.0
         if volume_ratio < self.variant.min_volume_ratio:
@@ -230,6 +240,8 @@ class RulesVolatilityBreakoutScalpStrategy:
                 "breakout_lookback_bars": lookback,
                 "breakout_upper": upper,
                 "breakout_lower": lower,
+                "previous_range_bps": previous_range_bps,
+                "compression_threshold_bps": self.variant.max_breakout_compression_bps,
                 "breakout_distance_bps": breakout_distance_bps,
                 "volume_ratio": volume_ratio,
                 "order_book": book,
@@ -446,6 +458,16 @@ def _momentum_bps(rows: list[Candle]) -> float:
     if len(rows) < 2 or rows[0].close <= 0:
         return 0.0
     return (rows[-1].close / rows[0].close - 1.0) * 10_000.0
+
+
+def _range_bps(rows: list[Candle]) -> float:
+    if not rows:
+        return 0.0
+    low = min(row.low for row in rows)
+    high = max(row.high for row in rows)
+    if low <= 0:
+        return float("inf")
+    return (high / low - 1.0) * 10_000.0
 
 
 def _vwap(rows: list[Candle]) -> float:

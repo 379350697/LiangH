@@ -60,6 +60,24 @@ class WyckoffEventDetectorTest(unittest.TestCase):
         self.assertGreaterEqual(features["wyckoff_long_score"], 0.68)
         self.assertIn("wyckoff_spring_reclaim", features["wyckoff_long_reason_codes"])
 
+    def test_detects_shallow_three_percent_spring_reclaim(self):
+        range_rows = [
+            {"open": 100, "high": 106, "low": 96, "close": 101, "volume": 900},
+            {"open": 101, "high": 107, "low": 97, "close": 103, "volume": 860},
+            {"open": 103, "high": 108, "low": 98, "close": 102, "volume": 830},
+            {"open": 102, "high": 106, "low": 97, "close": 100, "volume": 790},
+        ] * 7
+        spring_rows = [
+            {"open": 100, "high": 102, "low": 93.1, "close": 95, "volume": 2600},
+            {"open": 95, "high": 106, "low": 94, "close": 104, "volume": 2300},
+            {"open": 104, "high": 109, "low": 101, "close": 107, "volume": 1700},
+        ]
+
+        features = WyckoffEventDetector().detect(series_from_ohlcv([*range_rows, *spring_rows]))
+
+        self.assertEqual(features["wyckoff_long_setup_tag"], "spring_reclaim")
+        self.assertIn("wyckoff_spring_swept_range_low", features["wyckoff_long_reason_codes"])
+
     def test_detects_sos_breakout_and_lps_retest(self):
         base = [{"open": 102, "high": 108, "low": 98, "close": 103 + (idx % 3), "volume": 900} for idx in range(30)]
         sos_lps = [

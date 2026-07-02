@@ -2,6 +2,7 @@ import unittest
 
 from langlang_trader.models import Candle, OrderBook, OrderBookLevel, Side
 from langlang_trader.scalping import (
+    detect_five_bar_fractal,
     EntryMode,
     FiveBarScalpConfig,
     FiveBarScalpStrategy,
@@ -36,6 +37,32 @@ def book(*, bid=100.0, ask=100.03, bid_qty=20.0, ask_qty=10.0):
 
 
 class FiveBarFractalScalpStrategyTest(unittest.TestCase):
+    def test_rejects_bullish_fractal_when_left_lows_do_not_step_down(self):
+        fractal = detect_five_bar_fractal(
+            [
+                candle(0, 100.0, 100.4, 99.4, 100.0),
+                candle(1, 100.0, 100.3, 99.6, 99.8),
+                candle(2, 99.8, 100.0, 98.0, 98.7),
+                candle(3, 98.7, 99.7, 98.4, 99.5),
+                candle(4, 99.5, 100.1, 98.8, 99.9),
+            ]
+        )
+
+        self.assertIsNone(fractal)
+
+    def test_rejects_bearish_fractal_when_left_highs_do_not_step_up(self):
+        fractal = detect_five_bar_fractal(
+            [
+                candle(0, 100.0, 100.6, 99.7, 100.2),
+                candle(1, 100.2, 100.4, 99.8, 100.1),
+                candle(2, 100.1, 102.0, 100.0, 101.5),
+                candle(3, 101.5, 101.5, 100.0, 100.4),
+                candle(4, 100.4, 101.0, 99.7, 100.0),
+            ]
+        )
+
+        self.assertIsNone(fractal)
+
     def test_bullish_pullback_fractal_waits_for_breakout_with_order_flow_confirmation(self):
         strategy = FiveBarScalpStrategy(FiveBarScalpConfig(total_cost_bps=4.0, stop_buffer_bps=2.0, max_stop_bps=300.0))
         candles = [
