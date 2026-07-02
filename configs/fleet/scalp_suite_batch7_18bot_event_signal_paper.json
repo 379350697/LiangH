@@ -86,7 +86,10 @@
         "strategy_tree_parent_id": "hft_queue_imbalance_one_tick_v1",
         "parameters": {
           "min_queue_imbalance": 0.6,
-          "take_profit_bps": 3.5,
+          "take_profit_bps": 10.0,
+          "round_trip_fee_bps": 8.0,
+          "min_net_take_profit_bps": 2.0,
+          "take_profit_cost_floor_bps": 10.0,
           "stop_bps": 2.5,
           "time_stop_ms": 3000,
           "position_size_usdt": 100.0
@@ -102,7 +105,10 @@
           "min_sweep_notional_usdt": 20000.0,
           "replenishment_ratio": 0.45,
           "sweep_window_ms": 750,
-          "take_profit_bps": 4.0,
+          "take_profit_bps": 10.0,
+          "round_trip_fee_bps": 8.0,
+          "min_net_take_profit_bps": 2.0,
+          "take_profit_cost_floor_bps": 10.0,
           "stop_bps": 3.0,
           "time_stop_ms": 5000,
           "position_size_usdt": 100.0
@@ -117,7 +123,10 @@
         "parameters": {
           "min_lead_move_bps": 6.0,
           "min_lag_divergence_bps": 3.0,
-          "take_profit_bps": 3.5,
+          "take_profit_bps": 10.0,
+          "round_trip_fee_bps": 8.0,
+          "min_net_take_profit_bps": 2.0,
+          "take_profit_cost_floor_bps": 10.0,
           "stop_bps": 2.5,
           "time_stop_ms": 4000,
           "position_size_usdt": 100.0

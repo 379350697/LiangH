@@ -500,6 +500,10 @@ class FleetReportTest(unittest.TestCase):
                                     "symbol": "BTC-USDT-SWAP",
                                     "exchange_symbol": "BTCUSDT",
                                     "strategy_kind": "queue_imbalance_one_tick",
+                                    "take_profit_bps": 10.0,
+                                    "round_trip_fee_bps": 8.0,
+                                    "min_net_take_profit_bps": 2.0,
+                                    "take_profit_cost_floor_bps": 10.0,
                                     "strategy_tree_variant_id": "hft_queue_imbalance_btc_v1",
                                     "strategy_tree_parent_id": "hft_queue_imbalance_one_tick_v1",
                                     "strategy_tree_path": [
@@ -532,6 +536,10 @@ class FleetReportTest(unittest.TestCase):
             self.assertEqual(bot["variant_id"], "hft_queue_imbalance_btc_v1")
             self.assertEqual(bot["opened_orders"], 0)
             self.assertEqual(bot["zero_open_reason"], "no_signal")
+            self.assertEqual(bot["take_profit_bps"], 10.0)
+            self.assertEqual(bot["round_trip_fee_bps"], 8.0)
+            self.assertEqual(bot["min_net_take_profit_bps"], 2.0)
+            self.assertEqual(bot["take_profit_cost_floor_bps"], 10.0)
 
     def test_trade_journal_reports_legacy_fills_even_after_schema_is_created(self):
         with tempfile.TemporaryDirectory() as tmp:

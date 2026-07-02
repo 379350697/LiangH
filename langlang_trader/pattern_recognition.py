@@ -250,7 +250,8 @@ def _golden_pit_reclaim_score(closes: list[float], volumes: list[float], reasons
     avg_vol = fmean(volumes[max(0, pit_idx - 12):pit_idx]) if volumes[max(0, pit_idx - 12):pit_idx] else 0.0
     reclaim_vol = fmean(volumes[pit_idx:min(len(volumes), pit_idx + 3)]) if volumes[pit_idx:min(len(volumes), pit_idx + 3)] else 0.0
     score = 0.0
-    if prior_ret >= 0.18 or pre_high / pre_low - 1 <= 0.10:
+    pre_range_compressed = pre_low > 0 and pre_high / pre_low - 1 <= 0.10
+    if prior_ret >= 0.18 or pre_range_compressed:
         score += 0.18
         reasons.append("golden_pit_strong_context")
     if pit_depth >= 0.12:

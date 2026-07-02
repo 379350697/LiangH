@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sqlite3
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -110,6 +113,55 @@ class MarketMakerConfigTest(unittest.TestCase):
 
         self.assertEqual(config.mode, "paper")
         self.assertEqual(config.execution.primary_gateway, "binance_ws_api")
+
+
+class MarketMakerLedgerTest(unittest.TestCase):
+    def test_file_ledgers_use_wal_and_ten_second_busy_timeout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_market_maker_config(write_config(tmp))
+            ledger = MarketMakerLedger(config.ledger_path, context=config.ledger_context)
+
+            busy_timeout = ledger._conn.execute("PRAGMA busy_timeout").fetchone()[0]
+            journal_mode = ledger._conn.execute("PRAGMA journal_mode").fetchone()[0]
+
+            self.assertEqual(busy_timeout, 10_000)
+            self.assertEqual(journal_mode, "wal")
+
+    def test_locked_database_insert_retries_until_short_write_lock_releases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_market_maker_config(write_config(tmp))
+            MarketMakerLedger(config.ledger_path, context=config.ledger_context).close()
+            writer_ready = threading.Event()
+            write_now = threading.Event()
+            errors: list[BaseException] = []
+
+            def writer() -> None:
+                ledger = MarketMakerLedger(config.ledger_path, context=config.ledger_context)
+                ledger._conn.execute("PRAGMA busy_timeout = 1")
+                writer_ready.set()
+                write_now.wait(timeout=2.0)
+                try:
+                    ledger.record_inventory(InventoryState(symbol="BTCUSDT", base_qty=0.01), reason="retry_after_lock")
+                except BaseException as exc:  # pragma: no cover - asserted by parent thread
+                    errors.append(exc)
+                finally:
+                    ledger.close()
+
+            thread = threading.Thread(target=writer)
+            thread.start()
+            self.assertTrue(writer_ready.wait(timeout=2.0))
+            locker = sqlite3.connect(config.ledger_path, isolation_level=None)
+            locker.execute("BEGIN EXCLUSIVE")
+            write_now.set()
+            time.sleep(0.05)
+            locker.execute("COMMIT")
+            locker.close()
+            thread.join(timeout=2.0)
+
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(errors, [])
+            rows = MarketMakerLedger(config.ledger_path, context=config.ledger_context).list_rows("mm_inventory_snapshots")
+            self.assertEqual(rows[-1]["reason"], "retry_after_lock")
 
 
 class MarketMakerCliTimingTest(unittest.TestCase):

@@ -51,6 +51,16 @@ class StrongPatternDetectorTest(unittest.TestCase):
         self.assertEqual(features["strong_pattern_tag"], "golden_pit_reclaim")
         self.assertIn("golden_pit_fast_reclaim", features["pattern_reason_codes"])
 
+    def test_golden_pit_handles_zero_pre_low_without_crashing(self):
+        closes = [
+            100, 101, 102, 103, 104, 105, 0, 50, 55, 60, 65, 70,
+            75, 80, 85, 90, 75, 80, -10, 5, 12, 20, 25,
+        ]
+
+        features = StrongPatternDetector().detect(series_from_closes(closes))
+
+        self.assertIn("golden_pit_reclaim_score", features)
+
     def test_pattern_reasons_only_include_winning_positive_and_risk_patterns(self):
         closes = [
             100, 113, 106, 124, 116, 139, 130, 151, 143, 160, 154, 166, 162, 168,

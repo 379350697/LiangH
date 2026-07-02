@@ -10,6 +10,11 @@ from .config import LedgerContext
 from .models import FillEvent, InventoryState, LatencySample, LimitOrderState, OrderTruthEvent, QuoteIntent
 
 
+_SQLITE_BUSY_TIMEOUT_MS = 10_000
+_SQLITE_LOCK_RETRY_ATTEMPTS = 8
+_SQLITE_LOCK_RETRY_SLEEP_SECONDS = 0.05
+
+
 class MarketMakerLedger:
     def __init__(self, path: str | Path, context: LedgerContext) -> None:
         self.path = str(path)
@@ -17,8 +22,9 @@ class MarketMakerLedger:
         ledger_path = Path(path)
         if str(path) != ":memory:":
             ledger_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self.path)
+        self._conn = sqlite3.connect(self.path, timeout=_SQLITE_BUSY_TIMEOUT_MS / 1000.0)
         self._conn.row_factory = sqlite3.Row
+        self._configure_connection()
         self._ensure_schema()
 
     def close(self) -> None:
@@ -37,6 +43,12 @@ class MarketMakerLedger:
         }:
             raise ValueError(f"unsupported ledger table: {table}")
         return list(self._conn.execute(f"SELECT * FROM {table} ORDER BY id"))
+
+    def _configure_connection(self) -> None:
+        self._conn.execute(f"PRAGMA busy_timeout = {_SQLITE_BUSY_TIMEOUT_MS}")
+        if self.path != ":memory:":
+            self._conn.execute("PRAGMA journal_mode = WAL")
+            self._conn.execute("PRAGMA synchronous = NORMAL")
 
     def record_quote(self, quote: QuoteIntent, status: str) -> None:
         self._insert(
@@ -420,11 +432,19 @@ class MarketMakerLedger:
     def _insert(self, table: str, fields: dict[str, Any]) -> None:
         columns = ", ".join(fields.keys())
         placeholders = ", ".join("?" for _ in fields)
-        self._conn.execute(
-            f"INSERT INTO {table} ({columns}) VALUES ({placeholders})",
-            list(fields.values()),
-        )
-        self._conn.commit()
+        for attempt in range(_SQLITE_LOCK_RETRY_ATTEMPTS):
+            try:
+                self._conn.execute(
+                    f"INSERT INTO {table} ({columns}) VALUES ({placeholders})",
+                    list(fields.values()),
+                )
+                self._conn.commit()
+                return
+            except sqlite3.OperationalError as exc:
+                if "database is locked" not in str(exc).lower() or attempt == _SQLITE_LOCK_RETRY_ATTEMPTS - 1:
+                    raise
+                self._conn.rollback()
+                time.sleep(_SQLITE_LOCK_RETRY_SLEEP_SECONDS)
 
 
 def _json(value: Any) -> str:

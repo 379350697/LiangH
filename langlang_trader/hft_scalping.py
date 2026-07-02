@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 import json
 import time
 from pathlib import Path
@@ -22,6 +22,8 @@ HFT_SCALP_STRATEGY_VERSIONS = {
     HFT_SWEEP_REPLENISHMENT_VERSION,
     HFT_LEAD_LAG_VERSION,
 }
+HFT_DEFAULT_FEE_BPS = 4.0
+HFT_DEFAULT_MIN_NET_TAKE_PROFIT_BPS = 2.0
 
 
 @dataclass(frozen=True)
@@ -34,9 +36,12 @@ class HftScalpVariant:
     leverage: int = 3
     max_spread_bps: float = 8.0
     stop_bps: float = 2.5
-    take_profit_bps: float = 3.5
+    take_profit_bps: float = 10.0
     time_stop_ms: int = 3_000
     max_slippage_bps: float = 4.0
+    round_trip_fee_bps: float = 8.0
+    min_net_take_profit_bps: float = 2.0
+    take_profit_cost_floor_bps: float = 10.0
     min_queue_imbalance: float = 0.60
     min_sweep_notional_usdt: float = 20_000.0
     sweep_window_ms: int = 750
@@ -87,7 +92,7 @@ class HftScalpFleetConfig:
     bots: list[HftScalpBotConfig]
     allow_live_orders: bool = False
     initial_equity_usdt: float = 10_000.0
-    fee_bps: float = 4.0
+    fee_bps: float = HFT_DEFAULT_FEE_BPS
     slippage_bps: float = 2.0
     max_loop_lag_ms: float = 200.0
 
@@ -264,12 +269,16 @@ class HftScalpPaperRunner:
         self.initial_equity_usdt = initial_equity_usdt
         self.fee_bps = fee_bps
         self.exchange = exchange
+        normalized_bots = [
+            (bot_id, _variant_with_cost_floor(variant, fee_bps=fee_bps), strategy_version)
+            for bot_id, variant, strategy_version in bots
+        ]
         self._strategies = {
             bot_id: _strategy_for_bot(strategy_version, variant)
-            for bot_id, variant, strategy_version in bots
+            for bot_id, variant, strategy_version in normalized_bots
         }
-        self._bot_variants = {bot_id: variant for bot_id, variant, _ in bots}
-        self._bot_versions = {bot_id: strategy_version for bot_id, _, strategy_version in bots}
+        self._bot_variants = {bot_id: variant for bot_id, variant, _ in normalized_bots}
+        self._bot_versions = {bot_id: strategy_version for bot_id, _, strategy_version in normalized_bots}
         self._open_positions: dict[str, _OpenHftPosition] = {}
         self._realized_pnl_by_bot: dict[str, float] = {}
 
@@ -487,11 +496,12 @@ def load_hft_scalp_fleet_config(path: str | Path) -> HftScalpFleetConfig:
     bot_rows = raw.get("bots", [])
     if not bot_rows and "bot_matrix" in raw:
         bot_rows = _expand_bot_matrix(raw)
+    fee_bps = float(raw.get("paper", {}).get("fee_bps", HFT_DEFAULT_FEE_BPS))
     bots = [
         HftScalpBotConfig(
             bot_id=str(row["bot_id"]),
             strategy_version=str(row["strategy_version"]),
-            variant=_variant_from_dict(row["variant"]),
+            variant=_variant_with_cost_floor(_variant_from_dict(row["variant"]), fee_bps=fee_bps),
         )
         for row in bot_rows
     ]
@@ -503,7 +513,7 @@ def load_hft_scalp_fleet_config(path: str | Path) -> HftScalpFleetConfig:
         bots=bots,
         allow_live_orders=bool(raw.get("execution", {}).get("allow_live_orders", False)),
         initial_equity_usdt=float(raw.get("paper", {}).get("initial_equity_usdt", 10_000.0)),
-        fee_bps=float(raw.get("paper", {}).get("fee_bps", 4.0)),
+        fee_bps=fee_bps,
         slippage_bps=float(raw.get("paper", {}).get("slippage_bps", 2.0)),
         max_loop_lag_ms=float(raw.get("risk", {}).get("max_loop_lag_ms", 200.0)),
     )
@@ -548,6 +558,29 @@ def _variant_from_dict(raw: dict[str, Any]) -> HftScalpVariant:
     if "strategy_tree_path" in row:
         row["strategy_tree_path"] = tuple(row["strategy_tree_path"])
     return HftScalpVariant(**row)
+
+
+def _variant_with_cost_floor(
+    variant: HftScalpVariant,
+    *,
+    fee_bps: float,
+) -> HftScalpVariant:
+    round_trip_fee_bps = 2.0 * fee_bps
+    min_net_take_profit_bps = variant.min_net_take_profit_bps
+    take_profit_cost_floor_bps = round_trip_fee_bps + min_net_take_profit_bps
+    if variant.take_profit_bps + 1e-12 < take_profit_cost_floor_bps:
+        raise ValueError(
+            f"{variant.variant_id} take_profit_bps={variant.take_profit_bps} is below "
+            f"cost floor {take_profit_cost_floor_bps:.1f} "
+            f"(round_trip_fee_bps={round_trip_fee_bps:.1f}, "
+            f"min_net_take_profit_bps={min_net_take_profit_bps:.1f})"
+        )
+    return replace(
+        variant,
+        round_trip_fee_bps=round_trip_fee_bps,
+        min_net_take_profit_bps=min_net_take_profit_bps,
+        take_profit_cost_floor_bps=take_profit_cost_floor_bps,
+    )
 
 
 def _expand_bot_matrix(raw: dict[str, Any]) -> list[dict[str, Any]]:
@@ -620,6 +653,9 @@ def _build_signal(
         "entry_price": entry,
         "stop_bps": variant.stop_bps,
         "take_profit_bps": variant.take_profit_bps,
+        "round_trip_fee_bps": variant.round_trip_fee_bps,
+        "min_net_take_profit_bps": variant.min_net_take_profit_bps,
+        "take_profit_cost_floor_bps": variant.take_profit_cost_floor_bps,
         "time_stop_ms": variant.time_stop_ms,
         "strategy_kind": variant.strategy_kind,
         "variant": variant.to_dict(),
@@ -636,10 +672,19 @@ def _build_signal(
         decision_trace={
             **trace,
             "exit_semantics": "full_tp_sl",
+            "round_trip_fee_bps": variant.round_trip_fee_bps,
+            "min_net_take_profit_bps": variant.min_net_take_profit_bps,
+            "take_profit_cost_floor_bps": variant.take_profit_cost_floor_bps,
             "reason_codes": reason_codes,
             "features": payload,
         },
-        take_profit_plan={"mode": "full_position", "take_profit_bps": variant.take_profit_bps},
+        take_profit_plan={
+            "mode": "full_position",
+            "take_profit_bps": variant.take_profit_bps,
+            "round_trip_fee_bps": variant.round_trip_fee_bps,
+            "min_net_take_profit_bps": variant.min_net_take_profit_bps,
+            "take_profit_cost_floor_bps": variant.take_profit_cost_floor_bps,
+        },
         hold_plan={"time_stop_ms": variant.time_stop_ms},
     )
 

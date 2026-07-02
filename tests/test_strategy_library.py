@@ -243,6 +243,13 @@ class StrategyLibraryTest(unittest.TestCase):
                 "hft_lead_lag_fair_value",
             },
         )
+        event_signal_variants = [
+            row for row in batch7 if row.strategy_id != "hft_inventory_aware_passive_mm"
+        ]
+        self.assertEqual({row.factor_set["take_profit_bps"] for row in event_signal_variants}, {10.0})
+        self.assertEqual({row.factor_set["take_profit_cost_floor_bps"] for row in event_signal_variants}, {10.0})
+        self.assertEqual({row.factor_set["round_trip_fee_bps"] for row in event_signal_variants}, {8.0})
+        self.assertEqual({row.factor_set["min_net_take_profit_bps"] for row in event_signal_variants}, {2.0})
 
     def test_ingests_leaderboard_runs_and_compares_factor_deltas(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.liangh.scalp.batch6.signal</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/wl/projects/LiangH/scripts/run_scalp_batch6_signal_fleet.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/wl/projects/LiangH</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/wl/projects/LiangH/output/fleet/scalp_suite_batch6_30bot/logs/signal_fleet.launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/wl/projects/LiangH/output/fleet/scalp_suite_batch6_30bot/logs/signal_fleet.launchd.err.log</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+</dict>
+</plist>

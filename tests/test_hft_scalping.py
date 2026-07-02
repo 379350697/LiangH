@@ -9,6 +9,7 @@ from langlang_trader.hft_scalping import (
     RulesLeadLagFairValueStrategy,
     RulesQueueImbalanceOneTickStrategy,
     RulesSweepReplenishmentReversionStrategy,
+    load_hft_scalp_fleet_config,
 )
 from langlang_trader.ledger import Ledger
 from liangh_trader.market_maker.models import BookTick, TradeTick
@@ -45,7 +46,7 @@ class HftScalpingStrategyTest(unittest.TestCase):
             strategy_tree_parent_id="hft_queue_imbalance_one_tick_v1",
             strategy_tree_path=("scalping", "batch7_hft_scalp", "hft_queue_imbalance_one_tick", "hft_queue_imbalance_btc_v1"),
             min_queue_imbalance=0.60,
-            take_profit_bps=3.0,
+            take_profit_bps=10.0,
             stop_bps=2.0,
         )
 
@@ -58,6 +59,7 @@ class HftScalpingStrategyTest(unittest.TestCase):
         self.assertGreater(signal.take_profit_hint, signal.features["entry_price"])
         self.assertEqual(signal.decision_trace["exit_semantics"], "full_tp_sl")
         self.assertEqual(signal.features["strategy_tree_variant_id"], "hft_queue_imbalance_btc_v1")
+        self.assertEqual(signal.decision_trace["take_profit_cost_floor_bps"], 10.0)
 
     def test_sweep_replenishment_reversion_enters_after_failed_replenishment(self):
         variant = HftScalpVariant(
@@ -118,7 +120,7 @@ class HftScalpingStrategyTest(unittest.TestCase):
                 symbol="BTC-USDT-SWAP",
                 exchange_symbol="BTCUSDT",
                 strategy_kind="queue_imbalance_one_tick",
-                take_profit_bps=2.0,
+                take_profit_bps=10.0,
                 stop_bps=2.0,
                 position_size_usdt=100.0,
             )
@@ -129,7 +131,7 @@ class HftScalpingStrategyTest(unittest.TestCase):
             )
 
             runner.on_book(_book(now_ns=1_000_000_000))
-            runner.on_book(_book(bid=100.05, ask=100.07, now_ns=1_010_000_000))
+            runner.on_book(_book(bid=100.14, ask=100.16, now_ns=1_010_000_000))
 
             rows = Ledger(ledger_path).list_rows("trade_lifecycle", run_id="unit-hft-batch7")
             self.assertEqual(len(rows), 1)
@@ -149,7 +151,7 @@ class HftScalpingStrategyTest(unittest.TestCase):
                 symbol="BTC-USDT-SWAP",
                 exchange_symbol="BTCUSDT",
                 strategy_kind="queue_imbalance_one_tick",
-                take_profit_bps=2.0,
+                take_profit_bps=10.0,
                 stop_bps=2.0,
                 position_size_usdt=100.0,
             )
@@ -167,7 +169,7 @@ class HftScalpingStrategyTest(unittest.TestCase):
                 bots=[bot],
             )
             restarted_runner.on_book(_book(now_ns=2_000_000_000))
-            restarted_runner.on_book(_book(bid=100.05, ask=100.07, now_ns=2_010_000_000))
+            restarted_runner.on_book(_book(bid=100.14, ask=100.16, now_ns=2_010_000_000))
 
             ledger = Ledger(ledger_path)
             lifecycle = ledger.list_rows("trade_lifecycle", run_id="unit-hft-batch7")
@@ -180,6 +182,39 @@ class HftScalpingStrategyTest(unittest.TestCase):
             trade_events = ledger.list_rows("trade_events", run_id="unit-hft-batch7")
             self.assertEqual([row["event_type"] for row in trade_events].count("add_fill"), 0)
             self.assertEqual([row["event_type"] for row in trade_events].count("partial_take_profit"), 0)
+
+    def test_config_rejects_event_signal_take_profit_below_round_trip_fee_floor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "hft_config.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "run_id": "unit-hft-batch7",
+                        "ledger_path": os.path.join(tmp, "hft.sqlite3"),
+                        "execution": {"allow_live_orders": False},
+                        "paper": {"initial_equity_usdt": 10_000.0, "fee_bps": 4.0, "slippage_bps": 2.0},
+                        "symbols": ["BTC-USDT-SWAP"],
+                        "exchange_symbols": ["BTCUSDT"],
+                        "bots": [
+                            {
+                                "bot_id": "batch7_hft_queue_imbalance_btc_paper",
+                                "strategy_version": RulesQueueImbalanceOneTickStrategy.version,
+                                "variant": {
+                                    "variant_id": "hft_queue_imbalance_btc_v1",
+                                    "symbol": "BTC-USDT-SWAP",
+                                    "exchange_symbol": "BTCUSDT",
+                                    "strategy_kind": "queue_imbalance_one_tick",
+                                    "take_profit_bps": 3.5,
+                                    "stop_bps": 2.5,
+                                },
+                            }
+                        ],
+                    },
+                    handle,
+                )
+
+            with self.assertRaisesRegex(ValueError, "take_profit_bps.*10.0"):
+                load_hft_scalp_fleet_config(path)
 
 
 if __name__ == "__main__":

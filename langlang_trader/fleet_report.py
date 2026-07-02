@@ -10,6 +10,14 @@ from pathlib import Path
 from typing import Any
 
 
+_HFT_COST_FIELD_NAMES = (
+    "take_profit_bps",
+    "round_trip_fee_bps",
+    "min_net_take_profit_bps",
+    "take_profit_cost_floor_bps",
+)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Summarize a LangLang paper fleet ledger")
     parser.add_argument("--ledger")
@@ -166,7 +174,14 @@ def _include_configured_signal_bots(
         key = (bot_id, variant_id)
         if key in seen:
             continue
-        enriched.append(_zero_signal_bot_row(bot_id, variant_id, initial_equity_usdt=initial_equity_usdt))
+        enriched.append(
+            _zero_signal_bot_row(
+                bot_id,
+                variant_id,
+                initial_equity_usdt=initial_equity_usdt,
+                variant=variant,
+            )
+        )
         seen.add(key)
     return enriched
 
@@ -214,7 +229,13 @@ def _configured_signal_bots(fleet_config: dict[str, Any]) -> list[dict[str, Any]
     return rows
 
 
-def _zero_signal_bot_row(bot_id: str, variant_id: str, *, initial_equity_usdt: float) -> dict[str, Any]:
+def _zero_signal_bot_row(
+    bot_id: str,
+    variant_id: str,
+    *,
+    initial_equity_usdt: float,
+    variant: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     funding_basis = _is_funding_basis_bot(bot_id, variant_id)
     return {
         "bot_id": bot_id,
@@ -238,6 +259,7 @@ def _zero_signal_bot_row(bot_id: str, variant_id: str, *, initial_equity_usdt: f
         "adverse_selection_bps": None,
         "fill_ratio": 0.0,
         "stale_or_sequence_gap_guard_count": 0,
+        **_hft_cost_fields_from_payload(variant or {}),
         "partial_take_profit_count": 0,
         "take_profit_count": 0,
         "runner_take_profit_count": 0,
@@ -307,6 +329,7 @@ def _bot_rows(conn: sqlite3.Connection, run_id: str, initial_equity_usdt: float)
     partial_exits = _partial_exit_events_by_bot(conn, run_id)
     final_exits = _final_exit_reasons_by_bot(conn, run_id)
     snapshot_sharpe = _snapshot_sharpe_by_bot(conn, run_id)
+    hft_cost_fields = _hft_cost_fields_by_bot(conn, run_id)
     bot_keys = (
         set(latest_multi)
         | set(latest_exchange)
@@ -371,6 +394,7 @@ def _bot_rows(conn: sqlite3.Connection, run_id: str, initial_equity_usdt: float)
                 "adverse_selection_bps": None,
                 "fill_ratio": 0.0,
                 "stale_or_sequence_gap_guard_count": 0,
+                **hft_cost_fields.get(key, _hft_cost_fields_from_payload({})),
                 "partial_take_profit_count": int(partial_counts.get("partial_take_profit", 0)),
                 "take_profit_count": int(final_counts.get("take_profit_exit", 0)),
                 "runner_take_profit_count": int(final_counts.get("runner_take_profit_exit", 0)),
@@ -493,6 +517,30 @@ def _fills_by_bot(conn: sqlite3.Connection, run_id: str) -> dict[tuple[str, str]
         (run_id,),
     ).fetchall()
     return {(row["bot_id"], row["variant_id"]): dict(row) for row in rows}
+
+
+def _hft_cost_fields_by_bot(conn: sqlite3.Connection, run_id: str) -> dict[tuple[str, str], dict[str, Any]]:
+    if not _table_exists(conn, "signals") or not _table_has_columns(conn, "signals", {"features_json"}):
+        return {}
+    rows = conn.execute(
+        """
+        select bot_id, variant_id, features_json
+        from signals
+        where run_id = ?
+        order by id
+        """,
+        (run_id,),
+    ).fetchall()
+    result: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        fields = _hft_cost_fields_from_payload(_json_dict(row["features_json"]))
+        if any(value is not None for value in fields.values()):
+            result[(row["bot_id"], row["variant_id"])] = fields
+    return result
+
+
+def _hft_cost_fields_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return {name: _maybe_float(payload.get(name)) for name in _HFT_COST_FIELD_NAMES}
 
 
 def _positions_by_bot(conn: sqlite3.Connection, run_id: str) -> dict[tuple[str, str], dict[str, Any]]:

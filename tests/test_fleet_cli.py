@@ -137,6 +137,35 @@ class FleetCliTest(unittest.TestCase):
         self.assertTrue(
             all(config.strategy.strategy_version == "scalp_passive_maker_ofi_v1" for config in maker_configs)
         )
+        self.assertEqual(manifest["start_commands"], ["/Users/wl/projects/LiangH/scripts/install_scalp_batch5_launchagents.sh"])
+        self.assertNotIn("launchctl submit", " ".join(manifest["start_commands"]))
+        self.assertEqual(len(manifest["launchagent_plists"]), 7)
+        for plist_path in manifest["launchagent_plists"]:
+            plist = plistlib.loads(Path(plist_path).read_bytes())
+            self.assertTrue(plist["RunAtLoad"])
+            self.assertTrue(plist["KeepAlive"])
+            self.assertTrue(plist["Label"].startswith("com.liangh.scalp.batch5."))
+
+    def test_scalp_suite_batch6_manifest_uses_persistent_launchagents(self):
+        with open("configs/scalping/scalp_suite_batch6_30bot_manifest.json", encoding="utf-8") as f:
+            manifest = json.load(f)
+
+        signal_fleet = load_fleet_config(manifest["fleet_config"])
+        maker_configs = [load_market_maker_config(path) for path in manifest["market_maker_configs"]]
+
+        self.assertEqual(manifest["batch_id"], "scalp-suite-batch6-30bot-paper-v1")
+        self.assertEqual(len(signal_fleet.bots), 24)
+        self.assertEqual(len(maker_configs), 6)
+        self.assertFalse(signal_fleet.execution.allow_live_orders)
+        self.assertTrue(all(not config.execution.allow_live_orders for config in maker_configs))
+        self.assertEqual(manifest["start_commands"], ["/Users/wl/projects/LiangH/scripts/install_scalp_batch6_launchagents.sh"])
+        self.assertNotIn("launchctl submit", " ".join(manifest["start_commands"]))
+        self.assertEqual(len(manifest["launchagent_plists"]), 7)
+        for plist_path in manifest["launchagent_plists"]:
+            plist = plistlib.loads(Path(plist_path).read_bytes())
+            self.assertTrue(plist["RunAtLoad"])
+            self.assertTrue(plist["KeepAlive"])
+            self.assertTrue(plist["Label"].startswith("com.liangh.scalp.batch6."))
 
     def test_scalp_suite_batch7_manifest_plans_4_by_6_hft_paper_bots(self):
         with open("configs/scalping/scalp_suite_batch7_24bot_manifest.json", encoding="utf-8") as f:
@@ -167,6 +196,8 @@ class FleetCliTest(unittest.TestCase):
             ],
         )
         self.assertEqual(set(Counter(bot.variant.symbol for bot in signal_fleet.bots).values()), {3})
+        self.assertTrue(all(bot.variant.take_profit_bps >= 10.0 for bot in signal_fleet.bots))
+        self.assertTrue(all(bot.variant.take_profit_cost_floor_bps == 10.0 for bot in signal_fleet.bots))
         self.assertEqual(
             {bot.strategy_version for bot in signal_fleet.bots},
             {

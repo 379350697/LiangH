@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.liangh.scalp.batch6.mm.btcusdt</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/wl/projects/LiangH/scripts/run_scalp_batch6_market_maker.sh</string>
+    <string>/Users/wl/projects/LiangH/configs/market_maker/scalp_passive_maker_ofi_batch6_btcusdt.json</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/wl/projects/LiangH</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>SCALP_BATCH6_MM_DURATION_SECONDS</key>
+    <string>86400</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/wl/projects/LiangH/output/fleet/scalp_suite_batch6_30bot/logs/scalp_passive_maker_ofi_batch6_btcusdt.launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/wl/projects/LiangH/output/fleet/scalp_suite_batch6_30bot/logs/scalp_passive_maker_ofi_batch6_btcusdt.launchd.err.log</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+</dict>
+</plist>
