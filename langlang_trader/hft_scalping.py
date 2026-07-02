@@ -236,6 +236,7 @@ class RulesLeadLagFairValueStrategy:
 @dataclass
 class _OpenHftPosition:
     bot_id: str
+    trade_id: str
     variant: HftScalpVariant
     strategy_version: str
     side: Side
@@ -337,7 +338,9 @@ class HftScalpPaperRunner:
             strategy_version=strategy_version,
             decision_trace=signal.decision_trace,
         )
-        bot_ledger.record_trade_fill(intent=intent, order_id=order_id, fill_id=fill_id, price=entry, fee=fee)
+        trade_id = bot_ledger.record_trade_fill(intent=intent, order_id=order_id, fill_id=fill_id, price=entry, fee=fee)
+        if trade_id is None:
+            raise RuntimeError(f"HFT entry did not create a trade lifecycle for {bot_id}:{variant.symbol}")
         bot_ledger.upsert_position(
             Position(
                 symbol=variant.symbol,
@@ -361,6 +364,7 @@ class HftScalpPaperRunner:
         )
         self._open_positions[bot_id] = _OpenHftPosition(
             bot_id=bot_id,
+            trade_id=trade_id,
             variant=variant,
             strategy_version=strategy_version,
             side=signal.side,
@@ -377,7 +381,11 @@ class HftScalpPaperRunner:
         mark_price = _exit_price(book, position.side)
         if mark_price is None or mark_price <= 0:
             return False
-        self._bot_ledger(bot_id, position.variant).record_trade_mark(symbol=position.variant.symbol, mark_price=mark_price)
+        self._bot_ledger(bot_id, position.variant).record_trade_mark(
+            symbol=position.variant.symbol,
+            mark_price=mark_price,
+            trade_id=position.trade_id,
+        )
         if position.side is Side.LONG:
             if mark_price >= position.take_profit:
                 self._close_position(bot_id, mark_price, "take_profit_exit")
@@ -413,6 +421,7 @@ class HftScalpPaperRunner:
         self._realized_pnl_by_bot[bot_id] = self._realized_pnl_by_bot.get(bot_id, 0.0) + realized
         trace = {
             "exit_reason": exit_reason,
+            "entry_trade_id": position.trade_id,
             "entry_price": position.entry_price,
             "exit_price": price,
             "exit_semantics": "full_tp_sl",

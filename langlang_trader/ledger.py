@@ -822,11 +822,16 @@ class Ledger:
         *,
         symbol: str,
         mark_price: float,
+        trade_id: str | None = None,
         data_quality_flags: list[str] | None = None,
     ) -> None:
         flags = data_quality_flags or []
         with self.connect() as conn:
-            trade = self._open_trade_row(conn, symbol)
+            trade = (
+                self._open_trade_row_by_id(conn, trade_id, symbol)
+                if trade_id is not None
+                else self._open_trade_row(conn, symbol)
+            )
             if trade is None:
                 return
             self._append_trade_event(
@@ -861,7 +866,7 @@ class Ledger:
         now: str,
     ) -> str:
         with self.connect() as conn:
-            existing = self._open_trade_row(conn, intent.symbol)
+            existing = None if self._force_new_trade_lifecycle(intent) else self._open_trade_row(conn, intent.symbol)
             if existing is not None:
                 trade_id = existing["trade_id"]
                 new_qty = float(existing["qty"]) + intent.qty
@@ -979,7 +984,12 @@ class Ledger:
         now: str,
     ) -> str | None:
         with self.connect() as conn:
-            trade = self._open_trade_row(conn, intent.symbol)
+            entry_trade_id = self._trace_entry_trade_id(intent)
+            trade = (
+                self._open_trade_row_by_id(conn, entry_trade_id, intent.symbol)
+                if entry_trade_id is not None
+                else self._open_trade_row(conn, intent.symbol)
+            )
             if trade is None:
                 self._append_trade_event(
                     conn,
@@ -996,7 +1006,8 @@ class Ledger:
                     reason_summary=intent.exit_reason,
                     decision_trace=intent.decision_trace,
                     feature_snapshot={},
-                    data_quality_flags=["missing_open_trade"],
+                    data_quality_flags=["missing_open_trade"]
+                    + (["entry_trade_id_not_open"] if entry_trade_id is not None else []),
                     raw_payload=raw_payload,
                 )
                 return None
@@ -1144,8 +1155,44 @@ class Ledger:
             (self.run_id, self.bot_id, selected_exchange, symbol),
         ).fetchone()
 
+    def _open_trade_row_by_id(
+        self,
+        conn: sqlite3.Connection,
+        trade_id: str,
+        symbol: str,
+        *,
+        exchange: str | None = None,
+    ) -> sqlite3.Row | None:
+        selected_exchange = exchange or self.exchange
+        row = self._trade_row(conn, trade_id)
+        if row is None:
+            return None
+        if (
+            row["run_id"] != self.run_id
+            or row["bot_id"] != self.bot_id
+            or row["exchange"] != selected_exchange
+            or row["symbol"] != symbol
+            or row["status"] != "open"
+        ):
+            return None
+        return row
+
     def _trade_row(self, conn: sqlite3.Connection, trade_id: str) -> sqlite3.Row | None:
         return conn.execute("select * from trade_lifecycle where trade_id = ?", (trade_id,)).fetchone()
+
+    @staticmethod
+    def _force_new_trade_lifecycle(intent: OrderIntent) -> bool:
+        trace = getattr(intent, "decision_trace", {}) or {}
+        return trace.get("exit_semantics") == "full_tp_sl"
+
+    @staticmethod
+    def _trace_entry_trade_id(intent: OrderIntent) -> str | None:
+        trace = getattr(intent, "decision_trace", {}) or {}
+        trade_id = trace.get("entry_trade_id")
+        if trade_id is None:
+            return None
+        value = str(trade_id).strip()
+        return value or None
 
     def _signal_for_intent(self, conn: sqlite3.Connection, intent_row: dict[str, Any] | None) -> sqlite3.Row | None:
         if intent_row is None or intent_row.get("signal_id") is None:

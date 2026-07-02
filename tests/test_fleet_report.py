@@ -394,6 +394,145 @@ class FleetReportTest(unittest.TestCase):
             self.assertEqual(maker["hft_event_count"], 3)
             self.assertEqual(maker["fill_ratio"], 0.5)
 
+    def test_maker_report_separates_feed_guards_from_terminal_exits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            signal_ledger_path = os.path.join(tmp, "signal.sqlite3")
+            maker_ledger_path = os.path.join(tmp, "maker.sqlite3")
+            signal_config_path = os.path.join(tmp, "signal_config.json")
+            maker_config_path = os.path.join(tmp, "maker_config.json")
+            manifest_path = os.path.join(tmp, "manifest.json")
+            Ledger(signal_ledger_path)
+            maker_conn = sqlite3.connect(maker_ledger_path)
+            maker_conn.executescript(
+                """
+                create table mm_orders (
+                    id integer primary key autoincrement,
+                    run_id text, bot_id text, variant_id text, order_id text, status text
+                );
+                create table mm_fills (
+                    id integer primary key autoincrement,
+                    run_id text, bot_id text, variant_id text,
+                    fee_usdt real, liquidity text, trade_id text
+                );
+                create table mm_inventory_snapshots (
+                    id integer primary key autoincrement,
+                    run_id text, bot_id text, variant_id text, base_qty real, quote_usdt real,
+                    avg_price real, realized_pnl_usdt real, fees_usdt real
+                );
+                create table mm_risk_events (
+                    id integer primary key autoincrement,
+                    run_id text, bot_id text, variant_id text, reason text
+                );
+                insert into mm_orders (run_id, bot_id, variant_id, order_id, status) values
+                ('run-maker', 'maker-bot', 'maker-var', 'o1', 'filled'),
+                ('run-maker', 'maker-bot', 'maker-var', 'o2', 'canceled'),
+                ('run-maker', 'maker-bot', 'maker-var', 'o3', 'expired'),
+                ('run-maker', 'maker-bot', 'maker-var', 'o4', 'open');
+                insert into mm_fills (run_id, bot_id, variant_id, fee_usdt, liquidity, trade_id) values
+                ('run-maker', 'maker-bot', 'maker-var', 0.10, 'maker', 'spread_capture'),
+                ('run-maker', 'maker-bot', 'maker-var', 0.20, 'taker_stop', 'inventory_stop_loss'),
+                ('run-maker', 'maker-bot', 'maker-var', 0.30, 'taker_stop', 'inventory_cap_exceeded'),
+                ('run-maker', 'maker-bot', 'maker-var', 0.40, 'taker_stop', 'manual_flatten');
+                insert into mm_inventory_snapshots (
+                    run_id, bot_id, variant_id, base_qty, quote_usdt, avg_price, realized_pnl_usdt, fees_usdt
+                ) values
+                ('run-maker', 'maker-bot', 'maker-var', 0, 9999, 100, -1, 1);
+                insert into mm_risk_events (run_id, bot_id, variant_id, reason) values
+                ('run-maker', 'maker-bot', 'maker-var', 'stale_book'),
+                ('run-maker', 'maker-bot', 'maker-var', 'book_not_hot'),
+                ('run-maker', 'maker-bot', 'maker-var', 'abnormal_spread');
+                """
+            )
+            maker_conn.commit()
+            maker_conn.close()
+            with open(signal_config_path, "w", encoding="utf-8") as handle:
+                json.dump({"run_id": "run-signal", "ledger_path": signal_ledger_path}, handle)
+            with open(maker_config_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "run_id": "run-maker",
+                        "bot_id": "maker-bot",
+                        "ledger_path": maker_ledger_path,
+                        "paper": {"initial_quote_usdt": 10000},
+                        "strategy": {"variant_id": "maker-var"},
+                    },
+                    handle,
+                )
+            with open(manifest_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "batch_id": "batch-test",
+                        "fleet_config": signal_config_path,
+                        "market_maker_configs": [maker_config_path],
+                    },
+                    handle,
+                )
+
+            summary = summarize_scalping_batch_manifest(manifest_path, initial_equity_usdt=10_000)
+
+            maker = next(row for row in summary["bots"] if row["bot_id"] == "maker-bot")
+            self.assertEqual(maker["opened_orders"], 4)
+            self.assertEqual(maker["closed_orders"], 3)
+            self.assertEqual(maker["stale_or_sequence_gap_guard_count"], 3)
+            self.assertEqual(maker["stop_loss_count"], 1)
+            self.assertEqual(maker["time_or_guard_exit_count"], 1)
+            self.assertEqual(maker["other_exit_count"], 1)
+
+    def test_scalping_batch_manifest_report_includes_zero_signal_bots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            signal_ledger_path = os.path.join(tmp, "signal.sqlite3")
+            signal_config_path = os.path.join(tmp, "signal_config.json")
+            manifest_path = os.path.join(tmp, "manifest.json")
+            Ledger(signal_ledger_path)
+            with open(signal_config_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "run_id": "run-zero-signal",
+                        "ledger_path": signal_ledger_path,
+                        "symbols": ["BTC-USDT-SWAP"],
+                        "exchange_symbols": ["BTCUSDT"],
+                        "bots": [
+                            {
+                                "bot_id": "batch7_hft_queue_imbalance_btc_paper",
+                                "strategy_version": "hft_queue_imbalance_one_tick_v1",
+                                "variant": {
+                                    "variant_id": "hft_queue_imbalance_btc_v1",
+                                    "symbol": "BTC-USDT-SWAP",
+                                    "exchange_symbol": "BTCUSDT",
+                                    "strategy_kind": "queue_imbalance_one_tick",
+                                    "strategy_tree_variant_id": "hft_queue_imbalance_btc_v1",
+                                    "strategy_tree_parent_id": "hft_queue_imbalance_one_tick_v1",
+                                    "strategy_tree_path": [
+                                        "scalping",
+                                        "batch7_hft_scalp",
+                                        "hft_queue_imbalance_one_tick",
+                                        "hft_queue_imbalance_btc_v1",
+                                    ],
+                                },
+                            }
+                        ],
+                    },
+                    handle,
+                )
+            with open(manifest_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "batch_id": "batch-zero-signal",
+                        "fleet_config": signal_config_path,
+                        "market_maker_configs": [],
+                    },
+                    handle,
+                )
+
+            summary = summarize_scalping_batch_manifest(manifest_path, initial_equity_usdt=10_000)
+
+            self.assertEqual(summary["totals"]["bot_count"], 1)
+            bot = summary["bots"][0]
+            self.assertEqual(bot["bot_id"], "batch7_hft_queue_imbalance_btc_paper")
+            self.assertEqual(bot["variant_id"], "hft_queue_imbalance_btc_v1")
+            self.assertEqual(bot["opened_orders"], 0)
+            self.assertEqual(bot["zero_open_reason"], "no_signal")
+
     def test_trade_journal_reports_legacy_fills_even_after_schema_is_created(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "fleet.sqlite3")

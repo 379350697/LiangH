@@ -141,6 +141,46 @@ class HftScalpingStrategyTest(unittest.TestCase):
             self.assertEqual(len(reduce_only), 1)
             self.assertEqual(reduce_only[0]["exit_reason"], "take_profit_exit")
 
+    def test_paper_runner_after_restart_does_not_merge_new_hft_entry_into_stale_open_lifecycle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger_path = os.path.join(tmp, "hft.sqlite3")
+            variant = HftScalpVariant(
+                variant_id="hft_queue_imbalance_btc_v1",
+                symbol="BTC-USDT-SWAP",
+                exchange_symbol="BTCUSDT",
+                strategy_kind="queue_imbalance_one_tick",
+                take_profit_bps=2.0,
+                stop_bps=2.0,
+                position_size_usdt=100.0,
+            )
+            bot = ("batch7_hft_queue_imbalance_btc_paper", variant, RulesQueueImbalanceOneTickStrategy.version)
+            first_runner = HftScalpPaperRunner(
+                run_id="unit-hft-batch7",
+                ledger=Ledger(ledger_path),
+                bots=[bot],
+            )
+            first_runner.on_book(_book(now_ns=1_000_000_000))
+
+            restarted_runner = HftScalpPaperRunner(
+                run_id="unit-hft-batch7",
+                ledger=Ledger(ledger_path),
+                bots=[bot],
+            )
+            restarted_runner.on_book(_book(now_ns=2_000_000_000))
+            restarted_runner.on_book(_book(bid=100.05, ask=100.07, now_ns=2_010_000_000))
+
+            ledger = Ledger(ledger_path)
+            lifecycle = ledger.list_rows("trade_lifecycle", run_id="unit-hft-batch7")
+            self.assertEqual([row["status"] for row in lifecycle].count("closed"), 1)
+            self.assertEqual([row["status"] for row in lifecycle].count("open"), 1)
+            closed = [row for row in lifecycle if row["status"] == "closed"][0]
+            self.assertEqual(closed["open_qty"], 0.0)
+            self.assertEqual(json.loads(closed["exit_reason_codes_json"]), ["take_profit_exit"])
+
+            trade_events = ledger.list_rows("trade_events", run_id="unit-hft-batch7")
+            self.assertEqual([row["event_type"] for row in trade_events].count("add_fill"), 0)
+            self.assertEqual([row["event_type"] for row in trade_events].count("partial_take_profit"), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -110,6 +110,16 @@ def summarize_scalping_batch_manifest(
         run_id=str(fleet_config["run_id"]),
         initial_equity_usdt=initial_equity_usdt,
     )
+    signal_bots = _include_configured_signal_bots(
+        signal_summary["bots"],
+        fleet_config=fleet_config,
+        initial_equity_usdt=initial_equity_usdt,
+    )
+    signal_summary = {
+        **signal_summary,
+        "bots": signal_bots,
+        "totals": _totals(signal_bots),
+    }
     maker_rows = [
         _maker_bot_row(
             _resolve_manifest_path(base_dir, config_path),
@@ -117,7 +127,7 @@ def summarize_scalping_batch_manifest(
         )
         for config_path in manifest.get("market_maker_configs", [])
     ]
-    bots = list(signal_summary["bots"]) + maker_rows
+    bots = list(signal_bots) + maker_rows
     return {
         "run_id": str(manifest.get("batch_id") or fleet_config["run_id"]),
         "ledger_path": str(manifest_file),
@@ -139,6 +149,116 @@ def _resolve_manifest_path(base_dir: Path, value: str | Path) -> Path:
     if candidate.exists():
         return candidate
     return path
+
+
+def _include_configured_signal_bots(
+    rows: list[dict[str, Any]],
+    *,
+    fleet_config: dict[str, Any],
+    initial_equity_usdt: float,
+) -> list[dict[str, Any]]:
+    enriched = list(rows)
+    seen = {(str(row["bot_id"]), str(row["variant_id"])) for row in rows}
+    for bot in _configured_signal_bots(fleet_config):
+        bot_id = str(bot["bot_id"])
+        variant = dict(bot.get("variant", {}))
+        variant_id = str(variant.get("variant_id") or bot.get("variant_id") or bot_id)
+        key = (bot_id, variant_id)
+        if key in seen:
+            continue
+        enriched.append(_zero_signal_bot_row(bot_id, variant_id, initial_equity_usdt=initial_equity_usdt))
+        seen.add(key)
+    return enriched
+
+
+def _configured_signal_bots(fleet_config: dict[str, Any]) -> list[dict[str, Any]]:
+    bots = fleet_config.get("bots", [])
+    if bots:
+        return [dict(row) for row in bots]
+    matrix = fleet_config.get("bot_matrix", {})
+    templates = matrix.get("strategies", []) if isinstance(matrix, dict) else []
+    symbols = fleet_config.get("symbol_matrix", [])
+    rows: list[dict[str, Any]] = []
+    for symbol_row in symbols:
+        slug = str(symbol_row["slug"])
+        symbol = str(symbol_row["symbol"])
+        exchange_symbol = str(symbol_row["exchange_symbol"])
+        lead_exchange_symbol = str(symbol_row.get("lead_exchange_symbol", "BTCUSDT"))
+        for template in templates:
+            strategy_key = str(template["strategy_key"])
+            variant_id = f"{template['variant_prefix']}_{slug}_v1"
+            variant = {
+                "variant_id": variant_id,
+                "symbol": symbol,
+                "exchange_symbol": exchange_symbol,
+                "strategy_kind": strategy_key.removeprefix("hft_"),
+                "strategy_tree_parent_id": str(template["strategy_tree_parent_id"]),
+                "strategy_tree_variant_id": variant_id,
+                "strategy_tree_path": [
+                    "scalping",
+                    "batch7_hft_scalp",
+                    strategy_key,
+                    variant_id,
+                ],
+                **template.get("parameters", {}),
+            }
+            if strategy_key == "hft_lead_lag_fair_value":
+                variant["lead_exchange_symbol"] = lead_exchange_symbol
+            rows.append(
+                {
+                    "bot_id": f"{template['bot_prefix']}_{slug}_paper",
+                    "strategy_version": str(template["strategy_version"]),
+                    "variant": variant,
+                }
+            )
+    return rows
+
+
+def _zero_signal_bot_row(bot_id: str, variant_id: str, *, initial_equity_usdt: float) -> dict[str, Any]:
+    funding_basis = _is_funding_basis_bot(bot_id, variant_id)
+    return {
+        "bot_id": bot_id,
+        "variant_id": variant_id,
+        "trading_role": "shadow_only" if funding_basis else "paper_trading",
+        "paper_trading_bot": not funding_basis,
+        "zero_open_reason": _zero_open_reason(
+            signal_count=0,
+            opened_orders=0,
+            shadow_pair_events=0,
+            funding_basis=funding_basis,
+        ),
+        "signals": 0,
+        "opened_orders": 0,
+        "closed_orders": 0,
+        "fills": 0,
+        "shadow_pair_events": 0,
+        "hft_event_count": 0,
+        "average_hold_ms": None,
+        "spread_capture_bps": None,
+        "adverse_selection_bps": None,
+        "fill_ratio": 0.0,
+        "stale_or_sequence_gap_guard_count": 0,
+        "partial_take_profit_count": 0,
+        "take_profit_count": 0,
+        "runner_take_profit_count": 0,
+        "mfe_trailing_exit_count": 0,
+        "stop_loss_count": 0,
+        "time_or_guard_exit_count": 0,
+        "other_exit_count": 0,
+        "fees_paid": 0.0,
+        "equity_usdt": round(initial_equity_usdt, 6),
+        "equity_pnl_net": 0.0,
+        "snapshot_sharpe": None,
+        "realized_price_pnl": 0.0,
+        "margin_used": 0.0,
+        "positions": 0,
+        "symbols": 0,
+        "long_positions": 0,
+        "short_positions": 0,
+        "notional": 0.0,
+        "latest_snapshot": "",
+        "latest_snapshot_source": "",
+    }
 
 
 def summarize_fleet_ledger(
@@ -493,6 +613,9 @@ def _maker_bot_row(config_path: Path, *, initial_equity_usdt: float) -> dict[str
         "fees": 0.0,
         "risk_events": 0,
         "hft_event_count": 0,
+        "stop_loss_fills": 0,
+        "guard_exit_fills": 0,
+        "other_taker_stop_fills": 0,
     }
     inventory: dict[str, Any] = {}
     sharpe = None
@@ -531,9 +654,9 @@ def _maker_bot_row(config_path: Path, *, initial_equity_usdt: float) -> dict[str
         "take_profit_count": 0,
         "runner_take_profit_count": 0,
         "mfe_trailing_exit_count": 0,
-        "stop_loss_count": 0,
-        "time_or_guard_exit_count": int(counts["risk_events"]),
-        "other_exit_count": 0,
+        "stop_loss_count": int(counts["stop_loss_fills"]),
+        "time_or_guard_exit_count": int(counts["guard_exit_fills"]),
+        "other_exit_count": int(counts["other_taker_stop_fills"]),
         "fees_paid": round(float(counts["fees"]), 6),
         "equity_usdt": round(equity_usdt, 6),
         "equity_pnl_net": round(equity_usdt - initial_quote, 6),
@@ -557,6 +680,9 @@ def _maker_counts(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
     fees = 0.0
     risk_events = 0
     hft_event_count = 0
+    stop_loss_fills = 0
+    guard_exit_fills = 0
+    other_taker_stop_fills = 0
     if _table_exists(conn, "mm_orders"):
         orders = int(
             conn.execute("select count(distinct order_id) from mm_orders where run_id = ?", (run_id,)).fetchone()[0]
@@ -566,7 +692,7 @@ def _maker_counts(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
                 """
                 select count(distinct order_id)
                 from mm_orders
-                where run_id = ? and status in ('filled', 'cancelled', 'expired', 'rejected')
+                where run_id = ? and status in ('filled', 'canceled', 'cancelled', 'expired', 'rejected')
                 """,
                 (run_id,),
             ).fetchone()[0]
@@ -578,6 +704,32 @@ def _maker_counts(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
         ).fetchone()
         fills = int(row["fills"])
         fees = float(row["fees"])
+        if _table_has_columns(conn, "mm_fills", {"liquidity", "trade_id"}):
+            exit_row = conn.execute(
+                """
+                select
+                    coalesce(sum(case
+                        when liquidity = 'taker_stop' and trade_id = 'inventory_stop_loss' then 1
+                        else 0
+                    end), 0) stop_loss_fills,
+                    coalesce(sum(case
+                        when liquidity = 'taker_stop'
+                         and trade_id in ('inventory_cap_exceeded', 'notional_cap_exceeded') then 1
+                        else 0
+                    end), 0) guard_exit_fills,
+                    coalesce(sum(case
+                        when liquidity = 'taker_stop'
+                         and trade_id not in ('inventory_stop_loss', 'inventory_cap_exceeded', 'notional_cap_exceeded') then 1
+                        else 0
+                    end), 0) other_taker_stop_fills
+                from mm_fills
+                where run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            stop_loss_fills = int(exit_row["stop_loss_fills"])
+            guard_exit_fills = int(exit_row["guard_exit_fills"])
+            other_taker_stop_fills = int(exit_row["other_taker_stop_fills"])
     if _table_exists(conn, "mm_risk_events"):
         risk_events = int(conn.execute("select count(*) from mm_risk_events where run_id = ?", (run_id,)).fetchone()[0])
     if _table_exists(conn, "mm_latency_events"):
@@ -591,6 +743,9 @@ def _maker_counts(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
         "fees": fees,
         "risk_events": risk_events,
         "hft_event_count": hft_event_count,
+        "stop_loss_fills": stop_loss_fills,
+        "guard_exit_fills": guard_exit_fills,
+        "other_taker_stop_fills": other_taker_stop_fills,
     }
 
 
@@ -881,6 +1036,11 @@ def _legacy_journal_gap(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
     row = conn.execute("select name from sqlite_master where type = 'table' and name = ?", (table,)).fetchone()
     return row is not None
+
+
+def _table_has_columns(conn: sqlite3.Connection, table: str, columns: set[str]) -> bool:
+    existing = {row["name"] for row in conn.execute(f"pragma table_info({table})").fetchall()}
+    return columns.issubset(existing)
 
 
 def _json_list(payload: str | None) -> list[str]:
