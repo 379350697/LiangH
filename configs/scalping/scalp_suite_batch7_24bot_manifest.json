@@ -27,9 +27,19 @@
   "ledger_dir": "output/fleet/scalp_suite_batch7_24bot",
   "live_orders_enabled": false,
   "event_driven": true,
+  "launchagent_installer": "scripts/install_scalp_batch7_launchagents.sh",
+  "launchagent_uninstaller": "scripts/uninstall_scalp_batch7_launchagents.sh",
+  "launchagent_plists": [
+    "configs/launchagents/scalp_batch7/com.liangh.scalp.batch7.signal.plist",
+    "configs/launchagents/scalp_batch7/com.liangh.scalp.batch7.mm.btcusdt.plist",
+    "configs/launchagents/scalp_batch7/com.liangh.scalp.batch7.mm.ethusdt.plist",
+    "configs/launchagents/scalp_batch7/com.liangh.scalp.batch7.mm.dogeusdt.plist",
+    "configs/launchagents/scalp_batch7/com.liangh.scalp.batch7.mm.hypeusdt.plist",
+    "configs/launchagents/scalp_batch7/com.liangh.scalp.batch7.mm.xrpusdt.plist",
+    "configs/launchagents/scalp_batch7/com.liangh.scalp.batch7.mm.bnbusdt.plist"
+  ],
   "start_commands": [
-    "launchctl submit -l com.liangh.scalp.batch7.signal -- /bin/zsh /Users/wl/projects/LiangH/scripts/run_scalp_batch7_event_signal_fleet.sh",
-    "launchctl submit -l com.liangh.scalp.batch7.mm.<symbol> -- /bin/zsh /Users/wl/projects/LiangH/scripts/run_scalp_batch7_market_maker.sh /Users/wl/projects/LiangH/configs/market_maker/hft_inventory_mm_batch7_<symbol>.json"
+    "/Users/wl/projects/LiangH/scripts/install_scalp_batch7_launchagents.sh"
   ],
   "strategy_tree_path": [
     "scalping",

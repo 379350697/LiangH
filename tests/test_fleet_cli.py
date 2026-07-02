@@ -1,5 +1,7 @@
 from collections import Counter
 import json
+from pathlib import Path
+import plistlib
 import unittest
 
 from langlang_trader.config import MarketDataConfig
@@ -186,6 +188,13 @@ class FleetCliTest(unittest.TestCase):
                 for config in maker_configs
             )
         )
+        self.assertEqual(manifest["start_commands"], ["/Users/wl/projects/LiangH/scripts/install_scalp_batch7_launchagents.sh"])
+        self.assertEqual(len(manifest["launchagent_plists"]), 7)
+        for plist_path in manifest["launchagent_plists"]:
+            plist = plistlib.loads(Path(plist_path).read_bytes())
+            self.assertTrue(plist["RunAtLoad"])
+            self.assertTrue(plist["KeepAlive"])
+            self.assertTrue(plist["Label"].startswith("com.liangh.scalp.batch7."))
 
 
 if __name__ == "__main__":
