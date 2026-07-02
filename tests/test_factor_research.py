@@ -130,10 +130,22 @@ class Batch7FactorResearchTest(unittest.TestCase):
                     event_time_ms=1_700_000_000_000,
                     receive_time_ns=1_000,
                     best_bid=99.99,
-                    best_bid_qty=10.0,
+                    best_bid_qty=55.0,
                     best_ask=100.01,
-                    best_ask_qty=10.0,
+                    best_ask_qty=45.0,
                     update_id=1,
+                )
+            )
+            runner.on_book(
+                BookTick(
+                    symbol="BTCUSDT",
+                    event_time_ms=1_700_000_000_000,
+                    receive_time_ns=1_500,
+                    best_bid=99.99,
+                    best_bid_qty=45.0,
+                    best_ask=100.01,
+                    best_ask_qty=55.0,
+                    update_id=2,
                 )
             )
             runner.on_book(
@@ -145,16 +157,18 @@ class Batch7FactorResearchTest(unittest.TestCase):
                     best_bid_qty=80.0,
                     best_ask=100.01,
                     best_ask_qty=10.0,
-                    update_id=2,
+                    update_id=3,
                 )
             )
 
             samples = store.list_samples()
 
-            self.assertEqual([sample.fired for sample in samples], [False, True])
+            self.assertEqual([sample.fired for sample in samples], [False, False, True])
+            self.assertEqual([sample.side for sample in samples], ["long", "short", "long"])
             self.assertEqual(samples[0].strategy_tree_id, "hft_queue_imbalance_btc_v1")
-            self.assertAlmostEqual(samples[0].features["hft.queue_imbalance"], 0.0)
-            self.assertGreater(samples[1].features["hft.queue_imbalance"], 0.6)
+            self.assertAlmostEqual(samples[0].features["hft.queue_imbalance"], 0.1)
+            self.assertLess(samples[1].features["hft.queue_imbalance"], 0.0)
+            self.assertGreater(samples[2].features["hft.queue_imbalance"], 0.6)
 
     def test_lookahead_audit_flags_future_feature_timestamp(self):
         registry = [
@@ -200,6 +214,17 @@ class Batch7FactorResearchTest(unittest.TestCase):
         self.assertEqual(labels[0].label_end_ns, 1_250)
         self.assertAlmostEqual(labels[0].forward_return_bps, 20.0, places=6)
         self.assertAlmostEqual(labels[0].net_taker_pnl_bps, 12.0, places=6)
+
+    def test_labeler_skips_samples_without_candidate_side(self):
+        sample = _sample("s1", decision_time_ns=1_000, features={"hft.queue_imbalance": 0.1}, side="")
+        observations = [
+            MarketObservation("BTCUSDT", "binance_usdm", 1, 1_000, bid=99.99, ask=100.01),
+            MarketObservation("BTCUSDT", "binance_usdm", 2, 1_260, bid=100.19, ask=100.21),
+        ]
+
+        labels = build_forward_labels([sample], observations, horizons_ns=[250], round_trip_fee_bps=0.0)
+
+        self.assertEqual(labels, [])
 
     def test_purged_walk_forward_split_excludes_overlapping_label_windows(self):
         samples = [_sample(f"s{i}", decision_time_ns=i * 100, features={"hft.queue_imbalance": float(i)}) for i in range(8)]
@@ -297,6 +322,68 @@ class Batch7FactorResearchTest(unittest.TestCase):
         self.assertIn(by_id["true.alpha"].decision, {"keep", "watch"})
         self.assertEqual(by_id["noise.alpha"].decision, "drop")
         self.assertEqual(by_id["future.alpha"].decision, "leak_suspect")
+
+    def test_score_and_report_keep_forward_horizons_separate(self):
+        registry = [
+            FactorDefinition("true.alpha", "test", ("batch7", "unit"), ("true",), 0, True, "unit"),
+        ]
+        samples = []
+        labels = []
+        for i in range(40):
+            value = float(i)
+            sample = _sample(
+                f"s{i}",
+                decision_time_ns=1_000 + i * 1_000,
+                features={"true.alpha": value},
+            )
+            samples.append(sample)
+            labels.extend(
+                [
+                    ForwardLabel(
+                        sample_id=sample.sample_id,
+                        horizon_ns=250,
+                        label_start_ns=sample.decision_time_ns,
+                        label_end_ns=sample.decision_time_ns + 250,
+                        forward_return_bps=-value,
+                        net_taker_pnl_bps=-value,
+                        mfe_bps=0.0,
+                        mae_bps=-value,
+                        hit_take_profit=False,
+                        hit_stop_loss=False,
+                    ),
+                    ForwardLabel(
+                        sample_id=sample.sample_id,
+                        horizon_ns=1_000,
+                        label_start_ns=sample.decision_time_ns,
+                        label_end_ns=sample.decision_time_ns + 1_000,
+                        forward_return_bps=value,
+                        net_taker_pnl_bps=value,
+                        mfe_bps=value,
+                        mae_bps=0.0,
+                        hit_take_profit=False,
+                        hit_stop_loss=False,
+                    ),
+                ]
+            )
+
+        short_scores = score_factors(samples, labels, registry, min_samples=20, horizon_ns=250)
+        long_scores = score_factors(samples, labels, registry, min_samples=20, horizon_ns=1_000)
+        with tempfile.TemporaryDirectory() as tmp:
+            store = FactorResearchStore(os.path.join(tmp, "research.sqlite3"))
+            for sample in samples:
+                store.record_sample(sample)
+            store.record_labels(labels)
+            report = run_factor_experiment(
+                store,
+                registry,
+                FactorExperimentConfig(run_id="multi-horizon", min_samples=20, n_splits=0),
+            ).report
+
+        self.assertLess(short_scores[0].ic, 0.0)
+        self.assertGreater(long_scores[0].ic, 0.0)
+        self.assertEqual(report["primary_horizon_ns"], 250)
+        self.assertLess(report["horizon_reports"]["250"]["factor_conclusions"]["true.alpha"]["mean_net_taker_pnl_bps"], 0.0)
+        self.assertGreater(report["horizon_reports"]["1000"]["factor_conclusions"]["true.alpha"]["mean_net_taker_pnl_bps"], 0.0)
 
     def test_maker_pnl_decomposition_splits_price_fee_and_cycle_win_rate(self):
         fills = [
@@ -487,6 +574,32 @@ class Batch7FactorResearchTest(unittest.TestCase):
             self.assertAlmostEqual(summary["maker_pnl"]["fees_usdt"], 0.04, places=8)
             self.assertAlmostEqual(summary["maker_pnl"]["net_pnl_usdt"], 0.01, places=8)
 
+    def test_daily_summary_groups_maker_pnl_by_symbol_before_totals(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = FactorResearchStore(os.path.join(tmp, "research.sqlite3"))
+            registry = [
+                FactorDefinition("true.alpha", "test", ("batch7", "unit"), ("true",), 0, True, "unit"),
+            ]
+            fills = [
+                MakerFillInput("f1", "o1", "BTCUSDT", "buy", 100.0, 1.0, 0.10, "maker", 1_000, 1_000),
+                MakerFillInput("f2", "o2", "BTCUSDT", "sell", 101.0, 1.0, 0.10, "maker", 1_100, 1_100),
+                MakerFillInput("f3", "o3", "ETHUSDT", "buy", 1_000.0, 1.0, 0.10, "maker", 1_200, 1_200),
+                MakerFillInput("f4", "o4", "ETHUSDT", "sell", 990.0, 1.0, 0.10, "maker", 1_300, 1_300),
+            ]
+
+            summary = build_daily_research_summary(store, registry, maker_fills=fills)
+
+            by_symbol = summary["maker_pnl_by_symbol"]
+            self.assertAlmostEqual(by_symbol["BTCUSDT"]["price_pnl_usdt"], 1.0, places=8)
+            self.assertAlmostEqual(by_symbol["ETHUSDT"]["price_pnl_usdt"], -10.0, places=8)
+            self.assertAlmostEqual(summary["maker_pnl_total"]["price_pnl_usdt"], -9.0, places=8)
+            self.assertAlmostEqual(summary["maker_pnl_total"]["fees_usdt"], 0.4, places=8)
+            self.assertAlmostEqual(summary["maker_pnl_total"]["net_pnl_usdt"], -9.4, places=8)
+            self.assertEqual(summary["maker_pnl_total"]["completed_cycles"], 2)
+            self.assertEqual(summary["maker_pnl_total"]["wins"], 1)
+            self.assertEqual(summary["maker_pnl_total"]["losses"], 1)
+            self.assertAlmostEqual(summary["maker_pnl_total"]["win_rate"], 0.5, places=8)
+
     def test_cli_experiment_and_candidate_commands_emit_json_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
             research_db = os.path.join(tmp, "research.sqlite3")
@@ -585,6 +698,50 @@ class Batch7FactorResearchTest(unittest.TestCase):
             report = json.loads(output.getvalue())
             self.assertEqual(report["status"], "ok")
             self.assertIn("factor_count", report)
+
+    def test_cli_build_dataset_honors_from_to_window(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            research_db = os.path.join(tmp, "research.sqlite3")
+            store = FactorResearchStore(research_db)
+            for index, decision_time_ns in enumerate((100, 200, 300), start=1):
+                store.record_sample(
+                    _sample(
+                        f"s{index}",
+                        decision_time_ns=decision_time_ns,
+                        features={"hft.queue_imbalance": 0.2},
+                        side="long",
+                    )
+                )
+                store.record_observation(
+                    MarketObservation("BTCUSDT", "binance_usdm", index, decision_time_ns, bid=99.99, ask=100.01)
+                )
+                store.record_observation(
+                    MarketObservation("BTCUSDT", "binance_usdm", index, decision_time_ns + 50, bid=100.09, ask=100.11)
+                )
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code = main(
+                    [
+                        "batch7",
+                        "build-dataset",
+                        "--research-db",
+                        research_db,
+                        "--horizons",
+                        "50",
+                        "--round-trip-fee-bps",
+                        "0",
+                        "--from",
+                        "150",
+                        "--to",
+                        "250",
+                    ]
+                )
+
+            self.assertEqual(code, 0)
+            result = json.loads(output.getvalue())
+            self.assertEqual(result["label_count"], 1)
+            self.assertEqual([label.sample_id for label in store.list_labels()], ["s2"])
 
 
 if __name__ == "__main__":

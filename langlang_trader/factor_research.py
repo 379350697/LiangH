@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 import hashlib
 import json
 import math
@@ -137,6 +138,8 @@ class FactorExperimentConfig:
     n_splits: int = 5
     embargo_ns: int = 250_000_000
     artifact_dir: str | Path | None = None
+    from_time_ns: int | None = None
+    to_time_ns: int | None = None
 
 
 @dataclass(frozen=True)
@@ -725,6 +728,9 @@ def build_forward_labels(
 
     labels: list[ForwardLabel] = []
     for sample in samples:
+        side = _valid_decision_side(sample.side)
+        if not side:
+            continue
         rows = observations_by_symbol.get((sample.symbol, sample.venue), [])
         if not rows:
             continue
@@ -743,11 +749,11 @@ def build_forward_labels(
             if end_observation not in path:
                 path.append(end_observation)
             signed_returns = [
-                _signed_return_bps(float(row.mid_price), base_price, sample.side)
+                _signed_return_bps(float(row.mid_price), base_price, side)
                 for row in path
                 if row.mid_price is not None
             ]
-            signed_end = _signed_return_bps(float(end_observation.mid_price), base_price, sample.side)
+            signed_end = _signed_return_bps(float(end_observation.mid_price), base_price, side)
             forward_return = (float(end_observation.mid_price) / base_price - 1.0) * 10_000.0
             labels.append(
                 ForwardLabel(
@@ -772,8 +778,9 @@ def purged_walk_forward_splits(
     *,
     n_splits: int,
     embargo_ns: int,
+    horizon_ns: int | None = None,
 ) -> list[WalkForwardSplit]:
-    label_by_sample = {label.sample_id: label for label in labels}
+    label_by_sample = _label_by_sample_for_horizon(labels, horizon_ns)
     eligible = [sample for sample in samples if sample.sample_id in label_by_sample]
     eligible.sort(key=lambda item: item.decision_time_ns)
     if n_splits <= 0 or len(eligible) < 3:
@@ -808,10 +815,9 @@ def score_factors(
     *,
     audit_results: dict[str, LookaheadAuditResult] | None = None,
     min_samples: int = 30,
+    horizon_ns: int | None = None,
 ) -> list[FactorScore]:
-    label_by_sample: dict[str, ForwardLabel] = {}
-    for label in labels:
-        label_by_sample.setdefault(label.sample_id, label)
+    label_by_sample = _label_by_sample_for_horizon(labels, horizon_ns)
     results: list[FactorScore] = []
     for factor in registry:
         audit = (audit_results or {}).get(factor.factor_id)
@@ -863,13 +869,29 @@ def run_factor_experiment(
     store.register_factors(registry)
     samples = store.list_samples()
     labels = store.list_labels()
+    if config.from_time_ns is not None or config.to_time_ns is not None:
+        samples, labels = _filter_samples_labels_by_window(
+            samples,
+            labels,
+            from_time_ns=config.from_time_ns,
+            to_time_ns=config.to_time_ns,
+        )
     audit = audit_lookahead(samples, registry)
-    scores = score_factors(samples, labels, registry, audit_results=audit, min_samples=config.min_samples)
+    primary_horizon_ns = _primary_horizon_ns(labels)
+    scores = score_factors(
+        samples,
+        labels,
+        registry,
+        audit_results=audit,
+        min_samples=config.min_samples,
+        horizon_ns=primary_horizon_ns,
+    )
     splits = purged_walk_forward_splits(
         samples,
         labels,
         n_splits=config.n_splits,
         embargo_ns=config.embargo_ns,
+        horizon_ns=primary_horizon_ns,
     ) if config.n_splits > 0 else []
     report = build_factor_experiment_report(
         samples,
@@ -879,6 +901,7 @@ def run_factor_experiment(
         audit_results=audit,
         splits=splits,
         run_id=config.run_id,
+        min_samples=config.min_samples,
     )
     artifact_dir = Path(config.artifact_dir) if config.artifact_dir is not None else store.path.parent / "factor_research_artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -894,6 +917,8 @@ def run_factor_experiment(
             "n_splits": config.n_splits,
             "embargo_ns": config.embargo_ns,
             "artifact_dir": str(artifact_dir),
+            "from_time_ns": config.from_time_ns,
+            "to_time_ns": config.to_time_ns,
         },
         status="ok",
         summary=summary,
@@ -921,8 +946,82 @@ def build_factor_experiment_report(
     audit_results: dict[str, LookaheadAuditResult] | None = None,
     splits: Sequence[WalkForwardSplit] = (),
     run_id: str = "",
+    min_samples: int = 30,
 ) -> dict[str, Any]:
-    label_by_sample = _first_label_by_sample(labels)
+    primary_horizon_ns = _primary_horizon_ns(labels)
+    primary_scores = list(scores) if scores else score_factors(
+        samples,
+        labels,
+        registry,
+        audit_results=audit_results,
+        min_samples=min_samples,
+        horizon_ns=primary_horizon_ns,
+    )
+    primary_sections = _factor_report_sections(
+        samples,
+        labels,
+        registry,
+        primary_scores,
+        audit_results=audit_results,
+        splits=splits,
+        horizon_ns=primary_horizon_ns,
+    )
+    horizon_reports: dict[str, dict[str, Any]] = {}
+    for horizon in _horizon_values(labels):
+        horizon_scores = primary_scores if horizon == primary_horizon_ns else score_factors(
+            samples,
+            labels,
+            registry,
+            audit_results=audit_results,
+            min_samples=min_samples,
+            horizon_ns=horizon,
+        )
+        horizon_sections = _factor_report_sections(
+            samples,
+            labels,
+            registry,
+            horizon_scores,
+            audit_results=audit_results,
+            splits=splits if horizon == primary_horizon_ns else (),
+            horizon_ns=horizon,
+        )
+        horizon_reports[str(horizon)] = {
+            "horizon_ns": horizon,
+            "label_count": len(_labels_for_horizon(labels, horizon)),
+            "factor_conclusions": horizon_sections["factor_conclusions"],
+            "interference_matrix": horizon_sections["interference_matrix"],
+            "ablation": horizon_sections["ablation"],
+        }
+    return {
+        "run_id": run_id,
+        "generated_at_ns": time.monotonic_ns(),
+        "sample_count": len(samples),
+        "label_count": len(labels),
+        "factor_count": len(registry),
+        "primary_horizon_ns": primary_horizon_ns,
+        "walk_forward": {
+            "split_count": len(splits),
+            "purged": True,
+        },
+        "factor_conclusions": primary_sections["factor_conclusions"],
+        "correlation_pairs": primary_sections["correlation_pairs"],
+        "interference_matrix": primary_sections["interference_matrix"],
+        "ablation": primary_sections["ablation"],
+        "horizon_reports": horizon_reports,
+    }
+
+
+def _factor_report_sections(
+    samples: Sequence[FactorResearchSample],
+    labels: Sequence[ForwardLabel],
+    registry: Sequence[FactorDefinition],
+    scores: Sequence[FactorScore],
+    *,
+    audit_results: dict[str, LookaheadAuditResult] | None,
+    splits: Sequence[WalkForwardSplit],
+    horizon_ns: int | None,
+) -> dict[str, Any]:
+    label_by_sample = _label_by_sample_for_horizon(labels, horizon_ns)
     score_by_factor = {score.factor_id: score for score in scores}
     factor_ids = [factor.factor_id for factor in registry]
     oos = _oos_factor_metrics(samples, label_by_sample, factor_ids, splits)
@@ -947,6 +1046,7 @@ def build_factor_experiment_report(
             decision = "drop"
         conclusions[factor.factor_id] = {
             "decision": decision,
+            "horizon_ns": horizon_ns or 0,
             "sample_count": score.sample_count if score is not None else 0,
             "ic": score.ic if score is not None else 0.0,
             "rank_ic": score.rank_ic if score is not None else 0.0,
@@ -965,15 +1065,6 @@ def build_factor_experiment_report(
             "stability": _factor_stability_by_symbol(factor.factor_id, factor_samples, label_by_sample, score.ic if score else 0.0),
         }
     return {
-        "run_id": run_id,
-        "generated_at_ns": time.monotonic_ns(),
-        "sample_count": len(samples),
-        "label_count": len(labels),
-        "factor_count": len(registry),
-        "walk_forward": {
-            "split_count": len(splits),
-            "purged": True,
-        },
         "factor_conclusions": conclusions,
         "correlation_pairs": correlation_pairs,
         "interference_matrix": _interference_matrix(correlation_pairs, conclusions),
@@ -1057,7 +1148,8 @@ def build_daily_research_summary(
     fills = list(maker_fills)
     for path in maker_ledger_paths:
         fills.extend(load_maker_fills_from_ledger(path))
-    maker_pnl = decompose_maker_pnl(fills)
+    maker_pnl_by_symbol = decompose_maker_pnl_by_symbol(fills)
+    maker_pnl_total = _sum_maker_pnl(maker_pnl_by_symbol.values())
     return {
         "status": "ok",
         "latest_experiment": latest,
@@ -1065,7 +1157,9 @@ def build_daily_research_summary(
         "label_count": len(store.list_labels()),
         "factor_count": len(registry),
         "factor_status_counts": status_counts,
-        "maker_pnl": asdict(maker_pnl),
+        "maker_pnl": asdict(maker_pnl_total),
+        "maker_pnl_total": asdict(maker_pnl_total),
+        "maker_pnl_by_symbol": {symbol: asdict(row) for symbol, row in maker_pnl_by_symbol.items()},
     }
 
 
@@ -1162,6 +1256,33 @@ def decompose_maker_pnl(fills: Sequence[MakerFillInput]) -> MakerPnlDecompositio
     )
 
 
+def decompose_maker_pnl_by_symbol(fills: Sequence[MakerFillInput]) -> dict[str, MakerPnlDecomposition]:
+    fills_by_symbol: dict[str, list[MakerFillInput]] = {}
+    for fill in fills:
+        fills_by_symbol.setdefault(fill.symbol, []).append(fill)
+    return {
+        symbol: decompose_maker_pnl(symbol_fills)
+        for symbol, symbol_fills in sorted(fills_by_symbol.items())
+    }
+
+
+def _sum_maker_pnl(rows: Sequence[MakerPnlDecomposition]) -> MakerPnlDecomposition:
+    price_pnl = sum(row.price_pnl_usdt for row in rows)
+    fees = sum(row.fees_usdt for row in rows)
+    completed_cycles = sum(row.completed_cycles for row in rows)
+    wins = sum(row.wins for row in rows)
+    losses = sum(row.losses for row in rows)
+    return MakerPnlDecomposition(
+        price_pnl_usdt=price_pnl,
+        fees_usdt=fees,
+        net_pnl_usdt=price_pnl - fees,
+        completed_cycles=completed_cycles,
+        wins=wins,
+        losses=losses,
+        win_rate=wins / completed_cycles if completed_cycles else 0.0,
+    )
+
+
 def write_shadow_candidate_config(
     *,
     active_config_path: str | Path,
@@ -1247,6 +1368,8 @@ def main(argv: list[str] | None = None) -> int:
     pipeline_parser.add_argument("--min-samples", type=int, default=30)
     pipeline_parser.add_argument("--n-splits", type=int, default=5)
     pipeline_parser.add_argument("--embargo-ms", type=float, default=250.0)
+    pipeline_parser.add_argument("--from", dest="from_time", default="")
+    pipeline_parser.add_argument("--to", dest="to_time", default="")
     pipeline_parser.add_argument("--maker-ledger", action="append", default=[])
 
     args = parser.parse_args(argv)
@@ -1275,14 +1398,28 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.action == "build-dataset":
-        labels = build_forward_labels(
+        horizons_ns = _parse_horizons(args.horizons)
+        samples, observations = filter_research_window(
             store.list_samples(),
             store.list_observations(),
-            horizons_ns=_parse_horizons(args.horizons),
+            from_time=args.from_time,
+            to_time=args.to_time,
+            label_horizon_ns=max(horizons_ns, default=0),
+        )
+        labels = build_forward_labels(
+            samples,
+            observations,
+            horizons_ns=horizons_ns,
             round_trip_fee_bps=args.round_trip_fee_bps,
         )
         store.record_labels(labels)
-        _print_json({"status": "ok", "label_count": len(labels), "horizons": args.horizons})
+        _print_json({
+            "status": "ok",
+            "label_count": len(labels),
+            "horizons": args.horizons,
+            "from_time": args.from_time,
+            "to_time": args.to_time,
+        })
         return 0
 
     if args.action == "score":
@@ -1393,13 +1530,23 @@ def main(argv: list[str] | None = None) -> int:
         run_id = args.run_id or f"pipeline-{time.strftime('%Y%m%dT%H%M%S')}"
         output_dir = Path(args.output_dir) if args.output_dir else Path(args.active_config).parent
         artifact_dir = args.artifact_dir or str(output_dir / "factor_research_artifacts")
-        labels = build_forward_labels(
+        horizons_ns = _parse_horizons(args.horizons)
+        samples, observations = filter_research_window(
             store.list_samples(),
             store.list_observations(),
-            horizons_ns=_parse_horizons(args.horizons),
+            from_time=args.from_time,
+            to_time=args.to_time,
+            label_horizon_ns=max(horizons_ns, default=0),
+        )
+        labels = build_forward_labels(
+            samples,
+            observations,
+            horizons_ns=horizons_ns,
             round_trip_fee_bps=args.round_trip_fee_bps,
         )
         store.record_labels(labels)
+        from_time_ns = _parse_time_bound_ns(args.from_time)
+        to_time_ns = _parse_time_bound_ns(args.to_time)
         result = run_factor_experiment(
             store,
             registry,
@@ -1409,6 +1556,8 @@ def main(argv: list[str] | None = None) -> int:
                 n_splits=args.n_splits,
                 embargo_ns=int(args.embargo_ms * 1_000_000),
                 artifact_dir=artifact_dir,
+                from_time_ns=from_time_ns,
+                to_time_ns=to_time_ns,
             ),
         )
         candidate = generate_research_candidate_config(
@@ -1452,6 +1601,73 @@ def _parse_horizons(raw: str) -> list[int]:
         else:
             horizons.append(int(token))
     return horizons
+
+
+def filter_research_window(
+    samples: Sequence[FactorResearchSample],
+    observations: Sequence[MarketObservation],
+    *,
+    from_time: str = "",
+    to_time: str = "",
+    label_horizon_ns: int = 0,
+) -> tuple[list[FactorResearchSample], list[MarketObservation]]:
+    from_time_ns = _parse_time_bound_ns(from_time)
+    to_time_ns = _parse_time_bound_ns(to_time)
+    observation_to_time_ns = None if to_time_ns is None else to_time_ns + max(0, int(label_horizon_ns))
+    filtered_samples = [
+        sample for sample in samples
+        if _within_time_bounds(sample.decision_time_ns, from_time_ns=from_time_ns, to_time_ns=to_time_ns)
+    ]
+    filtered_observations = [
+        observation for observation in observations
+        if _within_time_bounds(observation.receive_time_ns, from_time_ns=from_time_ns, to_time_ns=observation_to_time_ns)
+    ]
+    return filtered_samples, filtered_observations
+
+
+def _parse_time_bound_ns(raw: str | None) -> int | None:
+    token = (raw or "").strip()
+    if not token:
+        return None
+    lowered = token.lower()
+    try:
+        if lowered.endswith("ns"):
+            return int(float(lowered[:-2]))
+        if lowered.endswith("ms"):
+            return int(float(lowered[:-2]) * 1_000_000)
+        if lowered.endswith("s"):
+            return int(float(lowered[:-1]) * 1_000_000_000)
+        return int(token)
+    except ValueError:
+        iso_token = token.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(iso_token)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return int(parsed.timestamp() * 1_000_000_000)
+
+
+def _filter_samples_labels_by_window(
+    samples: Sequence[FactorResearchSample],
+    labels: Sequence[ForwardLabel],
+    *,
+    from_time_ns: int | None,
+    to_time_ns: int | None,
+) -> tuple[list[FactorResearchSample], list[ForwardLabel]]:
+    filtered_samples = [
+        sample for sample in samples
+        if _within_time_bounds(sample.decision_time_ns, from_time_ns=from_time_ns, to_time_ns=to_time_ns)
+    ]
+    sample_ids = {sample.sample_id for sample in filtered_samples}
+    filtered_labels = [label for label in labels if label.sample_id in sample_ids]
+    return filtered_samples, filtered_labels
+
+
+def _within_time_bounds(value_ns: int, *, from_time_ns: int | None, to_time_ns: int | None) -> bool:
+    if from_time_ns is not None and value_ns < from_time_ns:
+        return False
+    if to_time_ns is not None and value_ns > to_time_ns:
+        return False
+    return True
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -1511,11 +1727,36 @@ def _experiment_summary(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _first_label_by_sample(labels: Sequence[ForwardLabel]) -> dict[str, ForwardLabel]:
+def _valid_decision_side(side: str) -> str:
+    normalized = side.lower().strip()
+    return normalized if normalized in {"long", "short"} else ""
+
+
+def _horizon_values(labels: Sequence[ForwardLabel]) -> list[int]:
+    return sorted({int(label.horizon_ns) for label in labels})
+
+
+def _primary_horizon_ns(labels: Sequence[ForwardLabel]) -> int | None:
+    horizons = _horizon_values(labels)
+    return horizons[0] if horizons else None
+
+
+def _labels_for_horizon(labels: Sequence[ForwardLabel], horizon_ns: int | None) -> list[ForwardLabel]:
+    selected_horizon = _primary_horizon_ns(labels) if horizon_ns is None else int(horizon_ns)
+    if selected_horizon is None:
+        return []
+    return [label for label in labels if int(label.horizon_ns) == selected_horizon]
+
+
+def _label_by_sample_for_horizon(labels: Sequence[ForwardLabel], horizon_ns: int | None = None) -> dict[str, ForwardLabel]:
     label_by_sample: dict[str, ForwardLabel] = {}
-    for label in labels:
+    for label in _labels_for_horizon(labels, horizon_ns):
         label_by_sample.setdefault(label.sample_id, label)
     return label_by_sample
+
+
+def _first_label_by_sample(labels: Sequence[ForwardLabel]) -> dict[str, ForwardLabel]:
+    return _label_by_sample_for_horizon(labels)
 
 
 def _oos_factor_metrics(

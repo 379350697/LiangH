@@ -353,6 +353,13 @@ class HftScalpPaperRunner:
         decision_time_ns = max(time.monotonic_ns(), int(book.receive_time_ns))
         features = hft_candidate_features(variant, book, signal=signal, strategy=strategy)
         event_seq = int(book.update_id or book.receive_time_ns)
+        candidate_side = _candidate_side_for_research(variant, strategy, book, signal, features)
+        base_quality_flags = {
+            "stale_book": book.stale,
+            "sequence_gap": book.sequence_gap,
+            "not_hot_book": book.book_status != "hot",
+            "missing_candidate_side": not candidate_side,
+        }
         sample = FactorResearchSample(
             sample_id=f"{self.run_id}:{bot_id}:{book.symbol}:{book.receive_time_ns}:{event_seq}",
             run_id=self.run_id,
@@ -366,17 +373,13 @@ class HftScalpPaperRunner:
             decision_time_ns=decision_time_ns,
             sample_type="hft_book_decision",
             fired=signal is not None,
-            side=signal.side.value if signal is not None else "",
+            side=candidate_side,
             mid_price=float(book.mid_price or 0.0),
             features=features,
             feature_times_ns={key: int(book.receive_time_ns) for key in features},
             data_quality_flags=tuple(
                 flag
-                for flag, active in {
-                    "stale_book": book.stale,
-                    "sequence_gap": book.sequence_gap,
-                    "not_hot_book": book.book_status != "hot",
-                }.items()
+                for flag, active in base_quality_flags.items()
                 if active
             ),
         )
@@ -734,6 +737,48 @@ def _strategy_for_bot(strategy_version: str, variant: HftScalpVariant):
     if strategy_version == HFT_LEAD_LAG_VERSION:
         return RulesLeadLagFairValueStrategy(variant)
     raise ValueError(f"unsupported HFT scalping strategy version: {strategy_version}")
+
+
+def _candidate_side_for_research(
+    variant: HftScalpVariant,
+    strategy: Any,
+    book: BookTick | TopBookTick,
+    signal: HftScalpSignal | None,
+    features: dict[str, float],
+) -> str:
+    if signal is not None:
+        return signal.side.value
+    if variant.strategy_kind == "queue_imbalance_one_tick":
+        imbalance = float(features.get("hft.queue_imbalance", 0.0))
+        if imbalance > 0:
+            return Side.LONG.value
+        if imbalance < 0:
+            return Side.SHORT.value
+        return ""
+    if variant.strategy_kind == "sweep_replenishment_reversion":
+        sweep = getattr(strategy, "_last_sweep", None)
+        if not isinstance(sweep, dict):
+            return ""
+        receive_time_ns = int(getattr(book, "receive_time_ns", 0) or 0)
+        sweep_time_ns = int(sweep.get("receive_time_ns", receive_time_ns) or receive_time_ns)
+        age_ms = (receive_time_ns - sweep_time_ns) / 1_000_000.0
+        if age_ms < 0 or age_ms > variant.sweep_window_ms:
+            return ""
+        direction = str(sweep.get("direction", ""))
+        if direction == "buy":
+            return Side.SHORT.value
+        if direction == "sell":
+            return Side.LONG.value
+        return ""
+    if variant.strategy_kind == "lead_lag_fair_value":
+        divergence = features.get("hft.lag_divergence_bps")
+        if divergence is None:
+            return ""
+        if divergence > 0:
+            return Side.LONG.value
+        if divergence < 0:
+            return Side.SHORT.value
+    return ""
 
 
 def _build_signal(
